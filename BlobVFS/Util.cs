@@ -33,25 +33,10 @@ internal static class Util
 		return !list.AnySafe();
 	}
 
-	/// <summary>
-	/// Extension includes '.'
-	/// </summary>
-	public static (string Name, string Extension) FileNameAndExtension(string fileName)
-	{
-		var idx = fileName.LastIndexOf('.');
-
-		return idx > 0
-			? (fileName[..idx], fileName[idx..])
-			: (fileName, string.Empty);
-	}
-
 	public static string FileExtension(string fileName)
 	{
-		var idx = fileName.LastIndexOf('.');
-
-		return idx > 0
-			? fileName[idx..]
-			: string.Empty;
+		var fi = new FileInfo(fileName);
+		return fi.Extension;
 	}
 
 	public static List<string> GetPathParts(string? path, char dirSeparator)

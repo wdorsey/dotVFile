@@ -9,16 +9,23 @@ public class VFS
 	public VFS(VFSOptions opts)
 	{
 		if (opts.RootPath.IsEmpty() || !Path.IsPathFullyQualified(opts.RootPath))
-			throw new Exception($"Invalid RootPath: \"{opts.RootPath}\". It needs to be a valid directory path where this VFS instance will operate, such as: \"C:\\vfs\".");
+			throw new Exception($"Invalid RootPath: \"{opts.RootPath}\". RootPath must be a valid directory where this VFS instance will operate, such as: \"C:\\vfs\".");
 
 		Name = new DirectoryInfo(opts.RootPath).Name;
-		Paths = new(opts.RootPath);
-		ErrorHandler = opts.ErrorHandler;
-		LogFn = opts.LogFn;
+		if (!Directory.Exists(opts.RootPath))
+			Directory.CreateDirectory(opts.RootPath);
+		RootPath = new(opts.RootPath);
+		Callbacks = opts.Callbacks;
+		Database = new VFSDatabase(new(opts.RootPath, opts.Callbacks));
 	}
 
-	public string Name { get; private set; }
-	public VFSPaths Paths { get; private set; }
-	public Action<VFSError> ErrorHandler { get; private set; }
-	public Action<string> LogFn { get; private set; }
+	public string Name { get; }
+	public string RootPath { get; }
+	public IVFSCallbacks? Callbacks { get; }
+	private VFSDatabase Database { get; }
+
+	public void Go()
+	{
+		Database.Go();
+	}
 }

@@ -3,11 +3,15 @@ using Newtonsoft.Json.Converters;
 
 namespace BlobVFS;
 
+public interface IVFSCallbacks
+{
+	void HandleError(VFSError error);
+	void Log(string msg);
+}
+
 public record VFSError(string ErrorCode, Exception Exception);
 
-public record VFSOptions(string RootPath, Action<VFSError> ErrorHandler, Action<string> LogFn);
-
-public record VFSPaths(string RootPath);
+public record VFSOptions(string RootPath, IVFSCallbacks? Callbacks);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -65,7 +69,7 @@ public record VFileDataInfo(
 	long Size,
 	long SizeOnDisk,
 	DateTimeOffset CreationTime,
-	bool IsCompressed)
+	VFileCompression Compression)
 {
 	public string Hash = Hash;
 	public string Directory = Directory;
@@ -73,7 +77,7 @@ public record VFileDataInfo(
 	public long Size = Size;
 	public long SizeOnDisk = SizeOnDisk;
 	public DateTimeOffset CreationTime = CreationTime;
-	public bool IsCompressed = IsCompressed;
+	public VFileCompression Compression = Compression;
 }
 
 [JsonConverter(typeof(StringEnumConverter))]
@@ -96,11 +100,11 @@ public enum VFileExistsBehavior
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileCompression
 {
-	None,
+	None = 0,
 	/// <summary>
 	/// Uses Deflate compression algorithm.
 	/// </summary>
-	Compress
+	Compress = 1
 }
 
 public record VFileStorageOptions(

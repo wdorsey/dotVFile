@@ -1,5 +1,10 @@
 ﻿using BlobVFS;
+using BlobVFS.Test;
 
-(var name, var ext) = Util.FileNameAndExtension("file.json");
+var path = Path.Combine(Environment.CurrentDirectory, "vfs");
 
-Console.WriteLine($"{name}{ext}");
+VFS vfs = new(new(path, new Callbacks()));
+
+vfs.Go();
+
+
