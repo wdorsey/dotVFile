@@ -1,0 +1,64 @@
+﻿using System.Diagnostics.CodeAnalysis;
+
+namespace BlobVFS;
+
+internal static class Util
+{
+	public static byte[] EmptyBytes() => [];
+
+	public static List<T> AsList<T>(this T obj)
+	{
+		if (obj == null) return [];
+
+		return [obj];
+	}
+
+	public static bool HasValue([NotNullWhen(true)] this string? value)
+	{
+		return !string.IsNullOrEmpty(value);
+	}
+
+	public static bool IsEmpty([NotNullWhen(false)] this string? value)
+	{
+		return !value.HasValue();
+	}
+
+	public static bool AnySafe<T>([NotNullWhen(true)] this IEnumerable<T>? list)
+	{
+		return list != null && list.Any();
+	}
+
+	public static bool IsEmpty<T>([NotNullWhen(false)] this IEnumerable<T>? list)
+	{
+		return !list.AnySafe();
+	}
+
+	/// <summary>
+	/// Extension includes '.'
+	/// </summary>
+	public static (string Name, string Extension) FileNameAndExtension(string fileName)
+	{
+		var idx = fileName.LastIndexOf('.');
+
+		return idx > 0
+			? (fileName[..idx], fileName[idx..])
+			: (fileName, string.Empty);
+	}
+
+	public static string FileExtension(string fileName)
+	{
+		var idx = fileName.LastIndexOf('.');
+
+		return idx > 0
+			? fileName[idx..]
+			: string.Empty;
+	}
+
+	public static List<string> GetPathParts(string? path, char dirSeparator)
+	{
+		if (path.IsEmpty())
+			return [];
+
+		return [.. path.Split(dirSeparator, StringSplitOptions.RemoveEmptyEntries)];
+	}
+}
