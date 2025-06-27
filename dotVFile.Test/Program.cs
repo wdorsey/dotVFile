@@ -1,5 +1,5 @@
-﻿using BlobVFS;
-using BlobVFS.Test;
+﻿using dotVFile;
+using dotVFile.Test;
 
 var path = Path.Combine(Environment.CurrentDirectory, "vfs");
 

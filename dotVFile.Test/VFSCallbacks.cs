@@ -1,4 +1,4 @@
-﻿namespace BlobVFS.Test;
+﻿namespace dotVFile.Test;
 
 public class Callbacks : IVFSCallbacks
 {

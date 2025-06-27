@@ -1,4 +1,4 @@
-﻿namespace BlobVFS;
+﻿namespace dotVFile;
 
 internal class VFSDatabase
 {

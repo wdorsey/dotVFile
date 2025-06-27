@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\BlobVFS\BlobVFS.csproj" />
+    <ProjectReference Include="..\dotVFile\dotVFile.csproj" />
   </ItemGroup>
 
 </Project>

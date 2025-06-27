@@ -1,7 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
-namespace BlobVFS;
+namespace dotVFile;
 
 public interface IVFSCallbacks
 {

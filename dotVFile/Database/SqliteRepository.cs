@@ -1,6 +1,6 @@
 ﻿using Microsoft.Data.Sqlite;
 
-namespace BlobVFS;
+namespace dotVFile;
 
 internal class SqliteRepository
 {

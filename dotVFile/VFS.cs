@@ -1,4 +1,4 @@
-﻿namespace BlobVFS;
+﻿namespace dotVFile;
 
 public class VFS
 {

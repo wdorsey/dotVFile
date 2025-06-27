@@ -5,4 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Style", "IDE0130:Namespace does not match folder structure", Justification = "BlobVFS is the only namespace used for the entire project, regardless of how it is organized internally.", Scope = "namespace", Target = "~N:BlobVFS")]
+[assembly: SuppressMessage("Style", "IDE0130:Namespace does not match folder structure", Justification = "dotVFile is the only namespace used for the entire project, regardless of how it is internally organized.", Scope = "namespace", Target = "~N:dotVFile")]

@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 
-namespace BlobVFS;
+namespace dotVFile;
 
 internal static class Util
 {
