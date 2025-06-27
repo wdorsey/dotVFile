@@ -1,12 +1,16 @@
 ﻿namespace dotVFile;
 
-public record VFSDatabaseOptions(
+public record VFileDatabaseOptions(
 	string RootPath,
-	IVFSCallbacks? Callbacks);
+	IVFileHooks Hooks);
 
 public static class Db
 {
-	public record Entity(Guid Id, DateTimeOffset CreateTimestamp);
+	public record Entity
+	{
+		public long Id;
+		public DateTimeOffset CreateTimestamp;
+	}
 
 	public record VFileInfo(
 		string Hash,
@@ -15,12 +19,10 @@ public static class Db
 		string FileName,
 		string Extension,
 		long Size,
-		bool IsLatest,
-		bool IsVersion,
+		string? Version,
 		DateTimeOffset? DeleteAt,
-		DateTimeOffset CreationTime,
-		Guid Id,
-		DateTimeOffset CreateTimestamp) : Entity(Id, CreateTimestamp);
+		DateTimeOffset CreationTime)
+		: Entity;
 
 	public record VFileDataInfo(
 		string Hash,
@@ -29,14 +31,12 @@ public static class Db
 		long Size,
 		long SizeOnDisk,
 		int Compression,
-		DateTimeOffset CreationTime,
-		Guid Id,
-		DateTimeOffset CreateTimestamp) : Entity(Id, CreateTimestamp);
+		DateTimeOffset CreationTime)
+		: Entity;
 
 	public record VFileMap(
 		string Hash,
-		Guid VFileInfoId,
-		Guid VFileDataInfoId,
-		Guid Id,
-		DateTimeOffset CreateTimestamp) : Entity(Id, CreateTimestamp);
+		int VFileInfoId,
+		int VFileDataInfoId)
+		: Entity;
 }

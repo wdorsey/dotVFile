@@ -39,6 +39,13 @@ internal static class Util
 		return fi.Extension;
 	}
 
+	public static (string Name, string Ext) FileNameAndExtension(string fileName)
+	{
+		var ext = FileExtension(fileName);
+		var name = fileName[..fileName.LastIndexOf(ext)];
+		return (name, ext);
+	}
+
 	public static List<string> GetPathParts(string? path, char dirSeparator)
 	{
 		if (path.IsEmpty())

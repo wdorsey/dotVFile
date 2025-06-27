@@ -2,8 +2,9 @@
 
 public class VFS
 {
-	public static readonly char DirectorySeparator = Path.DirectorySeparatorChar;
-	public static VFileStorageOptions DefaultVFileStorageOptions =>
+	private const char RelativePathDirectorySeparator = '/';
+
+	public static VFileStorageOptions DefaultVFileStorageOptions() =>
 		new(VFileExistsBehavior.Overwrite, VFileCompression.None, null, null, null);
 
 	public VFS(VFSOptions opts)
@@ -15,17 +16,56 @@ public class VFS
 		if (!Directory.Exists(opts.RootPath))
 			Directory.CreateDirectory(opts.RootPath);
 		RootPath = new(opts.RootPath);
-		Callbacks = opts.Callbacks;
-		Database = new VFSDatabase(new(opts.RootPath, opts.Callbacks));
+		Hooks = opts.Hooks;
+		Database = new VFileDatabase(new(opts.RootPath, opts.Hooks));
 	}
 
+	private VFileDatabase Database { get; }
 	public string Name { get; }
 	public string RootPath { get; }
-	public IVFSCallbacks? Callbacks { get; }
-	private VFSDatabase Database { get; }
+	public IVFileHooks Hooks { get; }
 
-	public void Go()
+	public void StoreFile(
+		VFileRelativePath? path,
+		string fileName,
+		byte[] contents,
+		VFileStorageOptions opts)
 	{
-		Database.Go();
+		if (string.IsNullOrEmpty(fileName))
+		{
+			Hooks.Error(new("INVALID_PARAM", new Exception("fileName must have value")));
+			return;
+		}
+
+		var vfile = new VFileInfo(
+			GenerateVFileId(path, fileName, null),
+			DateTimeOffset.Now.Ticks.ToString(),
+			DateTimeOffset.Now,
+			1234,
+			null);
+
+		Hooks.Log(vfile.Id.ToString());
+
+		Database.SaveVFileInfo(vfile);
+	}
+
+	private static VFileId GenerateVFileId(VFileRelativePath? path, string fileName, string? version)
+	{
+		string relativePath = RelativePathDirectorySeparator.ToString();
+		if (path != null)
+		{
+			relativePath += string.Join(RelativePathDirectorySeparator, path.Paths);
+			relativePath += RelativePathDirectorySeparator;
+		}
+
+		if (version.HasValue())
+		{
+			(var name, var ext) = Util.FileNameAndExtension(fileName);
+			fileName = $"{name}.{version}{ext}";
+		}
+
+		var id = $"{relativePath}{fileName}";
+
+		return new VFileId(id, relativePath, fileName, version);
 	}
 }

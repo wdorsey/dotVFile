@@ -3,15 +3,21 @@ using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
 
-public interface IVFSCallbacks
+public interface IVFileHooks
 {
-	void HandleError(VFSError error);
+	void Error(VFileError error);
 	void Log(string msg);
 }
 
-public record VFSError(string ErrorCode, Exception Exception);
+public record VFileError(string ErrorCode, Exception Exception)
+{
+	public override string ToString()
+	{
+		return $"{ErrorCode}{Environment.NewLine}{Exception}";
+	}
+}
 
-public record VFSOptions(string RootPath, IVFSCallbacks? Callbacks);
+public record VFSOptions(string RootPath, IVFileHooks Hooks);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -20,7 +26,18 @@ public record VFSOptions(string RootPath, IVFSCallbacks? Callbacks);
 ///	\folder\subfolder\file.txt<br/>
 ///	\folder\file.{Version}.txt
 /// </summary>
-public record VFileId(string Id, string RelativePath, string FileName, string? Version);
+public record VFileId(
+	string Id,
+	string RelativePath,
+	string FileName,
+	string? Version)
+{
+	public override string ToString()
+	{
+		return Id;
+	}
+}
+
 
 public record VFile
 {
@@ -40,6 +57,7 @@ public record VFileInfo(
 	public string FullPath => Id.Id;
 	public string RelativePath => Id.RelativePath;
 	public string Name => Id.FileName;
+	public string? Version => Id.Version;
 	public string Extension => Util.FileExtension(Name);
 	/// <summary>
 	/// Effective Id of the data contained in the file.
@@ -105,6 +123,11 @@ public enum VFileCompression
 	/// Uses Deflate compression algorithm.
 	/// </summary>
 	Compress = 1
+}
+
+public record VFileRelativePath(params string[] Path)
+{
+	public List<string> Paths = [.. Path];
 }
 
 public record VFileStorageOptions(
