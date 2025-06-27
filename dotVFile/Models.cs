@@ -9,22 +9,51 @@ public interface IVFileHooks
 	void Log(string msg);
 }
 
-public record VFileError(string ErrorCode, Exception Exception)
+public class NotImplementedHooks : IVFileHooks
 {
-	public override string ToString()
+	public void Error(VFileError error)
 	{
-		return $"{ErrorCode}{Environment.NewLine}{Exception}";
+		// no impl
+	}
+
+	public void Log(string msg)
+	{
+		// no impl
 	}
 }
 
-public record VFSOptions(string RootPath, IVFileHooks Hooks);
+public static class VFileErrorCodes
+{
+	public const string InvalidParameter = "INVALID_PARAMETER";
+}
+
+public record VFileError(
+	string ErrorCode,
+	string Message,
+	string Function)
+{
+	public override string ToString()
+	{
+		return $@"
+=== VFileError ===
+{ErrorCode} in {Function}()
+{Message}
+==================
+";
+	}
+}
+
+public record VFSOptions(
+	string RootPath,
+	IVFileHooks? Hooks,
+	VFileStorageOptions? DefaultStorageOptions);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
 /// Examples of Id:<br/>
-///	\file.txt<br/>
-///	\folder\subfolder\file.txt<br/>
-///	\folder\file.{Version}.txt
+///	/file.txt<br/>
+///	/folder/subfolder/file.txt<br/>
+///	/folder/file.txt?v={Version}
 /// </summary>
 public record VFileId(
 	string Id,
@@ -38,26 +67,20 @@ public record VFileId(
 	}
 }
 
-
-public record VFile
-{
-	public VFileInfo? FileInfo;
-	public VFileDataInfo? DataInfo;
-	public byte[]? Contents;
-}
+public record VFile(VFileInfo FileInfo, byte[] Contents);
 
 public record VFileInfo(
 	VFileId VFileId,
 	string Hash,
-	DateTimeOffset CreationTime,
 	long Size,
+	DateTimeOffset CreationTime,
 	DateTimeOffset? DeleteAt)
 {
-	public VFileId Id = VFileId;
-	public string FullPath => Id.Id;
-	public string RelativePath => Id.RelativePath;
-	public string Name => Id.FileName;
-	public string? Version => Id.Version;
+	public VFileId VFileId = VFileId;
+	public string FullPath => VFileId.Id;
+	public string RelativePath => VFileId.RelativePath;
+	public string Name => VFileId.FileName;
+	public string? Version => VFileId.Version;
 	public string Extension => Util.FileExtension(Name);
 	/// <summary>
 	/// Effective Id of the data contained in the file.
@@ -68,15 +91,10 @@ public record VFileInfo(
 	/// Size in bytes.
 	/// </summary>
 	public long Size = Size;
-
-	/// <summary>
-	/// Current non-versioned file.
-	/// </summary>
-	public bool IsLatest => Id.Version == null;
 	/// <summary>
 	/// Versioned file.
 	/// </summary>
-	public bool IsVersion => !IsLatest;
+	public bool IsVersion => Version.HasValue();
 	public DateTimeOffset? DeleteAt = DeleteAt;
 }
 

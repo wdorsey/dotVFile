@@ -11,8 +11,8 @@ internal class SqliteRepository(string dbFilePath)
 		const string sql = @"
 CREATE TABLE IF NOT EXISTS VFileInfo (
 	Id				INTEGER NOT NULL UNIQUE,
+	FileId			TEXT NOT NULL,
 	Hash			TEXT NOT NULL UNIQUE,
-	FullPath		TEXT NOT NULL,
 	RelativePath	TEXT NOT NULL,
 	FileName		TEXT NOT NULL,
 	Extension		TEXT,
@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS VFileInfo (
 	CreateTimestamp	TEXT NOT NULL,
 	PRIMARY KEY(Id AUTOINCREMENT)
 );
+CREATE INDEX IF NOT EXISTS VFileInfo_FileId ON VFileInfo(FileId);
+CREATE INDEX IF NOT EXISTS VFileInfo_FileIdLatest ON VFileInfo(FileId, Version) WHERE VERSION IS NULL;
 CREATE INDEX IF NOT EXISTS VFileInfo_Hash ON VFileInfo(Hash);
 CREATE INDEX IF NOT EXISTS VFileInfo_Version ON VFileInfo(Version) WHERE Version IS NOT NULL;
 CREATE INDEX IF NOT EXISTS VFileInfo_DeleteAt ON VFileInfo(DeleteAt) WHERE DeleteAt IS NOT NULL;
@@ -61,12 +63,61 @@ CREATE INDEX IF NOT EXISTS VFileMap_VFileDataInfoId ON VFileMap(VFileDataInfoId)
 		cmd.ExecuteNonQuery();
 	}
 
-	public void SaveVFileInfo(Db.VFileInfo vfile)
+	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
 	{
-		const string sql = $@"
-INSERT INTO VFileInfo(
+		const string sql = @"
+SELECT 
+	Id,
+	FileId,
 	Hash,
-	FullPath,
+	RelativePath,
+	FileName,
+	Extension,
+	Size,
+	Version,
+	DeleteAt,
+	CreationTime,
+	CreateTimestamp
+FROM 
+	VFileInfo 
+WHERE 
+	FileId = @FileId 
+	AND Version IS NULL
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@FileId", fileId);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		if (reader.Read())
+		{
+			var info = new Db.VFileInfo(
+				reader["FileId"].ToString()!,
+				reader["Hash"].ToString()!,
+				reader["RelativePath"].ToString()!,
+				reader["FileName"].ToString()!,
+				reader["Extension"].ToString()!,
+				Convert.ToInt64(reader["Size"]),
+				reader["Version"]?.ToString(),
+				DbUtil.ConvertDateTimeOffsetNullable(reader["DeleteAt"]),
+				DbUtil.ConvertDateTimeOffset(reader["CreationTime"].ToString()!))
+			{
+				Id = Convert.ToInt64(reader["Id"]),
+				CreateTimestamp = DbUtil.ConvertDateTimeOffset(reader["CreateTimestamp"].ToString()!)
+			};
+
+			return info;
+		}
+
+		return null;
+	}
+
+	public void InsertVFileInfo(Db.VFileInfo info)
+	{
+		const string sql = @"
+INSERT INTO VFileInfo(
+	FileId,
+	Hash,
 	RelativePath,
 	FileName,
 	Extension,
@@ -76,8 +127,8 @@ INSERT INTO VFileInfo(
 	CreationTime,
 	CreateTimestamp)
 VALUES (
+	@FileId, 
 	@Hash, 
-	@FullPath, 
 	@RelativePath,
 	@FileName,
 	@Extension,
@@ -90,22 +141,79 @@ SELECT last_insert_rowid();
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddWithValue("@Hash", vfile.Hash);
-		cmd.Parameters.AddWithValue("@FullPath", vfile.FullPath);
-		cmd.Parameters.AddWithValue("@RelativePath", vfile.RelativePath);
-		cmd.Parameters.AddWithValue("@FileName", vfile.FileName);
-		cmd.Parameters.AddWithValue("@Extension", vfile.Extension);
-		cmd.Parameters.AddWithValue("@Size", vfile.Size);
-		cmd.Parameters.AddWithValue("@Version", NullMaybe(vfile.Version));
-		cmd.Parameters.AddWithValue("@DeleteAt", NullMaybe(vfile.DeleteAt));
-		cmd.Parameters.AddWithValue("@CreationTime", vfile.CreationTime);
-		cmd.Parameters.AddWithValue("@CreateTimestamp", vfile.CreateTimestamp);
+		cmd.Parameters.AddWithValue("@FileId", info.FileId);
+		cmd.Parameters.AddWithValue("@Hash", info.Hash);
+		cmd.Parameters.AddWithValue("@RelativePath", info.RelativePath);
+		cmd.Parameters.AddWithValue("@FileName", info.FileName);
+		cmd.Parameters.AddWithValue("@Extension", info.Extension);
+		cmd.Parameters.AddWithValue("@Size", info.Size);
+		cmd.Parameters.AddWithValue("@Version", DbUtil.NullCoalesce(info.Version));
+		cmd.Parameters.AddWithValue("@DeleteAt", DbUtil.NullCoalesce(info.DeleteAt));
+		cmd.Parameters.AddWithValue("@CreationTime", info.CreationTime);
+		cmd.Parameters.AddWithValue("@CreateTimestamp", info.CreateTimestamp);
 		connection.Open();
-		vfile.Id = (long)(cmd.ExecuteScalar() ?? 0);
+		info.Id = (long)(cmd.ExecuteScalar() ?? 0);
 	}
 
-	private static object NullMaybe(object? value)
+	public void InsertVFileDataInfo(Db.VFileDataInfo info)
 	{
-		return value ?? DBNull.Value;
+		const string sql = @"
+INSERT INTO VFileDataInfo(
+	Hash,
+	Directory,
+	FileName,
+	Size,
+	SizeOnDisk,
+	Compression,
+	CreationTime,
+	CreateTimestamp)
+VALUES (
+	@Hash,
+	@Directory,
+	@FileName,
+	@Size,
+	@SizeOnDisk,
+	@Compression,
+	@CreationTime,
+	@CreateTimestamp);
+SELECT last_insert_rowid();
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@Hash", info.Hash);
+		cmd.Parameters.AddWithValue("@Directory", info.Directory);
+		cmd.Parameters.AddWithValue("@FileName", info.FileName);
+		cmd.Parameters.AddWithValue("@Size", info.Size);
+		cmd.Parameters.AddWithValue("@SizeOnDisk", info.SizeOnDisk);
+		cmd.Parameters.AddWithValue("@Compression", info.Compression);
+		cmd.Parameters.AddWithValue("@CreationTime", info.CreationTime);
+		cmd.Parameters.AddWithValue("@CreateTimestamp", info.CreateTimestamp);
+		connection.Open();
+		info.Id = (long)(cmd.ExecuteScalar() ?? 0);
+	}
+
+	public void InsertVFileMap(Db.VFileMap map)
+	{
+		const string sql = @"
+INSERT INTO VFileMap(
+	Hash,
+	VFileInfoId,
+	VFileDataInfoId,
+	CreateTimestamp)
+VALUES (
+	@Hash,
+	@VFileInfoId,
+	@VFileDataInfoId,
+	@CreateTimestamp);
+SELECT last_insert_rowid();
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@Hash", map.Hash);
+		cmd.Parameters.AddWithValue("@VFileInfoId", map.VFileInfoId);
+		cmd.Parameters.AddWithValue("@VFileDataInfoId", map.VFileDataInfoId);
+		cmd.Parameters.AddWithValue("@CreateTimestamp", map.CreateTimestamp);
+		connection.Open();
+		map.Id = (long)(cmd.ExecuteScalar() ?? 0);
 	}
 }

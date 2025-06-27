@@ -13,8 +13,8 @@ public static class Db
 	}
 
 	public record VFileInfo(
+		string FileId,
 		string Hash,
-		string FullPath,
 		string RelativePath,
 		string FileName,
 		string Extension,
@@ -30,13 +30,13 @@ public static class Db
 		string FileName,
 		long Size,
 		long SizeOnDisk,
-		int Compression,
+		byte Compression,
 		DateTimeOffset CreationTime)
 		: Entity;
 
 	public record VFileMap(
 		string Hash,
-		int VFileInfoId,
-		int VFileDataInfoId)
+		long VFileInfoId,
+		long VFileDataInfoId)
 		: Entity;
 }

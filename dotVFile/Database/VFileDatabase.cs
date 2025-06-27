@@ -14,21 +14,71 @@ internal class VFileDatabase
 	public IVFileHooks Hooks { get; }
 	public SqliteRepository Repository { get; }
 
-	public Db.VFileInfo SaveVFileInfo(VFileInfo vfile)
+	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
 	{
-		var dbVFile = new Db.VFileInfo(
-			vfile.Hash,
-			vfile.FullPath,
-			vfile.RelativePath,
-			vfile.Name,
-			vfile.Extension,
-			vfile.Size,
-			vfile.Version,
-			vfile.DeleteAt,
-			DateTimeOffset.Now).Stamp();
+		return Repository.GetVFileInfoByFileId(fileId);
+	}
 
-		Repository.SaveVFileInfo(dbVFile);
+	public Db.VFileInfo SaveVFileInfo(VFileInfo info)
+	{
+		var dbInfo = VFileInfoToDbVFileInfo(info).Stamp();
 
-		return dbVFile;
+		Repository.InsertVFileInfo(dbInfo);
+
+		Hooks.Log($"Saved Db.VFileInfo, Id: {dbInfo.Id}");
+
+		return dbInfo;
+	}
+
+	public Db.VFileDataInfo SaveVFileDataInfo(VFileDataInfo info)
+	{
+		var dbInfo = VFileDataInfoToDbVFileDataInfo(info).Stamp();
+
+		Repository.InsertVFileDataInfo(dbInfo);
+
+		Hooks.Log($"Saved Db.VFileDataInfo, Id: {dbInfo.Id}");
+
+		return dbInfo;
+	}
+
+	public Db.VFileMap SaveVFileMap(string hash, long vfileInfoId, long vfileDataInfoId)
+	{
+		var map = new Db.VFileMap(
+			hash,
+			vfileInfoId,
+			vfileDataInfoId)
+			.Stamp();
+
+		Repository.InsertVFileMap(map);
+
+		Hooks.Log($"Saved Db.VFileMap, Id: {map.Id}");
+
+		return map;
+	}
+
+	private static Db.VFileInfo VFileInfoToDbVFileInfo(VFileInfo info)
+	{
+		return new Db.VFileInfo(
+			info.FullPath,
+			info.Hash,
+			info.RelativePath,
+			info.Name,
+			info.Extension,
+			info.Size,
+			info.Version,
+			info.DeleteAt,
+			info.CreationTime);
+	}
+
+	private static Db.VFileDataInfo VFileDataInfoToDbVFileDataInfo(VFileDataInfo info)
+	{
+		return new Db.VFileDataInfo(
+			info.Hash,
+			info.Directory,
+			info.FileName,
+			info.Size,
+			info.SizeOnDisk,
+			(byte)info.Compression,
+			info.CreationTime);
 	}
 }
