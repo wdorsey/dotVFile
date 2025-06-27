@@ -1,4 +1,7 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Data;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using Newtonsoft.Json;
 
 namespace dotVFile;
@@ -61,6 +64,141 @@ internal static class Util
 	public static string GetString(this IEnumerable<string> values)
 	{
 		return values.SelectMany(x => x).GetString();
+	}
+
+	public static string HashSHA256(byte[] bytes)
+	{
+		return Convert.ToHexString(SHA256.HashData(bytes));
+	}
+
+	public static string CreateDir(string dirPath)
+	{
+		if (!Directory.Exists(dirPath))
+			Directory.CreateDirectory(dirPath);
+
+		return dirPath;
+	}
+
+	public static void DeleteDir(string path, bool recursive = false)
+	{
+		if (!Directory.Exists(path))
+			return;
+
+		Directory.Delete(path, recursive);
+	}
+
+	/// <summary>
+	/// Delete files and directories at a path but not the path dir itself.
+	/// </summary>
+	public static void DeleteDirectoryContent(string path, bool recursive = false)
+	{
+		if (!Directory.Exists(path))
+			return;
+
+		foreach (var file in GetFiles(path))
+		{
+			DeleteFile(file.FullName);
+		}
+
+		if (recursive)
+		{
+			foreach (var dir in GetDirectories(path))
+			{
+				DeleteDir(dir.FullName, recursive);
+			}
+		}
+	}
+
+	public static void DeleteFile(string path)
+	{
+		if (!File.Exists(path))
+			return;
+
+		File.Delete(path);
+	}
+
+	/// <param name="extensions">Must contain leading '.'</param>
+	public static List<FileInfo> GetFiles(
+		string path,
+		bool recursive = false,
+		params string[] extensions)
+	{
+		return GetFiles(path, [], recursive, extensions);
+	}
+
+	/// <param name="ignoredDirectories">Exact name of the directory to ignore, not a path.</param>
+	/// <param name="extensions">Must contain leading '.'</param>
+	public static List<FileInfo> GetFiles(
+		string path,
+		HashSet<string> ignoredDirectories,
+		bool recursive = false,
+		params string[] extensions)
+	{
+		var exts = extensions.ToHashSet();
+
+		var files = Directory.GetFiles(CreateDir(path))
+			.Select(x => new FileInfo(x))
+			.Where(x => exts.IsEmpty() || exts.Contains(x.Extension))
+			.ToList();
+
+		if (recursive)
+		{
+			foreach (var dir in GetDirectories(path))
+			{
+				if (ignoredDirectories.Contains(dir.Name))
+					continue;
+
+				files.AddRange(GetFiles(dir.FullName, ignoredDirectories, recursive, extensions));
+			}
+		}
+
+		return files;
+	}
+
+	public static List<DirectoryInfo> GetDirectories(string path)
+	{
+		return [.. Directory.GetDirectories(path).Select(x => new DirectoryInfo(x))];
+	}
+
+	public static byte[] GetFileBytes(string path)
+	{
+		AssertFileExists(path);
+
+		return File.ReadAllBytes(path);
+	}
+
+	public static byte[] Compress(byte[] bytes)
+	{
+		if (bytes == null) throw new NoNullAllowedException(nameof(bytes));
+
+		using var input = new MemoryStream(bytes);
+		using var output = new MemoryStream();
+		using var compressor = new DeflateStream(output, CompressionMode.Compress);
+
+		input.CopyTo(compressor);
+
+		compressor.Close();
+
+		return output.ToArray();
+	}
+
+	public static byte[] Decompress(byte[] bytes)
+	{
+		if (bytes == null) throw new NoNullAllowedException(nameof(bytes));
+
+		using var input = new MemoryStream(bytes);
+		using var output = new MemoryStream();
+		using var decompressor = new DeflateStream(input, CompressionMode.Decompress);
+
+		decompressor.CopyTo(output);
+
+		return output.ToArray();
+	}
+
+	private static void AssertFileExists(string path)
+	{
+		if (!File.Exists(path))
+			throw new FileNotFoundException(path);
 	}
 
 	/* json utils */

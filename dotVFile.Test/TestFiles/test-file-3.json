@@ -1,0 +1,227 @@
+[
+  {
+    "_id": "685f04bd9ec4c2b45d7b8075",
+    "index": 0,
+    "guid": "455f93e9-076d-4391-9a68-35ea30fd5268",
+    "isActive": true,
+    "balance": "$1,465.14",
+    "picture": "http://placehold.it/32x32",
+    "age": 21,
+    "eyeColor": "green",
+    "name": "Jeanie Rodriguez",
+    "gender": "female",
+    "company": "PARAGONIA",
+    "email": "jeanierodriguez@paragonia.com",
+    "phone": "+1 (933) 597-2317",
+    "address": "114 Glendale Court, Rote, Virginia, 4821",
+    "about": "Cupidatat nulla nisi do in ex cillum veniam proident eu reprehenderit laboris elit. Ipsum tempor amet ex nisi aliquip sit incididunt esse dolor ullamco eu cupidatat duis. Sunt reprehenderit labore sit mollit aute consequat exercitation ipsum ipsum ullamco mollit.\r\n",
+    "registered": "2022-02-19T09:48:34 +06:00",
+    "latitude": 7.032914,
+    "longitude": -174.960614,
+    "tags": [
+      "reprehenderit",
+      "labore",
+      "id",
+      "nostrud",
+      "elit",
+      "commodo",
+      "voluptate"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Rosemary Bright"
+      },
+      {
+        "id": 1,
+        "name": "Burton Fields"
+      },
+      {
+        "id": 2,
+        "name": "Alfreda Santos"
+      }
+    ],
+    "greeting": "Hello, Jeanie Rodriguez! You have 3 unread messages.",
+    "favoriteFruit": "banana"
+  },
+  {
+    "_id": "685f04bd17859cad36e8d3f9",
+    "index": 1,
+    "guid": "1acf8585-1efa-42e8-931b-d416b6dade05",
+    "isActive": false,
+    "balance": "$3,358.74",
+    "picture": "http://placehold.it/32x32",
+    "age": 39,
+    "eyeColor": "brown",
+    "name": "Vargas Kramer",
+    "gender": "male",
+    "company": "COMCUR",
+    "email": "vargaskramer@comcur.com",
+    "phone": "+1 (926) 440-3580",
+    "address": "339 Shale Street, Elliott, Alabama, 2834",
+    "about": "Ea aliqua do laboris eu minim. Cillum eu nostrud fugiat aute anim laboris ex velit aliqua. Proident et Lorem velit amet consectetur velit cillum eiusmod esse voluptate pariatur culpa aliqua. Duis non id ea exercitation esse culpa quis eu anim velit minim irure mollit. Proident ipsum est irure nisi officia laborum.\r\n",
+    "registered": "2023-02-28T05:43:54 +06:00",
+    "latitude": -24.65302,
+    "longitude": -150.340112,
+    "tags": [
+      "qui",
+      "ullamco",
+      "ea",
+      "culpa",
+      "est",
+      "laborum",
+      "do"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Wise Garza"
+      },
+      {
+        "id": 1,
+        "name": "Blevins Sharpe"
+      },
+      {
+        "id": 2,
+        "name": "Clemons Burke"
+      }
+    ],
+    "greeting": "Hello, Vargas Kramer! You have 4 unread messages.",
+    "favoriteFruit": "banana"
+  },
+  {
+    "_id": "685f04bda92a42a91aed70ea",
+    "index": 2,
+    "guid": "e863af2f-9679-46dd-976f-d8891e944ba4",
+    "isActive": true,
+    "balance": "$2,760.58",
+    "picture": "http://placehold.it/32x32",
+    "age": 36,
+    "eyeColor": "brown",
+    "name": "Georgia Roach",
+    "gender": "female",
+    "company": "SATIANCE",
+    "email": "georgiaroach@satiance.com",
+    "phone": "+1 (902) 523-2985",
+    "address": "898 Barwell Terrace, Loma, New Jersey, 979",
+    "about": "Nulla laboris cupidatat non dolor incididunt eu fugiat proident qui ea aliqua. Ut consequat quis Lorem in quis eiusmod labore esse. Sint eiusmod et esse aliquip ea in velit sit.\r\n",
+    "registered": "2016-03-02T07:06:11 +06:00",
+    "latitude": 82.265113,
+    "longitude": -82.231143,
+    "tags": [
+      "qui",
+      "deserunt",
+      "voluptate",
+      "amet",
+      "Lorem",
+      "mollit",
+      "duis"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Christine Shelton"
+      },
+      {
+        "id": 1,
+        "name": "Beach Forbes"
+      },
+      {
+        "id": 2,
+        "name": "Patti Owen"
+      }
+    ],
+    "greeting": "Hello, Georgia Roach! You have 1 unread messages.",
+    "favoriteFruit": "banana"
+  },
+  {
+    "_id": "685f04bd5a402e6884c86057",
+    "index": 3,
+    "guid": "b29b1d51-b360-453b-ae89-08c17d2d7c50",
+    "isActive": true,
+    "balance": "$2,346.75",
+    "picture": "http://placehold.it/32x32",
+    "age": 30,
+    "eyeColor": "brown",
+    "name": "Savage Huber",
+    "gender": "male",
+    "company": "IRACK",
+    "email": "savagehuber@irack.com",
+    "phone": "+1 (887) 502-2036",
+    "address": "837 Royce Street, Wawona, Mississippi, 1075",
+    "about": "Laborum ex excepteur consequat culpa consectetur laborum non labore officia veniam. Exercitation cillum reprehenderit id anim anim reprehenderit. Ullamco proident occaecat incididunt irure cillum culpa.\r\n",
+    "registered": "2024-12-10T09:32:18 +06:00",
+    "latitude": -18.247484,
+    "longitude": 160.540827,
+    "tags": [
+      "enim",
+      "quis",
+      "eiusmod",
+      "quis",
+      "tempor",
+      "deserunt",
+      "ut"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Johnnie Sanders"
+      },
+      {
+        "id": 1,
+        "name": "Sutton Reese"
+      },
+      {
+        "id": 2,
+        "name": "Contreras Carrillo"
+      }
+    ],
+    "greeting": "Hello, Savage Huber! You have 4 unread messages.",
+    "favoriteFruit": "apple"
+  },
+  {
+    "_id": "685f04bd6761eaa89446e72e",
+    "index": 4,
+    "guid": "60a0dde4-33b2-4b84-b26d-1dec8e95ffbb",
+    "isActive": false,
+    "balance": "$2,613.54",
+    "picture": "http://placehold.it/32x32",
+    "age": 27,
+    "eyeColor": "brown",
+    "name": "Claire Pittman",
+    "gender": "female",
+    "company": "VORATAK",
+    "email": "clairepittman@voratak.com",
+    "phone": "+1 (900) 461-2957",
+    "address": "831 Noll Street, Hailesboro, California, 2535",
+    "about": "Enim sit dolor officia nulla enim velit veniam pariatur ut ut tempor deserunt. Fugiat aute quis esse Lorem velit. Sit minim ad cupidatat nostrud magna excepteur occaecat laborum laboris nostrud elit. Qui fugiat ad qui cupidatat adipisicing nulla occaecat amet dolore sunt culpa enim Lorem. Ad ipsum dolor irure pariatur. Mollit voluptate exercitation reprehenderit irure aute officia magna. Amet nulla qui cupidatat tempor consequat duis est culpa eiusmod tempor.\r\n",
+    "registered": "2020-01-09T08:58:42 +06:00",
+    "latitude": -48.33782,
+    "longitude": 70.497425,
+    "tags": [
+      "excepteur",
+      "ut",
+      "elit",
+      "eu",
+      "irure",
+      "irure",
+      "ipsum"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Hutchinson Dudley"
+      },
+      {
+        "id": 1,
+        "name": "Gonzales Ward"
+      },
+      {
+        "id": 2,
+        "name": "Sheryl Alford"
+      }
+    ],
+    "greeting": "Hello, Claire Pittman! You have 9 unread messages.",
+    "favoriteFruit": "banana"
+  }
+]

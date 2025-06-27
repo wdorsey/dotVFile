@@ -1,0 +1,227 @@
+[
+  {
+    "_id": "685f04b7e93434f16907170a",
+    "index": 0,
+    "guid": "9bf817a7-7aa1-443f-ba7b-fa7050bb06d7",
+    "isActive": false,
+    "balance": "$2,561.57",
+    "picture": "http://placehold.it/32x32",
+    "age": 23,
+    "eyeColor": "blue",
+    "name": "Dotson Conley",
+    "gender": "male",
+    "company": "ZANYMAX",
+    "email": "dotsonconley@zanymax.com",
+    "phone": "+1 (888) 442-2913",
+    "address": "455 Butler Street, Eastmont, Idaho, 5772",
+    "about": "Dolor fugiat qui consectetur ut amet elit aliqua ipsum ad occaecat. Incididunt ex exercitation amet dolore minim cillum enim ipsum proident dolor ea. Nostrud fugiat adipisicing nisi veniam occaecat esse nostrud magna anim. Dolor anim aute do eiusmod magna esse ex reprehenderit.\r\n",
+    "registered": "2019-04-01T01:25:26 +05:00",
+    "latitude": -43.556138,
+    "longitude": 48.794599,
+    "tags": [
+      "incididunt",
+      "dolor",
+      "exercitation",
+      "voluptate",
+      "ex",
+      "veniam",
+      "ullamco"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Maude Merritt"
+      },
+      {
+        "id": 1,
+        "name": "Michael Norris"
+      },
+      {
+        "id": 2,
+        "name": "Atkinson Mann"
+      }
+    ],
+    "greeting": "Hello, Dotson Conley! You have 7 unread messages.",
+    "favoriteFruit": "strawberry"
+  },
+  {
+    "_id": "685f04b7f508c47a813347c4",
+    "index": 1,
+    "guid": "5efd1cce-faf7-4602-8a97-ac87a3d34053",
+    "isActive": true,
+    "balance": "$3,971.27",
+    "picture": "http://placehold.it/32x32",
+    "age": 23,
+    "eyeColor": "green",
+    "name": "Mona Albert",
+    "gender": "female",
+    "company": "DANCITY",
+    "email": "monaalbert@dancity.com",
+    "phone": "+1 (858) 575-2890",
+    "address": "353 Havemeyer Street, Marion, Maine, 8405",
+    "about": "Et nostrud qui do ullamco reprehenderit. Irure minim cupidatat qui ullamco incididunt excepteur tempor deserunt eiusmod aliquip officia commodo eiusmod nostrud. Ullamco dolor ex magna qui tempor do cillum consectetur. Esse consectetur adipisicing commodo est veniam labore in Lorem reprehenderit qui.\r\n",
+    "registered": "2023-08-06T01:32:31 +05:00",
+    "latitude": 32.048894,
+    "longitude": -93.578915,
+    "tags": [
+      "est",
+      "duis",
+      "anim",
+      "Lorem",
+      "est",
+      "quis",
+      "aliquip"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Olsen Spencer"
+      },
+      {
+        "id": 1,
+        "name": "Mayra Levine"
+      },
+      {
+        "id": 2,
+        "name": "Boyle Marks"
+      }
+    ],
+    "greeting": "Hello, Mona Albert! You have 2 unread messages.",
+    "favoriteFruit": "apple"
+  },
+  {
+    "_id": "685f04b78476d0ecbcb15742",
+    "index": 2,
+    "guid": "3135d844-708b-4d89-ad1c-b2630b82a930",
+    "isActive": true,
+    "balance": "$2,604.58",
+    "picture": "http://placehold.it/32x32",
+    "age": 23,
+    "eyeColor": "green",
+    "name": "Barlow Craft",
+    "gender": "male",
+    "company": "ARCTIQ",
+    "email": "barlowcraft@arctiq.com",
+    "phone": "+1 (939) 573-3113",
+    "address": "768 Cox Place, Hickory, Virginia, 3525",
+    "about": "Dolor aliquip qui tempor est excepteur cupidatat pariatur minim ad id non sit irure laboris. Pariatur aute irure sunt tempor nostrud aliquip aliqua deserunt magna tempor est aliqua. Sit ut velit culpa consectetur anim. Ad eiusmod tempor officia voluptate adipisicing sit ipsum commodo ea sit aute elit sit. Esse exercitation sunt sit ea ut elit id cillum consectetur quis. Occaecat do irure proident non ea dolor nisi adipisicing.\r\n",
+    "registered": "2019-03-02T06:30:01 +06:00",
+    "latitude": -1.334967,
+    "longitude": 133.498342,
+    "tags": [
+      "nulla",
+      "tempor",
+      "velit",
+      "consequat",
+      "do",
+      "eiusmod",
+      "voluptate"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Millicent Fernandez"
+      },
+      {
+        "id": 1,
+        "name": "Ruth Ball"
+      },
+      {
+        "id": 2,
+        "name": "Doyle Graves"
+      }
+    ],
+    "greeting": "Hello, Barlow Craft! You have 2 unread messages.",
+    "favoriteFruit": "banana"
+  },
+  {
+    "_id": "685f04b7846fa27c897f897a",
+    "index": 3,
+    "guid": "66cb617b-382e-4749-9de6-43e5f155272c",
+    "isActive": false,
+    "balance": "$3,549.14",
+    "picture": "http://placehold.it/32x32",
+    "age": 38,
+    "eyeColor": "blue",
+    "name": "Cobb Mullen",
+    "gender": "male",
+    "company": "AUSTEX",
+    "email": "cobbmullen@austex.com",
+    "phone": "+1 (856) 540-3111",
+    "address": "155 Whitwell Place, Oretta, Ohio, 2205",
+    "about": "Qui proident officia ullamco dolor ipsum sint nisi non ea minim minim elit est. Non aliqua officia exercitation esse culpa culpa qui mollit reprehenderit proident enim consectetur. Qui sit in quis sit ea cillum. Quis cillum ad esse sit veniam. Minim cupidatat minim do do consequat proident ex sit cupidatat ad qui commodo.\r\n",
+    "registered": "2019-02-16T02:51:42 +06:00",
+    "latitude": 64.313998,
+    "longitude": 23.903084,
+    "tags": [
+      "ad",
+      "amet",
+      "nulla",
+      "esse",
+      "laborum",
+      "adipisicing",
+      "aute"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Sandoval Key"
+      },
+      {
+        "id": 1,
+        "name": "Russo Sandoval"
+      },
+      {
+        "id": 2,
+        "name": "Alexandria Oconnor"
+      }
+    ],
+    "greeting": "Hello, Cobb Mullen! You have 6 unread messages.",
+    "favoriteFruit": "strawberry"
+  },
+  {
+    "_id": "685f04b79983ef0ac54aeadc",
+    "index": 4,
+    "guid": "86cbf462-88f0-4b70-8537-80b346292f0e",
+    "isActive": true,
+    "balance": "$3,822.59",
+    "picture": "http://placehold.it/32x32",
+    "age": 33,
+    "eyeColor": "green",
+    "name": "Gracie Gaines",
+    "gender": "female",
+    "company": "NETPLODE",
+    "email": "graciegaines@netplode.com",
+    "phone": "+1 (913) 578-3766",
+    "address": "411 Stillwell Avenue, Osage, Illinois, 6748",
+    "about": "Nostrud est excepteur aliqua aute ut non duis mollit mollit laboris irure. Laborum voluptate et dolor dolore. Cupidatat enim id consequat incididunt. Nisi elit irure veniam nulla qui occaecat esse ex mollit laborum eiusmod. Sit fugiat incididunt esse nisi ut irure amet minim.\r\n",
+    "registered": "2022-12-12T09:56:07 +06:00",
+    "latitude": 21.444002,
+    "longitude": -66.432995,
+    "tags": [
+      "non",
+      "sunt",
+      "sunt",
+      "proident",
+      "minim",
+      "id",
+      "ad"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Abbott Lowery"
+      },
+      {
+        "id": 1,
+        "name": "Lucile Buck"
+      },
+      {
+        "id": 2,
+        "name": "Mckee Chen"
+      }
+    ],
+    "greeting": "Hello, Gracie Gaines! You have 8 unread messages.",
+    "favoriteFruit": "apple"
+  }
+]

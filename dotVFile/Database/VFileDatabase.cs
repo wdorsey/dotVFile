@@ -14,9 +14,29 @@ internal class VFileDatabase
 	public IVFileHooks Hooks { get; }
 	public SqliteRepository Repository { get; }
 
+	public void DeleteDatabase()
+	{
+		Repository.DeleteDatabase();
+	}
+
 	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
 	{
-		return Repository.GetVFileInfoByFileId(fileId);
+		return Repository.GetVFileInfoByFileId(fileId, false).SingleOrDefault();
+	}
+
+	public List<Db.VFileInfo> GetVersionsByFileId(string fileId)
+	{
+		return Repository.GetVFileInfoByFileId(fileId, true);
+	}
+
+	public Db.VFileDataInfo? GetVFileDataInfoByFileId(string fileId)
+	{
+		return Repository.GetVFileDataInfoByFileId(fileId);
+	}
+
+	public Db.VFileDataInfo? GetVFileDataInfoByHash(string hash)
+	{
+		return Repository.GetVFileDataInfoByHash(hash);
 	}
 
 	public Db.VFileInfo SaveVFileInfo(VFileInfo info)

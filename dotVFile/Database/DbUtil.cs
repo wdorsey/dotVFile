@@ -1,4 +1,6 @@
-﻿namespace dotVFile;
+﻿using Microsoft.Data.Sqlite;
+
+namespace dotVFile;
 
 internal static class DbUtil
 {
@@ -22,5 +24,12 @@ internal static class DbUtil
 	{
 		string? str = value?.ToString();
 		return str.HasValue() ? ConvertDateTimeOffset(str) : null;
+	}
+
+	public static T ReadEntityValues<T>(this T entity, SqliteDataReader reader) where T : Db.Entity
+	{
+		entity.Id = Convert.ToInt64(reader["Id"]);
+		entity.CreateTimestamp = ConvertDateTimeOffset(reader["CreateTimestamp"].ToString()!);
+		return entity;
 	}
 }

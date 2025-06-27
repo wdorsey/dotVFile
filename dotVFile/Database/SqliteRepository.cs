@@ -4,6 +4,7 @@ namespace dotVFile;
 
 internal class SqliteRepository(string dbFilePath)
 {
+	public string DatabaseFilePath { get; } = dbFilePath;
 	public string ConnectionString { get; } = $"Data Source={dbFilePath};";
 
 	public void CreateDatabaseSchema()
@@ -28,6 +29,7 @@ CREATE INDEX IF NOT EXISTS VFileInfo_FileIdLatest ON VFileInfo(FileId, Version) 
 CREATE INDEX IF NOT EXISTS VFileInfo_Hash ON VFileInfo(Hash);
 CREATE INDEX IF NOT EXISTS VFileInfo_Version ON VFileInfo(Version) WHERE Version IS NOT NULL;
 CREATE INDEX IF NOT EXISTS VFileInfo_DeleteAt ON VFileInfo(DeleteAt) WHERE DeleteAt IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_FileIdVersion ON VFileInfo(FileId, Version);
 
 CREATE TABLE IF NOT EXISTS VFileDataInfo (
 	Id				INTEGER NOT NULL UNIQUE,
@@ -63,9 +65,15 @@ CREATE INDEX IF NOT EXISTS VFileMap_VFileDataInfoId ON VFileMap(VFileDataInfoId)
 		cmd.ExecuteNonQuery();
 	}
 
-	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
+	public void DeleteDatabase()
 	{
-		const string sql = @"
+		SqliteConnection.ClearAllPools();
+		Util.DeleteFile(DatabaseFilePath);
+	}
+
+	public List<Db.VFileInfo> GetVFileInfoByFileId(string fileId, bool versions)
+	{
+		string sql = $@"
 SELECT 
 	Id,
 	FileId,
@@ -82,16 +90,22 @@ FROM
 	VFileInfo 
 WHERE 
 	FileId = @FileId 
-	AND Version IS NULL
+	AND Version IS {(versions ? "NOT NULL" : "NULL")}
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddWithValue("@FileId", fileId);
 		connection.Open();
+		return ExecuteVFileInfo(cmd);
+	}
+
+	private static List<Db.VFileInfo> ExecuteVFileInfo(SqliteCommand cmd)
+	{
+		var infos = new List<Db.VFileInfo>();
 		var reader = cmd.ExecuteReader();
-		if (reader.Read())
+		while (reader.Read())
 		{
-			var info = new Db.VFileInfo(
+			infos.Add(new Db.VFileInfo(
 				reader["FileId"].ToString()!,
 				reader["Hash"].ToString()!,
 				reader["RelativePath"].ToString()!,
@@ -101,15 +115,84 @@ WHERE
 				reader["Version"]?.ToString(),
 				DbUtil.ConvertDateTimeOffsetNullable(reader["DeleteAt"]),
 				DbUtil.ConvertDateTimeOffset(reader["CreationTime"].ToString()!))
-			{
-				Id = Convert.ToInt64(reader["Id"]),
-				CreateTimestamp = DbUtil.ConvertDateTimeOffset(reader["CreateTimestamp"].ToString()!)
-			};
-
-			return info;
+				.ReadEntityValues(reader));
 		}
 
-		return null;
+		return infos;
+	}
+
+	public Db.VFileDataInfo? GetVFileDataInfoByFileId(string fileId)
+	{
+		const string sql = @"
+SELECT
+	di.Id,
+	di.Hash,
+	di.Directory,
+	di.FileName,
+	di.Size,
+	di.SizeOnDisk,
+	di.Compression,
+	di.CreationTime,
+	di.CreateTimestamp
+FROM 
+	VFileInfo i
+	INNER JOIN VFileMap m ON m.VFileInfoId = i.Id
+	INNER JOIN VFileDataInfo di ON di.Id = m.VFileDataInfoId
+WHERE 
+	i.FileId = @FileId
+	AND i.Version IS NULL
+LIMIT 1
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@FileId", fileId);
+		connection.Open();
+		return ExecuteVFileDataInfo(cmd).SingleOrDefault();
+	}
+
+	public Db.VFileDataInfo? GetVFileDataInfoByHash(string hash)
+	{
+		const string sql = @"
+SELECT 
+	Id,
+	Hash,
+	Directory,
+	FileName,
+	Size,
+	SizeOnDisk,
+	Compression,
+	CreationTime,
+	CreateTimestamp
+FROM 
+	VFileDataInfo 
+WHERE 
+	Hash = @Hash
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@Hash", hash);
+		connection.Open();
+		return ExecuteVFileDataInfo(cmd).SingleOrDefault();
+	}
+
+	private static List<Db.VFileDataInfo> ExecuteVFileDataInfo(SqliteCommand cmd)
+	{
+		var infos = new List<Db.VFileDataInfo>();
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			infos.Add(new Db.VFileDataInfo(
+				reader["Hash"].ToString()!,
+				reader["Directory"].ToString()!,
+				reader["FileName"].ToString()!,
+				Convert.ToInt64(reader["Size"]),
+				Convert.ToInt64(reader["SizeOnDisk"]),
+				Convert.ToByte(reader["Compression"]),
+				DbUtil.ConvertDateTimeOffset(reader["CreationTime"].ToString()!))
+				.ReadEntityValues(reader));
+		}
+
+		return infos;
 	}
 
 	public void InsertVFileInfo(Db.VFileInfo info)
