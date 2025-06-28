@@ -45,13 +45,10 @@ public record VFileError(
 }
 
 public record VFSOptions(
-	string RootPath,
+	string? Name,
+	string VFileDirectory,
 	IVFileHooks? Hooks,
 	VFileStorageOptions? DefaultStorageOptions);
-
-public record VFSPaths(
-	string Root,
-	string Store);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -72,7 +69,10 @@ public record VFileId(
 	}
 }
 
-public record VFile(VFileInfo FileInfo, byte[] Contents);
+public record VFile(
+	VFileInfo FileInfo,
+	VFileDataInfo DataInfo,
+	byte[] Content);
 
 public record VFileInfo(
 	VFileId VFileId,
@@ -81,33 +81,30 @@ public record VFileInfo(
 	DateTimeOffset CreationTime,
 	DateTimeOffset? DeleteAt)
 {
-	public VFileId VFileId = VFileId;
-	public string FullPath => VFileId.Id;
-	public string RelativePath => VFileId.RelativePath;
-	public string Name => VFileId.FileName;
-	public string? Version => VFileId.Version;
-	public string Extension => Util.FileExtension(Name);
-	public string Hash = Hash;
-	public DateTimeOffset CreationTime = CreationTime;
+	public VFileId VFileId { get; } = VFileId;
+	public string FullPath { get; } = VFileId.Id;
+	public string RelativePath { get; } = VFileId.RelativePath;
+	public string Name { get; } = VFileId.FileName;
+	public string? Version { get; } = VFileId.Version;
+	public bool IsVersion { get; } = VFileId.Version.HasValue();
+	public string Extension { get; } = Util.FileExtension(VFileId.FileName);
+	public string Hash { get; } = Hash;
 	/// <summary>
 	/// Size in bytes.
 	/// </summary>
-	public int Size = Size;
-	/// <summary>
-	/// Versioned file.
-	/// </summary>
-	public bool IsVersion => Version.HasValue();
-	public DateTimeOffset? DeleteAt = DeleteAt;
+	public int Size { get; } = Size;
+	public DateTimeOffset? DeleteAt { get; } = DeleteAt;
+	public DateTimeOffset CreationTime { get; } = CreationTime;
 }
 
 public record VFileDataInfo(
 	string Hash,
-	string Directory,
-	string FileName,
 	int Size,
 	int SizeOnDisk,
 	DateTimeOffset CreationTime,
 	VFileCompression Compression);
+
+public record VFileData(VFileDataInfo DataInfo, byte[] Content);
 
 public record VFilePath(string? Path, string FileName);
 
@@ -162,7 +159,6 @@ internal record StoreVFilesState
 	public List<VFileInfo> NewVFileInfos = [];
 	public List<VFileInfo> UpdateVFileInfos = [];
 	public List<VFileInfo> DeleteVFileInfos = [];
-	public List<VFileDataInfo> NewVFileDataInfo = [];
-	public List<VFileDataInfo> DeleteVFileDataInfo = [];
-	public List<(string Path, byte[] Bytes)> WriteFiles = [];
+	public List<VFileData> NewVFileData = [];
+	public List<VFileDataInfo> DeleteVFileData = [];
 }

@@ -2,12 +2,14 @@
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using Newtonsoft.Json;
 
 namespace dotVFile;
 
 internal static class Util
 {
+	private static Encoding Encoding => Encoding.UTF8;
 	public static byte[] EmptyBytes() => [];
 
 	public static List<T> AsList<T>(this T obj)
@@ -64,6 +66,44 @@ internal static class Util
 	public static string GetString(this IEnumerable<string> values)
 	{
 		return values.SelectMany(x => x).GetString();
+	}
+
+	public static byte[] GetBytes(
+		object? obj,
+		bool format = false,
+		bool ignoreNullValues = true)
+	{
+		if (obj == null) throw new NoNullAllowedException(nameof(obj));
+
+		var settings = new JsonSerializerSettings
+		{
+			ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+			NullValueHandling = ignoreNullValues
+				? NullValueHandling.Ignore
+				: NullValueHandling.Include
+		};
+
+		return GetBytes(obj.ToJson(format, settings));
+	}
+
+	public static byte[] GetBytes(string? text)
+	{
+		return Encode(text);
+	}
+
+	public static byte[] Encode(string? text)
+	{
+		return text.HasValue()
+			? Encoding.GetBytes(text)
+			: EmptyBytes();
+	}
+
+	public static string? Decode(byte[]? bytes)
+	{
+		if (bytes.IsEmpty())
+			return null;
+
+		return Encoding.GetString(bytes);
 	}
 
 	public static string HashSHA256(byte[] bytes)

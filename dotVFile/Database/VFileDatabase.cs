@@ -4,15 +4,25 @@ internal class VFileDatabase
 {
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
-		RootPath = opts.RootPath;
+		VFileDirectory = opts.VFileDirectory;
 		Hooks = opts.Hooks;
-		Repository = new(Path.Combine(RootPath, "vfile.db"));
+		Repository = new(Path.Combine(VFileDirectory, $"{opts.Name}.vfile.db"));
+		CreateDatabase();
+	}
+
+	public string VFileDirectory { get; }
+	public IVFileHooks Hooks { get; }
+	public SqliteRepository Repository { get; }
+
+	public void CreateDatabase()
+	{
 		Repository.CreateDatabase();
 	}
 
-	public string RootPath { get; }
-	public IVFileHooks Hooks { get; }
-	public SqliteRepository Repository { get; }
+	public void DropDatabase()
+	{
+		Repository.DropDatabase();
+	}
 
 	public void DeleteDatabase()
 	{
@@ -39,26 +49,60 @@ internal class VFileDatabase
 		return Repository.GetVFileDataInfoByHash(hash);
 	}
 
-	public Db.VFileInfo SaveVFileInfo(VFileInfo info)
+	public Db.VFile? GetVFileByFileId(string fileId)
 	{
-		var dbInfo = VFileInfoToDbVFileInfo(info).Stamp();
-
-		Repository.InsertVFileInfo(dbInfo);
-
-		Hooks.Log($"Saved Db.VFileInfo, Id: {dbInfo.Id}");
-
-		return dbInfo;
+		return Repository.GetVFileByFileId(fileId);
 	}
 
-	public Db.VFileDataInfo SaveVFileDataInfo(VFileDataInfo info)
+	public Db.VFileInfo SaveVFileInfo(VFileInfo info)
 	{
-		var dbInfo = VFileDataInfoToDbVFileDataInfo(info).Stamp();
+		return SaveVFileInfo(info.AsList()).Single();
+	}
 
-		Repository.InsertVFileDataInfo(dbInfo);
+	public List<Db.VFileInfo> SaveVFileInfo(List<VFileInfo> infos)
+	{
+		var dbInfos = infos.Select(x => VFileInfoToDbVFileInfo(x).Stamp()).ToList();
 
-		Hooks.Log($"Saved Db.VFileDataInfo, Id: {dbInfo.Id}");
+		Repository.InsertVFileInfo(dbInfos);
 
-		return dbInfo;
+		foreach (var info in dbInfos)
+		{
+			Hooks.Log($"Saved Db.VFileInfo, Id: {info.Id}");
+		}
+
+		return dbInfos;
+	}
+
+	public Db.VFileData SaveVFileData(VFileData data)
+	{
+		return SaveVFileData(data.AsList()).Single();
+	}
+
+	public List<Db.VFileData> SaveVFileData(List<VFileData> data)
+	{
+		var infos = new List<Db.VFileDataInfo>();
+		var files = new List<Db.VFile>();
+		var result = new List<Db.VFileData>();
+		foreach (var d in data)
+		{
+			infos.Add(VFileDataInfoToDbVFileDataInfo(d.DataInfo));
+			files.Add(BytesToDbVFile(d.Content));
+		}
+
+		Repository.InsertVFileData(infos, files);
+
+		for (var i = 0; i < infos.Count; i++)
+		{
+			var info = infos[i];
+			var file = files[i];
+
+			Hooks.Log($"Saved Db.VFileDataInfo, Id: {info.Id}");
+			Hooks.Log($"Saved Db.VFile, Id: {file.Id}");
+
+			result.Add(new(info, file));
+		}
+
+		return result;
 	}
 
 	private static Db.VFileInfo VFileInfoToDbVFileInfo(VFileInfo info)
@@ -79,11 +123,14 @@ internal class VFileDatabase
 	{
 		return new Db.VFileDataInfo(
 			info.Hash,
-			info.Directory,
-			info.FileName,
 			info.Size,
 			info.SizeOnDisk,
 			(byte)info.Compression,
 			info.CreationTime);
+	}
+
+	private static Db.VFile BytesToDbVFile(byte[] bytes)
+	{
+		return new Db.VFile(bytes);
 	}
 }

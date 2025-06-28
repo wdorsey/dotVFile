@@ -8,43 +8,51 @@ public class VFS
 
 	public VFS(VFSOptions opts)
 	{
-		if (opts.RootPath.IsEmpty() || !Path.IsPathFullyQualified(opts.RootPath))
-			throw new Exception($"Invalid RootPath: \"{opts.RootPath}\". RootPath must be a valid directory where this VFS instance will operate, such as: \"C:\\vfs\".");
+		if (opts.VFileDirectory.IsEmpty() || !Path.IsPathFullyQualified(opts.VFileDirectory))
+			throw new Exception($"Invalid VFileDirectory: \"{opts.VFileDirectory}\". VFileDirectory must be a valid directory where this VFS instance will store its file, such as: \"C:\\dotVFile\".");
 
-		Name = new DirectoryInfo(opts.RootPath).Name;
-		Util.CreateDir(opts.RootPath);
-		Paths = new(
-			opts.RootPath,
-			Path.Combine(opts.RootPath, "store"));
+		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
+		VFileDirectory = Util.CreateDir(opts.VFileDirectory);
 		Hooks = opts.Hooks ?? new NotImplementedHooks();
-		Database = new VFileDatabase(new(opts.RootPath, Hooks));
+		Database = new VFileDatabase(new(Name, VFileDirectory, Hooks));
 		DefaultStorageOptions = opts.DefaultStorageOptions ?? GetDefaultStorageOptions();
 	}
 
 	private VFileDatabase Database { get; }
 	public string Name { get; }
-	public VFSPaths Paths { get; }
+	public string VFileDirectory { get; }
 	public IVFileHooks Hooks { get; }
 	public VFileStorageOptions DefaultStorageOptions { get; }
 
 	/// <summary>
 	/// !!! DANGER !!!
-	/// This will delete EVERYTHING in RootPath.
-	/// This VFS instance will no longer work.
+	/// This will delete EVERYTHING.
+	/// It will then recreate the Database.
+	/// This VFS instance will still work, but have no data.
 	/// </summary>
-	public void Destroy()
+	public void DANGER_WipeData()
 	{
-		Database.DeleteDatabase();
-		Util.DeleteDir(Paths.Root, true);
+		Database.DropDatabase();
+		Database.CreateDatabase();
 	}
 
-	public VFileInfo? GetFileInfo(VFileId id)
+	/// <summary>
+	/// !!! DANGER !!!
+	/// This will delete EVERYTHING.
+	/// This VFS instance will no longer work.
+	/// </summary>
+	public void DANGER_Destroy()
+	{
+		Database.DeleteDatabase();
+	}
+
+	public VFileInfo? GetVFileInfo(VFileId id)
 	{
 		var db = Database.GetVFileInfoByFileId(id.Id);
 		return db != null ? DbVFileInfoToVFileInfo(db) : null;
 	}
 
-	public List<VFileInfo> GetVersions(VFileId id)
+	public List<VFileInfo> GetVFileVersions(VFileId id)
 	{
 		var infos = Database.GetVFileInfosByFileId(id.Id, Db.VFileInfoVersionQuery.Versions)
 			.Select(DbVFileInfoToVFileInfo);
@@ -52,10 +60,28 @@ public class VFS
 		return [.. infos];
 	}
 
-	public VFileDataInfo? GetDataInfo(VFileId id)
+	public VFileDataInfo? GetVFileDataInfo(VFileId id)
 	{
 		var data = Database.GetVFileDataInfoByFileId(id.Id);
 		return data != null ? DbVFileDataInfoToVFileDataInfo(data) : null;
+	}
+
+	public byte[]? GetVFileContent(VFileId id)
+	{
+		var vfile = Database.GetVFileByFileId(id.Id);
+		return vfile?.File;
+	}
+
+	public VFile? GetVFile(VFileId id)
+	{
+		var info = GetVFileInfo(id);
+		var dataInfo = GetVFileDataInfo(id);
+		var content = GetVFileContent(id);
+
+		if (info == null || dataInfo == null || content == null)
+			return null;
+
+		return new(info, dataInfo, content);
 	}
 
 	public VFileInfo? StoreVFile(
@@ -113,35 +139,22 @@ public class VFS
 
 			if (dbData == null)
 			{
-				var data = new VFileDataInfo(
-					hash,
-					hash.Take(2).GetString(),
+				var dataInfo = new VFileDataInfo(
 					hash,
 					request.Content.Length,
 					bytes.Length,
 					now,
 					opts.Compression);
 
-				state.NewVFileDataInfo.Add(data);
-				state.WriteFiles.Add((DataFilePath(data), bytes));
+				var data = new VFileData(dataInfo, bytes);
+
+				state.NewVFileData.Add(data);
 			}
 		}
 
 		// @TODO: transaction?
-		foreach (var vfile in state.NewVFileInfos)
-		{
-			Database.SaveVFileInfo(vfile);
-		}
-
-		foreach (var data in state.NewVFileDataInfo)
-		{
-			Database.SaveVFileDataInfo(data);
-		}
-
-		foreach (var (path, bytes) in state.WriteFiles)
-		{
-			Util.WriteFile(path, bytes);
-		}
+		Database.SaveVFileData(state.NewVFileData);
+		Database.SaveVFileInfo(state.NewVFileInfos);
 
 		return state.NewVFileInfos;
 	}
@@ -157,11 +170,6 @@ public class VFS
 			relativePath += PathDirectorySeparator;
 		}
 		return relativePath;
-	}
-
-	private string DataFilePath(VFileDataInfo info)
-	{
-		return Path.Combine(Paths.Store, info.Directory, info.FileName);
 	}
 
 	private static VFileId NewVFileId(string relativePath, string fileName, string? version)
@@ -206,8 +214,6 @@ public class VFS
 	{
 		return new VFileDataInfo(
 			db.Hash,
-			db.Directory,
-			db.FileName,
 			db.Size,
 			db.SizeOnDisk,
 			db.CreationTime,

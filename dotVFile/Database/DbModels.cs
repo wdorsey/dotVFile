@@ -4,7 +4,8 @@ using Newtonsoft.Json.Converters;
 namespace dotVFile;
 
 public record VFileDatabaseOptions(
-	string RootPath,
+	string Name,
+	string VFileDirectory,
 	IVFileHooks Hooks);
 
 public static class Db
@@ -29,13 +30,20 @@ public static class Db
 
 	public record VFileDataInfo(
 		string Hash,
-		string Directory,
-		string FileName,
 		int Size,
 		int SizeOnDisk,
 		byte Compression,
 		DateTimeOffset CreationTime)
 		: Entity;
+
+	public record VFile(
+		byte[] File)
+		: Entity
+	{
+		public long VFileDataInfoId { get; set; }
+	}
+
+	public record VFileData(VFileDataInfo DataInfo, VFile File);
 
 	[JsonConverter(typeof(StringEnumConverter))]
 	public enum VFileInfoVersionQuery
