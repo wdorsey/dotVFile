@@ -24,6 +24,7 @@ public class NotImplementedHooks : IVFileHooks
 
 public static class VFileErrorCodes
 {
+	public const string Duplicate = "DUPLICATE";
 	public const string InvalidParameter = "INVALID_PARAMETER";
 }
 
@@ -47,6 +48,10 @@ public record VFSOptions(
 	string RootPath,
 	IVFileHooks? Hooks,
 	VFileStorageOptions? DefaultStorageOptions);
+
+public record VFSPaths(
+	string Root,
+	string Store);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -72,7 +77,7 @@ public record VFile(VFileInfo FileInfo, byte[] Contents);
 public record VFileInfo(
 	VFileId VFileId,
 	string Hash,
-	long Size,
+	int Size,
 	DateTimeOffset CreationTime,
 	DateTimeOffset? DeleteAt)
 {
@@ -82,15 +87,12 @@ public record VFileInfo(
 	public string Name => VFileId.FileName;
 	public string? Version => VFileId.Version;
 	public string Extension => Util.FileExtension(Name);
-	/// <summary>
-	/// Effective Id of the data contained in the file.
-	/// </summary>
 	public string Hash = Hash;
 	public DateTimeOffset CreationTime = CreationTime;
 	/// <summary>
 	/// Size in bytes.
 	/// </summary>
-	public long Size = Size;
+	public int Size = Size;
 	/// <summary>
 	/// Versioned file.
 	/// </summary>
@@ -102,19 +104,17 @@ public record VFileDataInfo(
 	string Hash,
 	string Directory,
 	string FileName,
-	long Size,
-	long SizeOnDisk,
+	int Size,
+	int SizeOnDisk,
 	DateTimeOffset CreationTime,
-	VFileCompression Compression)
-{
-	public string Hash = Hash;
-	public string Directory = Directory;
-	public string FileName = FileName;
-	public long Size = Size;
-	public long SizeOnDisk = SizeOnDisk;
-	public DateTimeOffset CreationTime = CreationTime;
-	public VFileCompression Compression = Compression;
-}
+	VFileCompression Compression);
+
+public record VFilePath(string? Path, string FileName);
+
+public record StoreVFileRequest(
+	VFilePath Path,
+	byte[] Content,
+	VFileStorageOptions? Opts = null);
 
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileExistsBehavior
@@ -143,14 +143,26 @@ public enum VFileCompression
 	Compress = 1
 }
 
-public record VFileRelativePath(params string[] Path)
-{
-	public List<string> Paths = [.. Path];
-}
-
 public record VFileStorageOptions(
 	VFileExistsBehavior ExistsBehavior,
 	VFileCompression Compression,
 	TimeSpan? TTL,
 	int? MaxVersions,
-	TimeSpan? VersionTTL);
+	TimeSpan? VersionTTL)
+{
+	public VFileExistsBehavior ExistsBehavior { get; set; } = ExistsBehavior;
+	public VFileCompression Compression { get; set; } = Compression;
+	public TimeSpan? TTL { get; set; } = TTL;
+	public int? MaxVersions { get; set; } = MaxVersions;
+	public TimeSpan? VersionTTL { get; set; } = VersionTTL;
+}
+
+internal record StoreVFilesState
+{
+	public List<VFileInfo> NewVFileInfos = [];
+	public List<VFileInfo> UpdateVFileInfos = [];
+	public List<VFileInfo> DeleteVFileInfos = [];
+	public List<VFileDataInfo> NewVFileDataInfo = [];
+	public List<VFileDataInfo> DeleteVFileDataInfo = [];
+	public List<(string Path, byte[] Bytes)> WriteFiles = [];
+}

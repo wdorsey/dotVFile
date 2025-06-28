@@ -7,13 +7,13 @@ internal class SqliteRepository(string dbFilePath)
 	public string DatabaseFilePath { get; } = dbFilePath;
 	public string ConnectionString { get; } = $"Data Source={dbFilePath};";
 
-	public void CreateDatabaseSchema()
+	public void CreateDatabase()
 	{
 		const string sql = @"
 CREATE TABLE IF NOT EXISTS VFileInfo (
 	Id				INTEGER NOT NULL UNIQUE,
 	FileId			TEXT NOT NULL,
-	Hash			TEXT NOT NULL UNIQUE,
+	Hash			TEXT NOT NULL,
 	RelativePath	TEXT NOT NULL,
 	FileName		TEXT NOT NULL,
 	Extension		TEXT,
@@ -26,10 +26,10 @@ CREATE TABLE IF NOT EXISTS VFileInfo (
 );
 CREATE INDEX IF NOT EXISTS VFileInfo_FileId ON VFileInfo(FileId);
 CREATE INDEX IF NOT EXISTS VFileInfo_FileIdLatest ON VFileInfo(FileId, Version) WHERE VERSION IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_FileIdVersion ON VFileInfo(FileId, Version);
 CREATE INDEX IF NOT EXISTS VFileInfo_Hash ON VFileInfo(Hash);
 CREATE INDEX IF NOT EXISTS VFileInfo_Version ON VFileInfo(Version) WHERE Version IS NOT NULL;
 CREATE INDEX IF NOT EXISTS VFileInfo_DeleteAt ON VFileInfo(DeleteAt) WHERE DeleteAt IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_FileIdVersion ON VFileInfo(FileId, Version);
 
 CREATE TABLE IF NOT EXISTS VFileDataInfo (
 	Id				INTEGER NOT NULL UNIQUE,
@@ -44,20 +44,6 @@ CREATE TABLE IF NOT EXISTS VFileDataInfo (
 	PRIMARY KEY(Id AUTOINCREMENT)
 );
 CREATE INDEX IF NOT EXISTS VFileDataInfo_Hash ON VFileDataInfo(Hash);
-
-CREATE TABLE IF NOT EXISTS VFileMap (
-	Id				INTEGER NOT NULL UNIQUE,
-	Hash			TEXT NOT NULL,
-	VFileInfoId		INTEGER NOT NULL,
-	VFileDataInfoId	INTEGER NOT NULL,
-	CreateTimestamp	TEXT NOT NULL,
-	PRIMARY KEY(Id AUTOINCREMENT),
-	FOREIGN KEY(VFileInfoId) REFERENCES VFileInfo(Id),
-	FOREIGN KEY(VFileDataInfoId) REFERENCES VFileDataInfo(Id)
-);
-CREATE INDEX IF NOT EXISTS VFileMap_Hash ON VFileMap(Hash);
-CREATE INDEX IF NOT EXISTS VFileMap_VFileInfoId ON VFileMap(VFileInfoId);
-CREATE INDEX IF NOT EXISTS VFileMap_VFileDataInfoId ON VFileMap(VFileDataInfoId);
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
@@ -71,7 +57,7 @@ CREATE INDEX IF NOT EXISTS VFileMap_VFileDataInfoId ON VFileMap(VFileDataInfoId)
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
-	public List<Db.VFileInfo> GetVFileInfoByFileId(string fileId, bool versions)
+	public List<Db.VFileInfo> GetVFileInfoByFileId(string fileId, Db.VFileInfoVersionQuery versionQuery)
 	{
 		string sql = $@"
 SELECT 
@@ -89,9 +75,19 @@ SELECT
 FROM 
 	VFileInfo 
 WHERE 
-	FileId = @FileId 
-	AND Version IS {(versions ? "NOT NULL" : "NULL")}
+	FileId = @FileId
 ";
+		switch (versionQuery)
+		{
+			case Db.VFileInfoVersionQuery.Latest:
+				sql += " AND Version IS NULL";
+				break;
+			case Db.VFileInfoVersionQuery.Versions:
+				sql += " AND Version IS NOT NULL";
+				break;
+				// VFileInfoVersionQuery.Both does nothing
+		}
+
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddWithValue("@FileId", fileId);
@@ -111,7 +107,7 @@ WHERE
 				reader["RelativePath"].ToString()!,
 				reader["FileName"].ToString()!,
 				reader["Extension"].ToString()!,
-				Convert.ToInt64(reader["Size"]),
+				Convert.ToInt32(reader["Size"]),
 				reader["Version"]?.ToString(),
 				DbUtil.ConvertDateTimeOffsetNullable(reader["DeleteAt"]),
 				DbUtil.ConvertDateTimeOffset(reader["CreationTime"].ToString()!))
@@ -136,8 +132,7 @@ SELECT
 	di.CreateTimestamp
 FROM 
 	VFileInfo i
-	INNER JOIN VFileMap m ON m.VFileInfoId = i.Id
-	INNER JOIN VFileDataInfo di ON di.Id = m.VFileDataInfoId
+	INNER JOIN VFileDataInfo di ON di.Hash = i.Hash
 WHERE 
 	i.FileId = @FileId
 	AND i.Version IS NULL
@@ -185,8 +180,8 @@ WHERE
 				reader["Hash"].ToString()!,
 				reader["Directory"].ToString()!,
 				reader["FileName"].ToString()!,
-				Convert.ToInt64(reader["Size"]),
-				Convert.ToInt64(reader["SizeOnDisk"]),
+				Convert.ToInt32(reader["Size"]),
+				Convert.ToInt32(reader["SizeOnDisk"]),
 				Convert.ToByte(reader["Compression"]),
 				DbUtil.ConvertDateTimeOffset(reader["CreationTime"].ToString()!))
 				.ReadEntityValues(reader));
@@ -273,30 +268,5 @@ SELECT last_insert_rowid();
 		cmd.Parameters.AddWithValue("@CreateTimestamp", info.CreateTimestamp);
 		connection.Open();
 		info.Id = (long)(cmd.ExecuteScalar() ?? 0);
-	}
-
-	public void InsertVFileMap(Db.VFileMap map)
-	{
-		const string sql = @"
-INSERT INTO VFileMap(
-	Hash,
-	VFileInfoId,
-	VFileDataInfoId,
-	CreateTimestamp)
-VALUES (
-	@Hash,
-	@VFileInfoId,
-	@VFileDataInfoId,
-	@CreateTimestamp);
-SELECT last_insert_rowid();
-";
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddWithValue("@Hash", map.Hash);
-		cmd.Parameters.AddWithValue("@VFileInfoId", map.VFileInfoId);
-		cmd.Parameters.AddWithValue("@VFileDataInfoId", map.VFileDataInfoId);
-		cmd.Parameters.AddWithValue("@CreateTimestamp", map.CreateTimestamp);
-		connection.Open();
-		map.Id = (long)(cmd.ExecuteScalar() ?? 0);
 	}
 }

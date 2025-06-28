@@ -167,6 +167,13 @@ internal static class Util
 		return File.ReadAllBytes(path);
 	}
 
+	public static void WriteFile(string path, byte[] bytes)
+	{
+		CreateDir(new FileInfo(path).Directory!.FullName);
+
+		File.WriteAllBytes(path, bytes);
+	}
+
 	public static byte[] Compress(byte[] bytes)
 	{
 		if (bytes == null) throw new NoNullAllowedException(nameof(bytes));

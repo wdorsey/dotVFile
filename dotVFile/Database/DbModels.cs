@@ -1,4 +1,7 @@
-﻿namespace dotVFile;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+
+namespace dotVFile;
 
 public record VFileDatabaseOptions(
 	string RootPath,
@@ -18,7 +21,7 @@ public static class Db
 		string RelativePath,
 		string FileName,
 		string Extension,
-		long Size,
+		int Size,
 		string? Version,
 		DateTimeOffset? DeleteAt,
 		DateTimeOffset CreationTime)
@@ -28,15 +31,17 @@ public static class Db
 		string Hash,
 		string Directory,
 		string FileName,
-		long Size,
-		long SizeOnDisk,
+		int Size,
+		int SizeOnDisk,
 		byte Compression,
 		DateTimeOffset CreationTime)
 		: Entity;
 
-	public record VFileMap(
-		string Hash,
-		long VFileInfoId,
-		long VFileDataInfoId)
-		: Entity;
+	[JsonConverter(typeof(StringEnumConverter))]
+	public enum VFileInfoVersionQuery
+	{
+		Latest,
+		Versions,
+		Both
+	}
 }

@@ -7,7 +7,7 @@ internal class VFileDatabase
 		RootPath = opts.RootPath;
 		Hooks = opts.Hooks;
 		Repository = new(Path.Combine(RootPath, "vfile.db"));
-		Repository.CreateDatabaseSchema();
+		Repository.CreateDatabase();
 	}
 
 	public string RootPath { get; }
@@ -21,12 +21,12 @@ internal class VFileDatabase
 
 	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
 	{
-		return Repository.GetVFileInfoByFileId(fileId, false).SingleOrDefault();
+		return Repository.GetVFileInfoByFileId(fileId, Db.VFileInfoVersionQuery.Latest).SingleOrDefault();
 	}
 
-	public List<Db.VFileInfo> GetVersionsByFileId(string fileId)
+	public List<Db.VFileInfo> GetVFileInfosByFileId(string fileId, Db.VFileInfoVersionQuery versionQuery)
 	{
-		return Repository.GetVFileInfoByFileId(fileId, true);
+		return Repository.GetVFileInfoByFileId(fileId, versionQuery);
 	}
 
 	public Db.VFileDataInfo? GetVFileDataInfoByFileId(string fileId)
@@ -59,21 +59,6 @@ internal class VFileDatabase
 		Hooks.Log($"Saved Db.VFileDataInfo, Id: {dbInfo.Id}");
 
 		return dbInfo;
-	}
-
-	public Db.VFileMap SaveVFileMap(string hash, long vfileInfoId, long vfileDataInfoId)
-	{
-		var map = new Db.VFileMap(
-			hash,
-			vfileInfoId,
-			vfileDataInfoId)
-			.Stamp();
-
-		Repository.InsertVFileMap(map);
-
-		Hooks.Log($"Saved Db.VFileMap, Id: {map.Id}");
-
-		return map;
 	}
 
 	private static Db.VFileInfo VFileInfoToDbVFileInfo(VFileInfo info)

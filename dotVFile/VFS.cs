@@ -2,7 +2,9 @@
 
 public class VFS
 {
-	private const char RelativePathDirectorySeparator = '/';
+	public const char PathDirectorySeparator = '/';
+	public static VFileStorageOptions GetDefaultStorageOptions() =>
+		new(VFileExistsBehavior.Overwrite, VFileCompression.None, null, null, null);
 
 	public VFS(VFSOptions opts)
 	{
@@ -10,16 +12,18 @@ public class VFS
 			throw new Exception($"Invalid RootPath: \"{opts.RootPath}\". RootPath must be a valid directory where this VFS instance will operate, such as: \"C:\\vfs\".");
 
 		Name = new DirectoryInfo(opts.RootPath).Name;
-		RootPath = Util.CreateDir(opts.RootPath);
+		Util.CreateDir(opts.RootPath);
+		Paths = new(
+			opts.RootPath,
+			Path.Combine(opts.RootPath, "store"));
 		Hooks = opts.Hooks ?? new NotImplementedHooks();
 		Database = new VFileDatabase(new(opts.RootPath, Hooks));
-		DefaultStorageOptions = opts.DefaultStorageOptions ??
-			new(VFileExistsBehavior.Overwrite, VFileCompression.None, null, null, null);
+		DefaultStorageOptions = opts.DefaultStorageOptions ?? GetDefaultStorageOptions();
 	}
 
 	private VFileDatabase Database { get; }
 	public string Name { get; }
-	public string RootPath { get; }
+	public VFSPaths Paths { get; }
 	public IVFileHooks Hooks { get; }
 	public VFileStorageOptions DefaultStorageOptions { get; }
 
@@ -31,8 +35,7 @@ public class VFS
 	public void Destroy()
 	{
 		Database.DeleteDatabase();
-		Util.DeleteDir(RootPath, true);
-		Util.CreateDir(RootPath);
+		Util.DeleteDir(Paths.Root, true);
 	}
 
 	public VFileInfo? GetFileInfo(VFileId id)
@@ -43,7 +46,10 @@ public class VFS
 
 	public List<VFileInfo> GetVersions(VFileId id)
 	{
-		return [.. Database.GetVersionsByFileId(id.Id).Select(DbVFileInfoToVFileInfo)];
+		var infos = Database.GetVFileInfosByFileId(id.Id, Db.VFileInfoVersionQuery.Versions)
+			.Select(DbVFileInfoToVFileInfo);
+
+		return [.. infos];
 	}
 
 	public VFileDataInfo? GetDataInfo(VFileId id)
@@ -52,65 +58,114 @@ public class VFS
 		return data != null ? DbVFileDataInfoToVFileDataInfo(data) : null;
 	}
 
-	public VFileInfo? StoreFile(
-		VFileRelativePath? path,
-		string fileName,
-		string pathToFile,
+	public VFileInfo? StoreVFile(
+		VFilePath path,
+		byte[] content,
 		VFileStorageOptions? opts = null)
 	{
-		var bytes = Util.GetFileBytes(pathToFile);
-		return StoreFile(path, fileName, bytes, opts);
+		return StoreVFile(new StoreVFileRequest(path, content, opts));
 	}
 
-	public VFileInfo? StoreFile(
-		VFileRelativePath? path,
-		string fileName,
-		byte[] contents,
-		VFileStorageOptions? opts = null)
+	public VFileInfo? StoreVFile(StoreVFileRequest request)
 	{
-		if (string.IsNullOrEmpty(fileName))
-		{
-			Hooks.Error(new(VFileErrorCodes.InvalidParameter, "fileName must have value", nameof(StoreFile)));
-			return null;
-		}
-
-		opts ??= DefaultStorageOptions;
-
-		var vfileId = GenerateVFileId(path, fileName, null);
-		var hash = DateTimeOffset.Now.Ticks.ToString();
-
-		var vfile = new VFileInfo(
-			vfileId,
-			hash,
-			1234,
-			DateTimeOffset.Now,
-			null);
-
-		var data = new VFileDataInfo(
-			hash,
-			hash.Take(2).GetString(),
-			hash,
-			1234,
-			1337,
-			DateTimeOffset.Now,
-			VFileCompression.None);
-
-		var dbVFile = Database.SaveVFileInfo(vfile);
-		var dbData = Database.SaveVFileDataInfo(data);
-		Database.SaveVFileMap(hash, dbVFile.Id, dbData.Id);
-
-		return vfile;
+		return StoreVFiles(request.AsList()).SingleOrDefault();
 	}
 
-	private static VFileId GenerateVFileId(VFileRelativePath? path, string fileName, string? version)
+	public List<VFileInfo> StoreVFiles(List<StoreVFileRequest> requests)
 	{
-		var relativePath = RelativePathDirectorySeparator.ToString();
-		if (path != null)
+		var state = new StoreVFilesState();
+		var uniqueMap = new HashSet<string>();
+
+		foreach (var request in requests)
 		{
-			relativePath += string.Join(RelativePathDirectorySeparator, path.Paths);
-			relativePath += RelativePathDirectorySeparator;
+			var path = request.Path;
+			if (string.IsNullOrEmpty(path.FileName))
+			{
+				Hooks.Error(new(VFileErrorCodes.InvalidParameter, "fileName must have value", nameof(StoreVFiles)));
+				return [];
+			}
+
+			var vfileId = NewVFileId(NormalizeRelativePath(path), path.FileName, null);
+			if (uniqueMap.Contains(vfileId.Id))
+			{
+				Hooks.Error(new(VFileErrorCodes.Duplicate, $"Duplicate file detected: {vfileId}", nameof(StoreVFiles)));
+				return [];
+			}
+			uniqueMap.Add(vfileId.Id);
+
+			var opts = request.Opts ?? DefaultStorageOptions;
+
+			var bytes = opts.Compression == VFileCompression.Compress
+				? Util.Compress(request.Content)
+				: request.Content;
+
+			var hash = Util.HashSHA256(bytes);
+			var dbData = Database.GetVFileDataInfoByHash(hash);
+			var now = DateTimeOffset.Now;
+
+			state.NewVFileInfos.Add(
+				new VFileInfo(
+					vfileId,
+					hash,
+					request.Content.Length,
+					now,
+					opts.TTL.HasValue ? now + opts.TTL : null));
+
+			if (dbData == null)
+			{
+				var data = new VFileDataInfo(
+					hash,
+					hash.Take(2).GetString(),
+					hash,
+					request.Content.Length,
+					bytes.Length,
+					now,
+					opts.Compression);
+
+				state.NewVFileDataInfo.Add(data);
+				state.WriteFiles.Add((DataFilePath(data), bytes));
+			}
 		}
 
+		// @TODO: transaction?
+		foreach (var vfile in state.NewVFileInfos)
+		{
+			Database.SaveVFileInfo(vfile);
+		}
+
+		foreach (var data in state.NewVFileDataInfo)
+		{
+			Database.SaveVFileDataInfo(data);
+		}
+
+		foreach (var (path, bytes) in state.WriteFiles)
+		{
+			Util.WriteFile(path, bytes);
+		}
+
+		return state.NewVFileInfos;
+	}
+
+	private static string NormalizeRelativePath(VFilePath path)
+	{
+		char[] dividers = { '/', '\\' };
+		var parts = path.Path?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
+		var relativePath = PathDirectorySeparator.ToString();
+		if (parts.AnySafe())
+		{
+			relativePath += string.Join(PathDirectorySeparator, parts);
+			relativePath += PathDirectorySeparator;
+		}
+		return relativePath;
+	}
+
+	private string DataFilePath(VFileDataInfo info)
+	{
+		return Path.Combine(Paths.Store, info.Directory, info.FileName);
+	}
+
+	private static VFileId NewVFileId(string relativePath, string fileName, string? version)
+	{
 		var versionPart = version.HasValue()
 			? $"?v={version}"
 			: string.Empty;
@@ -122,7 +177,7 @@ public class VFS
 
 	public static VFileId ParseVFileId(string id)
 	{
-		var idx = id.LastIndexOf(RelativePathDirectorySeparator) + 1;
+		var idx = id.LastIndexOf(PathDirectorySeparator) + 1;
 		var versionIdx = id.LastIndexOf("?v=");
 		var relativePath = id[..idx];
 		string? versionQueryString = versionIdx > 0 ? id[versionIdx..] : null;
