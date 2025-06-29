@@ -49,9 +49,9 @@ internal class VFileDatabase
 		return Repository.GetVFileDataInfoByHash(hash);
 	}
 
-	public Db.VFile? GetVFileByFileId(string fileId)
+	public Db.VFile? GetVFile(long vfileDataInfoId)
 	{
-		return Repository.GetVFileByFileId(fileId);
+		return Repository.GetVFile(vfileDataInfoId);
 	}
 
 	public Db.VFileInfo SaveVFileInfo(VFileInfo info)
@@ -95,10 +95,6 @@ internal class VFileDatabase
 		{
 			var info = infos[i];
 			var file = files[i];
-
-			Hooks.Log($"Saved Db.VFileDataInfo, Id: {info.Id}");
-			Hooks.Log($"Saved Db.VFile, Id: {file.Id}");
-
 			result.Add(new(info, file));
 		}
 
@@ -113,8 +109,7 @@ internal class VFileDatabase
 			info.RelativePath,
 			info.Name,
 			info.Extension,
-			info.Size,
-			info.Version,
+			info.Versioned,
 			info.DeleteAt,
 			info.CreationTime);
 	}
@@ -124,7 +119,7 @@ internal class VFileDatabase
 		return new Db.VFileDataInfo(
 			info.Hash,
 			info.Size,
-			info.SizeOnDisk,
+			info.SizeStored,
 			(byte)info.Compression,
 			info.CreationTime);
 	}

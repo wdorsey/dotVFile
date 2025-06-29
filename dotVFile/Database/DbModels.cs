@@ -12,38 +12,41 @@ public static class Db
 {
 	public record Entity
 	{
-		public long Id;
+		public long RowId;
+		public Guid Id;
 		public DateTimeOffset CreateTimestamp;
 	}
 
 	public record VFileInfo(
 		string FileId,
-		string Hash,
 		string RelativePath,
 		string FileName,
 		string Extension,
-		int Size,
-		string? Version,
+		DateTimeOffset? Versioned,
 		DateTimeOffset? DeleteAt,
 		DateTimeOffset CreationTime)
-		: Entity;
+		: Entity
+	{
+		public long VFileContentInfoRowId { get; set; }
+	}
 
-	public record VFileDataInfo(
+	public record VFileContentInfo(
 		string Hash,
 		int Size,
-		int SizeOnDisk,
+		int SizeStored,
 		byte Compression,
 		DateTimeOffset CreationTime)
 		: Entity;
 
-	public record VFile(
-		byte[] File)
-		: Entity
+	public record VFileContent(byte[] Content) : Entity
 	{
-		public long VFileDataInfoId { get; set; }
+		public long VFileContentInfoRowId { get; set; }
 	}
 
-	public record VFileData(VFileDataInfo DataInfo, VFile File);
+	public record VFile(
+		VFileInfo? VFileInfo,
+		VFileContentInfo? VFileContentInfo,
+		VFileContent? VFileContent);
 
 	[JsonConverter(typeof(StringEnumConverter))]
 	public enum VFileInfoVersionQuery

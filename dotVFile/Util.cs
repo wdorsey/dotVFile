@@ -12,6 +12,18 @@ internal static class Util
 	private static Encoding Encoding => Encoding.UTF8;
 	public static byte[] EmptyBytes() => [];
 
+	public const string DefaultDateTimeFormat = "yyyy-MM-dd HH:mm:ss.ffffff zzz";
+
+	public static string ToDefaultString(this DateTimeOffset dt)
+	{
+		return dt.ToString(DefaultDateTimeFormat);
+	}
+
+	public static string? ToDefaultString(this DateTimeOffset? dt)
+	{
+		return dt?.ToDefaultString();
+	}
+
 	public static List<T> AsList<T>(this T obj)
 	{
 		return obj == null ? [] : [obj];

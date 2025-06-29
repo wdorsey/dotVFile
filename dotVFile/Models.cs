@@ -26,18 +26,19 @@ public static class VFileErrorCodes
 {
 	public const string Duplicate = "DUPLICATE";
 	public const string InvalidParameter = "INVALID_PARAMETER";
+	public const string VersionBehaviorViolation = "VERSION_BEHAVIOR_VIOLATION";
 }
 
 public record VFileError(
 	string ErrorCode,
 	string Message,
-	string Function)
+	string Context)
 {
 	public override string ToString()
 	{
 		return $@"
-=== VFileError ===
-{ErrorCode} in {Function}()
+=== VFileError {ErrorCode} ===
+{Context}
 {Message}
 ==================
 ";
@@ -47,8 +48,8 @@ public record VFileError(
 public record VFSOptions(
 	string? Name,
 	string VFileDirectory,
-	IVFileHooks? Hooks,
-	VFileStorageOptions? DefaultStorageOptions);
+	IVFileHooks? Hooks = null,
+	VFileStorageOptions? DefaultStorageOptions = null);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -60,8 +61,9 @@ public record VFSOptions(
 public record VFileId(
 	string Id,
 	string RelativePath,
+	List<string> RelativePathParts,
 	string FileName,
-	string? Version)
+	DateTimeOffset? Versioned)
 {
 	public override string ToString()
 	{
@@ -71,42 +73,73 @@ public record VFileId(
 
 public record VFile(
 	VFileInfo FileInfo,
-	VFileDataInfo DataInfo,
 	byte[] Content);
 
 public record VFileInfo(
+	Guid Id,
 	VFileId VFileId,
 	string Hash,
-	int Size,
 	DateTimeOffset CreationTime,
-	DateTimeOffset? DeleteAt)
+	DateTimeOffset? DeleteAt,
+	Guid ContentId,
+	int Size,
+	int SizeStored,
+	VFileCompression Compression,
+	DateTimeOffset ContentCreationTime)
 {
+	public Guid Id { get; } = Id;
 	public VFileId VFileId { get; } = VFileId;
 	public string FullPath { get; } = VFileId.Id;
 	public string RelativePath { get; } = VFileId.RelativePath;
 	public string Name { get; } = VFileId.FileName;
-	public string? Version { get; } = VFileId.Version;
-	public bool IsVersion { get; } = VFileId.Version.HasValue();
+	public DateTimeOffset? Versioned { get; set; } = VFileId.Versioned;
+	public bool IsVersion => VFileId.Versioned != null;
 	public string Extension { get; } = Util.FileExtension(VFileId.FileName);
 	public string Hash { get; } = Hash;
-	/// <summary>
-	/// Size in bytes.
-	/// </summary>
-	public int Size { get; } = Size;
-	public DateTimeOffset? DeleteAt { get; } = DeleteAt;
+	public DateTimeOffset? DeleteAt { get; set; } = DeleteAt;
 	public DateTimeOffset CreationTime { get; } = CreationTime;
+
+	// Content fields
+	public Guid ContentId { get; } = ContentId;
+	public int Size { get; } = Size;
+	public int SizeStored { get; } = SizeStored;
+	public VFileCompression Compression { get; } = Compression;
+	public DateTimeOffset ContentCreationTime { get; } = ContentCreationTime;
 }
 
-public record VFileDataInfo(
-	string Hash,
-	int Size,
-	int SizeOnDisk,
-	DateTimeOffset CreationTime,
-	VFileCompression Compression);
+public record VFilePath
+{
+	/// <summary>
+	/// path is only the path part and should not include the FileName. To use a full file path, use VFilePath.FromFilePath.
+	/// </summary>
+	/// <param name="path">Only the path part, should not include FileName. To use a full file path, use VFilePath.FromFilePath.</param>
+	public VFilePath(string? path, string fileName)
+	{
+		Path = path;
+		FileName = fileName;
+	}
 
-public record VFileData(VFileDataInfo DataInfo, byte[] Content);
+	public static VFilePath FromFilePath(string filePath)
+	{
+		var fi = new FileInfo(filePath);
 
-public record VFilePath(string? Path, string FileName);
+		return new VFilePath(
+			fi.DirectoryName ?? string.Empty,
+			fi.Name);
+	}
+
+	public static VFilePath FromPathParts(string fileName, params string[] pathParts)
+	{
+		var path = string.Join(VFS.PathDirectorySeparator, pathParts);
+		return new VFilePath(path, fileName);
+	}
+
+	/// <summary>
+	/// ONLY the path part, should not include FileName.
+	/// </summary>
+	public string? Path { get; }
+	public string FileName { get; }
+}
 
 public record StoreVFileRequest(
 	VFilePath Path,
@@ -114,7 +147,7 @@ public record StoreVFileRequest(
 	VFileStorageOptions? Opts = null);
 
 [JsonConverter(typeof(StringEnumConverter))]
-public enum VFileExistsBehavior
+public enum VFileVersionBehavior
 {
 	/// <summary>
 	/// Old file deleted, no versioning.
@@ -140,18 +173,23 @@ public enum VFileCompression
 	Compress = 1
 }
 
+public record VFileVersionOptions(
+	VFileVersionBehavior Behavior,
+	int? MaxVersionsRetained,
+	TimeSpan? VersionTTL);
+
 public record VFileStorageOptions(
-	VFileExistsBehavior ExistsBehavior,
 	VFileCompression Compression,
 	TimeSpan? TTL,
-	int? MaxVersions,
-	TimeSpan? VersionTTL)
+	VFileVersionOptions VersionOpts)
 {
-	public VFileExistsBehavior ExistsBehavior { get; set; } = ExistsBehavior;
 	public VFileCompression Compression { get; set; } = Compression;
 	public TimeSpan? TTL { get; set; } = TTL;
-	public int? MaxVersions { get; set; } = MaxVersions;
-	public TimeSpan? VersionTTL { get; set; } = VersionTTL;
+	/// <summary>
+	/// Version options are only applied if the file already
+	/// exists and it is different from the new file.
+	/// </summary>
+	public VFileVersionOptions VersionOpts { get; set; } = VersionOpts;
 }
 
 internal record StoreVFilesState
