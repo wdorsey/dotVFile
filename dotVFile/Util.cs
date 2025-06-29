@@ -49,6 +49,31 @@ internal static class Util
 		return !list.AnySafe();
 	}
 
+	public static List<List<T>> Partition<T>(this IEnumerable<T> items, int itemsPerList)
+	{
+		var result = new List<List<T>>();
+		var curr = new List<T>();
+		foreach (var item in items)
+		{
+			if (curr.Count < itemsPerList)
+			{
+				curr.Add(item);
+			}
+			else
+			{
+				result.Add(curr);
+				curr =
+				[
+					item
+				];
+			}
+		}
+
+		result.Add(curr);
+
+		return result;
+	}
+
 	public static string FileExtension(string fileName)
 	{
 		var fi = new FileInfo(fileName);

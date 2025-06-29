@@ -1,7 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-
-namespace dotVFile;
+﻿namespace dotVFile;
 
 public record VFileDatabaseOptions(
 	string Name,
@@ -42,14 +39,6 @@ public static class Db
 	public record VFile(
 		VFileInfo VFileInfo,
 		VFileContent VFileContent);
-
-	[JsonConverter(typeof(StringEnumConverter))]
-	public enum VFileInfoVersionQuery
-	{
-		Latest,
-		Versions,
-		Both
-	}
 
 	public record StoreVFilesResult
 	{

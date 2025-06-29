@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS VFileInfo (
 	CreationTime			TEXT NOT NULL,
 	CreateTimestamp			TEXT NOT NULL,
 	PRIMARY KEY(RowId AUTOINCREMENT),
-	FOREIGN KEY(VFileContentRowId) REFERENCES VFileContent(VFileContentRowId)
+	FOREIGN KEY(VFileContentRowId) REFERENCES VFileContent(RowId)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_Id ON VFileInfo(Id);
 CREATE INDEX IF NOT EXISTS        VFileInfo_VFileContentRowId ON VFileInfo(VFileContentRowId);
@@ -90,22 +90,47 @@ DROP TABLE IF EXISTS VFileContent;
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
-	public Db.VFile? GetVFile(string fileId)
+	public List<Db.VFile> GetVFiles(
+		List<string> fileIds,
+		VFileInfoVersionQuery versionQuery)
 	{
-		return GetVFiles(fileId, Db.VFileInfoVersionQuery.Latest).SingleOrDefault();
-	}
+		var results = new List<Db.VFile>();
 
-	public List<Db.VFile> GetVFiles(string fileId, Db.VFileInfoVersionQuery versionQuery)
-	{
-		var result = new List<Db.VFile>();
-
-		var version = versionQuery switch
+		var versionedCond = versionQuery switch
 		{
-			Db.VFileInfoVersionQuery.Latest => "AND Versioned IS NULL",
-			Db.VFileInfoVersionQuery.Versions => "AND Versioned IS NOT NULL",
-			Db.VFileInfoVersionQuery.Both => string.Empty,
+			VFileInfoVersionQuery.Latest => "AND Versioned IS NULL",
+			VFileInfoVersionQuery.Versions => "AND Versioned IS NOT NULL",
+			VFileInfoVersionQuery.Both => string.Empty,
 			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
 		};
+
+		foreach (var list in fileIds.Distinct().Partition(50))
+		{
+			var inClause = string.Join(',', list.Select(x => $"'{x}'"));
+			var where = $@"	i.Id IN ({inClause}) {versionedCond} ";
+			results.AddRange(GetVFiles(where));
+		}
+
+		return results;
+	}
+
+	public List<Db.VFile> GetVFiles(List<Guid> ids)
+	{
+		var results = new List<Db.VFile>();
+
+		foreach (var list in ids.Distinct().Partition(50))
+		{
+			var inClause = string.Join(',', list.Select(x => $"'{x}'"));
+			var where = $@"	i.FileId IN ({inClause}) ";
+			results.AddRange(GetVFiles(where));
+		}
+
+		return results;
+	}
+
+	private List<Db.VFile> GetVFiles(string where)
+	{
+		var results = new List<Db.VFile>();
 
 		var sql = $@"
 SELECT 
@@ -122,12 +147,11 @@ FROM
 	VFileInfo i
 	INNER JOIN VFileContent c ON c.RowId = i.VFileContentRowId
 WHERE
-	i.FileId = @FileId
-	{version};
+	{where};
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddWithValue("@FileId", fileId);
+		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
@@ -148,29 +172,125 @@ WHERE
 			content.Compression = reader.GetByte("Compression");
 			content.CreationTime = reader.GetDateTimeOffset("ContentCreationTime");
 
-			result.Add(new(info, content));
+			results.Add(new(info, content));
 			reader.NextResult();
 		}
 
-		return result;
+		return results;
 	}
 
-	public byte[]? GetVFileContent(Guid contentId)
+	public List<Db.VFileContent> FetchContent(List<Db.VFileContent> vfiles)
 	{
-		const string sql = @"
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		foreach (var list in vfiles.Partition(50))
+		{
+			var dict = list.ToDictionary(x => x.RowId, x => x);
+			var rowIds = string.Join(',', list.Select(x => x.RowId));
+			var sql = $@"
 SELECT
+	RowId,
 	Content
 FROM
 	VFileContent
 WHERE
-	Id = @Id
+	RowId IN ({rowIds})
+";
+			var cmd = new SqliteCommand(sql, connection);
+			var reader = cmd.ExecuteReader();
+			while (reader.Read())
+			{
+				var rowId = reader.GetInt64("RowId");
+				dict[rowId].Content = (byte[])reader["Content"];
+			}
+		}
+
+		return vfiles;
+	}
+
+	public Db.VFileInfo? GetVFileInfoByFileId(string fileId)
+	{
+		const string sql = @"
+SELECT
+	RowId,
+	VFileContentRowId,
+	FileId,
+	RelativePath,
+	FileName,
+	FileExtension,
+	Versioned,
+	DeleteAt,
+	CreationTime,
+	CreateTimestamp
+FROM
+	VFileInfo
+WHERE
+	FileId = @FileId
+	AND Versioned IS NULL
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddWithValue("@Id", contentId.ToString());
-		var result = cmd.ExecuteScalar();
+		cmd.Parameters.AddWithValue("@FileId", fileId);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
 
-		return result != null ? (byte[])result : null;
+		if (reader.Read())
+		{
+			var info = new Db.VFileInfo().ReadEntityValues(reader);
+			info.VFileContentRowId = reader.GetInt64("VFileContentRowId");
+			info.FileId = reader.GetString("FileId");
+			info.RelativePath = reader.GetString("RelativePath");
+			info.FileName = reader.GetString("FileName");
+			info.FileExtension = reader.GetString("FileExtension");
+			info.Versioned = reader.GetDateTimeOffsetNullable("Versioned");
+			info.DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt");
+			info.CreationTime = reader.GetDateTimeOffset("CreationTime");
+
+			return info;
+		}
+
+		return null;
+	}
+
+	/// <summary>
+	/// Does not pull Content bytes, use FetchContent.
+	/// </summary>
+	public Db.VFileContent? GetVFileContentByHash(string hash)
+	{
+		const string sql = @"
+SELECT
+	RowId,
+	Id,
+	Hash,
+	Size,
+	SizeStored,
+	Compression,
+	CreationTime,
+	CreateTimestamp
+FROM
+	VFileContent
+WHERE
+	Hash = @Hash
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddWithValue("@Hash", hash);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+
+		if (reader.Read())
+		{
+			var content = new Db.VFileContent().ReadEntityValues(reader);
+			content.Hash = reader.GetString("Hash");
+			content.Size = reader.GetInt64("Size");
+			content.SizeStored = reader.GetInt64("SizeStored");
+			content.Compression = reader.GetByte("Compression");
+			content.CreationTime = reader.GetDateTimeOffset("CreationTime");
+
+			return content;
+		}
+
+		return null;
 	}
 
 	public Db.StoreVFilesResult SaveStoreVFilesState(StoreVFilesState state)
@@ -183,10 +303,12 @@ WHERE
 		//	NewVFileInfos (requires link to VFileContentRowId)
 		var result = new Db.StoreVFilesResult();
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
+		connection.Open();
+		using var transaction = connection.BeginTransaction();
+		var cmd = new SqliteCommand(string.Empty, connection, transaction);
 		int idx = 0;
 
-		foreach (var (info, content) in state.NewVFileContents)
+		foreach (var (info, content) in state.NewVFileContents.DistinctBy(x => x.Info.Hash))
 		{
 			cmd.CommandText += $@"
 INSERT INTO VFileContent (
@@ -225,24 +347,24 @@ VALUES (
 		foreach (var delete in state.DeleteVFileInfos)
 		{
 			cmd.CommandText += $@"
-DELETE FROM VFileInfo WHERE Id = @Id_{idx};
+DELETE FROM VFileInfo WHERE RowId = @RowId_{idx};
 ";
-			cmd.Parameters.AddWithValue($"@Id_{idx}", delete.Id.ToString());
+			cmd.Parameters.AddWithValue($"@RowId_{idx}", delete.RowId);
 			idx++;
 		}
 
 		foreach (var delete in state.DeleteVFileContents)
 		{
 			cmd.CommandText += $@"
-DELETE FROM VFileContent WHERE Id = @Id_{idx};
+DELETE FROM VFileContent WHERE RowId = @RowId_{idx};
 ";
-			cmd.Parameters.AddWithValue($"@Id_{idx}", delete.Id.ToString());
+			cmd.Parameters.AddWithValue($"@RowId_{idx}", delete.RowId);
 			idx++;
 		}
 
 		foreach (var update in state.UpdateVFileInfos)
 		{
-			// only update-able fields are VFileId, Versioned, and DeleteAt
+			// only update-able fields are FileId, Versioned, and DeleteAt
 			cmd.CommandText += $@"
 UPDATE VFileInfo
 SET 
@@ -250,15 +372,14 @@ SET
 	Versioned = @Versioned_{idx},
 	DeleteAt = @DeleteAt_{idx}
 WHERE
-	Id = @Id_{idx};
+	RowId = @RowId_{idx};
 ";
-			var db = ToDbVFileInfo(update);
-			cmd.Parameters.AddWithValue($"@FileId_{idx}", db.FileId);
-			cmd.Parameters.AddWithValue($"@Versioned_{idx}", (db.Versioned?.ToDefaultString()).NullCoalesce());
-			cmd.Parameters.AddWithValue($"@DeleteAt_{idx}", (db.DeleteAt?.ToDefaultString()).NullCoalesce());
-			cmd.Parameters.AddWithValue($"@Id_{idx}", update.Id.ToString());
+			cmd.Parameters.AddWithValue($"@FileId_{idx}", update.FileId);
+			cmd.Parameters.AddWithValue($"@Versioned_{idx}", (update.Versioned?.ToDefaultString()).NullCoalesce());
+			cmd.Parameters.AddWithValue($"@DeleteAt_{idx}", (update.DeleteAt?.ToDefaultString()).NullCoalesce());
+			cmd.Parameters.AddWithValue($"@RowId_{idx}", update.RowId);
 			idx++;
-			result.UpdatedVFileInfos.Add(db);
+			result.UpdatedVFileInfos.Add(update);
 		}
 
 		foreach (var info in state.NewVFileInfos)
@@ -303,8 +424,6 @@ VALUES (
 			result.NewVFileInfos.Add(db);
 		}
 
-		connection.Open();
-		using var transaction = connection.BeginTransaction();
 		try
 		{
 			var reader = cmd.ExecuteReader();

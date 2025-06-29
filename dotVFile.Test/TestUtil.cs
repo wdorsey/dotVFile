@@ -15,19 +15,17 @@ public class TestHooks : IVFileHooks
 
 public record TestFile(
 	List<string> RelativePath,
-	string FileName,
-	// accomodates versions, order is oldest to latest.
-	// last element is Latest.
-	List<byte[]> Content)
+	string FileName)
 {
 	public VFileId? VFileId { get; set; }
 	public VFilePath VFilePath { get; } = new(string.Join(VFS.PathDirectorySeparator, RelativePath), FileName);
+	public List<byte[]> Content { get; } = [Util.GetFileBytes(Path.Combine(TestUtil.TestFilesDir, FileName))];
 }
 
 public static class TestUtil
 {
-	public static string TestDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
-	public static string ResultsDir { get; } = Path.Combine(TestDir, "results");
+	public static string TestFilesDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
+	public static string ResultsDir { get; } = Path.Combine(Environment.CurrentDirectory, "Results");
 
 	public static void RunStandardTest(VFS vfs, VFileStorageOptions opts, string testName)
 	{
@@ -47,32 +45,33 @@ public static class TestUtil
 
 	public static List<TestFile> GetTestFiles()
 	{
-		static string FilePath(string fileName) => Path.Combine(TestDir, fileName);
-
 		return
 		[
-			new([], "test-file-1.json", [Util.GetFileBytes(FilePath("test-file-1.json"))]),
-			new(["/"], "test-file-2.json", [Util.GetFileBytes(FilePath("test-file-2.json"))]),
-			new(["a"], "test-file-3.json", [Util.GetFileBytes(FilePath("test-file-3.json"))]),
-			new(["a", "b"], "test-file-4.json", [Util.GetFileBytes(FilePath("test-file-4.json"))]),
-			new(["b", "c"], "test-file-5.json", [Util.GetFileBytes(FilePath("test-file-5.json"))]),
-			new(["c", "b", "a"], "test-file-6.json", [Util.GetFileBytes(FilePath("test-file-6.json"))]),
-			new(["a", "c"], "test-file-7.json", [Util.GetFileBytes(FilePath("test-file-7.json"))]),
-			new(["a", "b", "x"], "test-file-8.json", [Util.GetFileBytes(FilePath("test-file-8.json"))]),
-			new(["x", "x"], "test-file-9.json", [Util.GetFileBytes(FilePath("test-file-9.json"))]),
-			new(["hello", "world"], "test-file-10.json", [Util.GetFileBytes(FilePath("test-file-10.json"))]),
-			new(["img"], "demon-slayer-infinity-castle-47-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-47-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-48-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-48-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-61-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-61-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-62-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-62-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-75-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-75-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-76-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-76-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-82-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-82-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-83-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-83-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-89-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-89-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-90-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-90-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-96-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-96-days.jpg"))]),
-			new(["img"], "demon-slayer-infinity-castle-97-days.jpg", [Util.GetFileBytes(FilePath("demon-slayer-infinity-castle-97-days.jpg"))])
+			new([], "test-file-1.json"),
+			new([], "test-file-1 - Copy.json"),
+			new(["/"], "test-file-2.json"),
+			new(["/"], "test-file-2 - Copy.json"),
+			new(["a"], "test-file-3.json"),
+			new(["a", "b"], "test-file-4.json"),
+			new(["b", "c"], "test-file-5.json"),
+			new(["c", "b", "a"], "test-file-6.json"),
+			new(["a", "c"], "test-file-7.json"),
+			new(["a", "b", "x"], "test-file-8.json"),
+			new(["x", "x"], "test-file-9.json"),
+			new(["hello", "world"], "test-file-10.json"),
+			new(["img"], "demon-slayer-infinity-castle-18-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-47-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-48-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-61-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-62-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-75-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-76-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-82-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-83-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-89-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-90-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-96-days.jpg"),
+			new(["img"], "demon-slayer-infinity-castle-97-days.jpg")
 		];
 	}
 
@@ -110,10 +109,10 @@ public static class TestUtil
 
 		var filePath = Path.Combine(dir, file.FileName);
 		var vfilePath = Path.Combine(dir, $"vfile_{file.FileName}");
-		var vfileMetadataPath = Path.Combine(dir, $"vfile_metadata_{name}.json");
+		var vfileInfoPath = Path.Combine(dir, $"VFileInfo_{name}.json");
 
 		Util.WriteFile(filePath, file.Content.Last());
 		Util.WriteFile(vfilePath, vfile.Content);
-		Util.WriteFile(vfileMetadataPath, Util.GetBytes(new { vfile.FileInfo, vfile.DataInfo }, true, false));
+		Util.WriteFile(vfileInfoPath, Util.GetBytes(vfile.VFileInfo, true, false));
 	}
 }

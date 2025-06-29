@@ -191,11 +191,19 @@ public record VFileStorageOptions(
 	public VFileVersionOptions VersionOpts = VersionOpts;
 }
 
+[JsonConverter(typeof(StringEnumConverter))]
+public enum VFileInfoVersionQuery
+{
+	Latest,
+	Versions,
+	Both
+}
+
 internal record StoreVFilesState
 {
 	public List<VFileInfo> NewVFileInfos = [];
-	public List<VFileInfo> UpdateVFileInfos = [];
-	public List<VFileInfo> DeleteVFileInfos = [];
+	public List<Db.VFileInfo> UpdateVFileInfos = [];
+	public List<Db.VFileInfo> DeleteVFileInfos = [];
 	public List<(VFileInfo Info, byte[] Content)> NewVFileContents = [];
-	public List<VFileInfo> DeleteVFileContents = [];
+	public List<Db.VFileContent> DeleteVFileContents = [];
 }
