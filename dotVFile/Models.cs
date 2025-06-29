@@ -26,6 +26,7 @@ public static class VFileErrorCodes
 {
 	public const string Duplicate = "DUPLICATE";
 	public const string InvalidParameter = "INVALID_PARAMETER";
+	public const string SqliteException = "SQLITE_EXCEPTION";
 	public const string VersionBehaviorViolation = "VERSION_BEHAVIOR_VIOLATION";
 }
 
@@ -69,43 +70,34 @@ public record VFileId(
 	{
 		return Id;
 	}
+
+	public static VFileId Default() =>
+		new(string.Empty, string.Empty, [], string.Empty, null);
 }
 
-public record VFile(
-	VFileInfo FileInfo,
-	byte[] Content);
-
-public record VFileInfo(
-	Guid Id,
-	VFileId VFileId,
-	string Hash,
-	DateTimeOffset CreationTime,
-	DateTimeOffset? DeleteAt,
-	Guid ContentId,
-	int Size,
-	int SizeStored,
-	VFileCompression Compression,
-	DateTimeOffset ContentCreationTime)
+public record VFileInfo
 {
-	public Guid Id { get; } = Id;
-	public VFileId VFileId { get; } = VFileId;
-	public string FullPath { get; } = VFileId.Id;
-	public string RelativePath { get; } = VFileId.RelativePath;
-	public string Name { get; } = VFileId.FileName;
-	public DateTimeOffset? Versioned { get; set; } = VFileId.Versioned;
-	public bool IsVersion => VFileId.Versioned != null;
-	public string Extension { get; } = Util.FileExtension(VFileId.FileName);
-	public string Hash { get; } = Hash;
-	public DateTimeOffset? DeleteAt { get; set; } = DeleteAt;
-	public DateTimeOffset CreationTime { get; } = CreationTime;
+	public Guid Id;
+	public VFileId VFileId = VFileId.Default();
+	public string FullPath = string.Empty;
+	public string RelativePath = string.Empty;
+	public string FileName = string.Empty;
+	public string FileExtension = string.Empty;
+	public DateTimeOffset? Versioned;
+	public bool IsVersion => Versioned.HasValue;
+	public DateTimeOffset? DeleteAt;
+	public DateTimeOffset CreationTime;
 
 	// Content fields
-	public Guid ContentId { get; } = ContentId;
-	public int Size { get; } = Size;
-	public int SizeStored { get; } = SizeStored;
-	public VFileCompression Compression { get; } = Compression;
-	public DateTimeOffset ContentCreationTime { get; } = ContentCreationTime;
+	public Guid ContentId;
+	public string Hash = string.Empty;
+	public long Size;
+	public long SizeStored;
+	public VFileCompression Compression;
+	public DateTimeOffset ContentCreationTime;
 }
+
+public record VFile(VFileInfo VFileInfo, byte[] Content);
 
 public record VFilePath
 {
@@ -173,23 +165,30 @@ public enum VFileCompression
 	Compress = 1
 }
 
+/// <summary>
+/// Default: VFS.GetDefaultVersionOptions()
+/// </summary>
 public record VFileVersionOptions(
 	VFileVersionBehavior Behavior,
 	int? MaxVersionsRetained,
 	TimeSpan? VersionTTL);
 
+/// <summary>
+/// Default: VFS.GetDefaultStorageOptions()
+/// </summary>
 public record VFileStorageOptions(
 	VFileCompression Compression,
 	TimeSpan? TTL,
 	VFileVersionOptions VersionOpts)
 {
-	public VFileCompression Compression { get; set; } = Compression;
-	public TimeSpan? TTL { get; set; } = TTL;
+	public VFileCompression Compression = Compression;
+	public TimeSpan? TTL = TTL;
 	/// <summary>
 	/// Version options are only applied if the file already
 	/// exists and it is different from the new file.
+	/// Default: VFS.GetDefaultVersionOptions()
 	/// </summary>
-	public VFileVersionOptions VersionOpts { get; set; } = VersionOpts;
+	public VFileVersionOptions VersionOpts = VersionOpts;
 }
 
 internal record StoreVFilesState
@@ -197,6 +196,6 @@ internal record StoreVFilesState
 	public List<VFileInfo> NewVFileInfos = [];
 	public List<VFileInfo> UpdateVFileInfos = [];
 	public List<VFileInfo> DeleteVFileInfos = [];
-	public List<VFileData> NewVFileData = [];
-	public List<VFileDataInfo> DeleteVFileData = [];
+	public List<(VFileInfo Info, byte[] Content)> NewVFileContents = [];
+	public List<VFileInfo> DeleteVFileContents = [];
 }

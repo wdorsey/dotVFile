@@ -17,36 +17,31 @@ public static class Db
 		public DateTimeOffset CreateTimestamp;
 	}
 
-	public record VFileInfo(
-		string FileId,
-		string RelativePath,
-		string FileName,
-		string Extension,
-		DateTimeOffset? Versioned,
-		DateTimeOffset? DeleteAt,
-		DateTimeOffset CreationTime)
-		: Entity
+	public record VFileInfo : Entity
 	{
-		public long VFileContentInfoRowId { get; set; }
+		public long VFileContentRowId;
+		public string FileId = string.Empty;
+		public string RelativePath = string.Empty;
+		public string FileName = string.Empty;
+		public string FileExtension = string.Empty;
+		public DateTimeOffset? Versioned;
+		public DateTimeOffset? DeleteAt;
+		public DateTimeOffset CreationTime;
 	}
 
-	public record VFileContentInfo(
-		string Hash,
-		int Size,
-		int SizeStored,
-		byte Compression,
-		DateTimeOffset CreationTime)
-		: Entity;
-
-	public record VFileContent(byte[] Content) : Entity
+	public record VFileContent : Entity
 	{
-		public long VFileContentInfoRowId { get; set; }
+		public string Hash = string.Empty;
+		public long Size;
+		public long SizeStored;
+		public byte Compression;
+		public byte[]? Content;
+		public DateTimeOffset CreationTime;
 	}
 
 	public record VFile(
-		VFileInfo? VFileInfo,
-		VFileContentInfo? VFileContentInfo,
-		VFileContent? VFileContent);
+		VFileInfo VFileInfo,
+		VFileContent VFileContent);
 
 	[JsonConverter(typeof(StringEnumConverter))]
 	public enum VFileInfoVersionQuery
@@ -54,5 +49,12 @@ public static class Db
 		Latest,
 		Versions,
 		Both
+	}
+
+	public record StoreVFilesResult
+	{
+		public List<VFileInfo> NewVFileInfos = [];
+		public List<VFileInfo> UpdatedVFileInfos = [];
+		public List<VFileContent> NewVFileContents = [];
 	}
 }
