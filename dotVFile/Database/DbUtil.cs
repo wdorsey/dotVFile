@@ -60,15 +60,23 @@ internal static class DbUtil
 		return entity;
 	}
 
-	public static void ReadRowId<T>(this List<T> entities, SqliteDataReader reader)
+	public static T ReadRowId<T>(this T entity, SqliteDataReader reader)
+		where T : Db.Entity
+	{
+		reader.Read();
+		entity.RowId = Convert.ToInt64(reader["RowId"]);
+		return entity;
+	}
+
+	public static List<T> ReadRowId<T>(this List<T> entities, SqliteDataReader reader)
 		where T : Db.Entity
 	{
 		foreach (var entity in entities)
 		{
-			reader.Read();
-			entity.RowId = Convert.ToInt64(reader["RowId"]);
+			entity.ReadRowId(reader);
 			reader.NextResult();
 		}
+		return entities;
 	}
 
 	public static void ExecuteNonQuery(string connectionString, string sql)

@@ -61,8 +61,8 @@ public record VFSOptions(
 /// </summary>
 public record VFileId(
 	string Id,
-	string RelativePath,
-	List<string> RelativePathParts,
+	string Directory,
+	List<string> DirectoryParts,
 	string FileName,
 	string FilePath,
 	DateTimeOffset? Versioned)
@@ -81,12 +81,11 @@ public record VFileInfo
 	public Guid Id;
 	public VFileId VFileId = VFileId.Default();
 	public string FilePath = string.Empty;
-	public string RelativePath = string.Empty;
+	public string Directory = string.Empty;
 	public string FileName = string.Empty;
 	public string FileExtension = string.Empty;
 	public DateTimeOffset? Versioned;
 	public bool IsVersion => Versioned.HasValue;
-	public long? TTL;
 	public DateTimeOffset? DeleteAt;
 	public DateTimeOffset CreationTime;
 
@@ -103,46 +102,55 @@ public record VFile(VFileInfo VFileInfo, byte[] Content);
 
 public record VFilePath
 {
-	/// <summary>
-	/// path is only the path part and should not include the FileName. To use a full file path, use VFilePath.FromFilePath.
-	/// </summary>
-	/// <param name="path">Only the path part, should not include FileName. To use a full file path, use VFilePath.FromFilePath.</param>
-	public VFilePath(string? path, string fileName)
+	public VFilePath(string? directory, string fileName)
 	{
-		Path = path;
+		Directory = directory;
 		FileName = fileName;
 	}
-
-	public static VFilePath FromFilePath(string filePath)
-	{
-		var fi = new FileInfo(filePath);
-
-		return new VFilePath(
-			fi.DirectoryName ?? string.Empty,
-			fi.Name);
-	}
-
-	public static VFilePath FromPathParts(string fileName, params string[] pathParts)
-	{
-		var path = string.Join(VFS.PathDirectorySeparator, pathParts);
-		return new VFilePath(path, fileName);
-	}
-
+	public VFilePath(string filePath) : this(new FileInfo(filePath)) { }
+	public VFilePath(FileInfo fi) : this(fi.DirectoryName ?? string.Empty, fi.Name) { }
 	/// <summary>
-	/// ONLY the path part, should not include FileName.
+	/// PathParts should not include any directory separators.
 	/// </summary>
-	public string? Path { get; }
+	/// <param name="directories">Individual directories, in order. Should not include any directory separators.</param>
+	public VFilePath(string fileName, params string[] directories)
+		: this(string.Join(VFS.PathDirectorySeparator, directories), fileName) { }
+
+	public string? Directory { get; }
 	public string FileName { get; }
 
 	public override string ToString()
 	{
-		return $"{Path}{VFS.PathDirectorySeparator}{FileName}";
+		var dir = Directory?.TrimEnd('/').TrimEnd('\\');
+		return $"{dir}{VFS.PathDirectorySeparator}{FileName}";
 	}
+}
+
+public record VFileContent
+{
+	public VFileContent(byte[] bytes)
+	{
+		Bytes = bytes;
+	}
+
+	public VFileContent(string filePath)
+	{
+		FilePath = filePath;
+	}
+
+	public VFileContent(Stream stream)
+	{
+		Stream = stream;
+	}
+
+	public byte[]? Bytes;
+	public string? FilePath;
+	public Stream? Stream;
 }
 
 public record StoreVFileRequest(
 	VFilePath Path,
-	byte[] Content,
+	VFileContent Content,
 	VFileStorageOptions? Opts = null);
 
 [JsonConverter(typeof(StringEnumConverter))]
@@ -216,5 +224,4 @@ internal record StoreVFilesState
 	public List<VFileInfo> NewVFileInfos = [];
 	public List<Db.VFileInfo> UpdateVFileInfos = [];
 	public List<Db.VFileInfo> DeleteVFileInfos = [];
-	public List<(VFileInfo Info, byte[] Content)> NewVFileContents = [];
 }

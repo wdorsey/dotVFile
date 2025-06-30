@@ -74,6 +74,43 @@ internal static class Util
 		return result;
 	}
 
+	public static byte[] GetContent(this VFileContent content)
+	{
+		if (content.Bytes != null)
+			return content.Bytes;
+
+		if (content.FilePath.HasValue())
+		{
+			content.Bytes = GetFileBytes(content.FilePath);
+			return content.Bytes;
+		}
+
+		if (content.Stream != null)
+		{
+			var buffer = new Span<byte>();
+			var result = new List<byte>();
+			while (content.Stream.Read(buffer) > 0)
+			{
+				result.AddRange(buffer);
+			}
+
+			content.Stream.Dispose();
+			content.Bytes = [.. result];
+
+			return content.Bytes;
+		}
+
+		throw new Exception("unable to get VFileContent bytes.");
+	}
+
+	public static void Clear(this VFileContent content)
+	{
+		content.Bytes = null;
+		content.FilePath = null;
+		content.Stream?.Dispose();
+		content.Stream = null;
+	}
+
 	public static string FileExtension(string fileName)
 	{
 		var fi = new FileInfo(fileName);

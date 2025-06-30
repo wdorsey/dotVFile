@@ -14,12 +14,12 @@ public class TestHooks : IVFileHooks
 }
 
 public record TestFile(
-	List<string> RelativePath,
+	List<string> Directories,
 	string FileName)
 {
-	public VFilePath VFilePath = new(string.Join(VFS.PathDirectorySeparator, RelativePath), FileName);
+	public VFilePath VFilePath = new(FileName, [.. Directories]);
 	public string FileExtension = Util.FileExtension(FileName);
-	public byte[] Content = [];// = Util.GetFileBytes(Path.Combine(TestUtil.TestFilesDir, FileName));
+	public string FilePath = string.Empty;
 }
 
 public static class TestUtil
@@ -60,7 +60,7 @@ public static class TestUtil
 
 		foreach (var file in TestFiles)
 		{
-			file.Content = Util.GetFileBytes(Path.Combine(TestFilesDir, file.FileName));
+			file.FilePath = Path.Combine(TestFilesDir, file.FileName);
 		}
 	}
 
@@ -68,7 +68,7 @@ public static class TestUtil
 	{
 		Console.WriteLine($"=== {testName} ===");
 		var files = GetTestFiles();
-		var requests = files.Select(x => new StoreVFileRequest(x.VFilePath, x.Content, opts)).ToList();
+		var requests = files.Select(x => new StoreVFileRequest(x.VFilePath, new(x.FilePath), opts)).ToList();
 		var infos = vfs.StoreVFiles(requests);
 		foreach (var file in files)
 		{
@@ -85,14 +85,14 @@ public static class TestUtil
 		var results = new List<TestFile>();
 		var rand = new Random();
 
-		foreach (var ext in TestFiles.GroupBy(x => x.FileExtension))
+		foreach (var files in TestFiles.GroupBy(x => x.FileExtension))
 		{
-			foreach (var file in ext)
+			foreach (var file in files)
 			{
-				var contentFile = ext.ElementAt(rand.Next(0, ext.Count()));
-				var testFile = new TestFile(file.RelativePath, file.FileName)
+				var contentFile = files.ElementAt(rand.Next(0, files.Count()));
+				var testFile = new TestFile(file.Directories, file.FileName)
 				{
-					Content = contentFile.Content
+					FilePath = contentFile.FilePath
 				};
 				results.Add(testFile);
 			}
@@ -112,7 +112,7 @@ public static class TestUtil
 		// Trying to verify every little bit individually would make for a whole lot more work
 		// in writing this testing while providing very little value.
 
-		byte[] expected = file.Content;
+		byte[] expected = new VFileContent(file.FilePath).GetContent();
 		if (expected.Length != vfile.Content.Length)
 		{
 			Console.WriteLine($"file content Length mismatch. {file.FileName}");
@@ -137,7 +137,7 @@ public static class TestUtil
 		var vfilePath = Path.Combine(dir, $"vfile_{file.FileName}");
 		var vfileInfoPath = Path.Combine(dir, $"VFileInfo_{name}.json");
 
-		Util.WriteFile(filePath, file.Content);
+		Util.WriteFile(filePath, new VFileContent(file.FilePath).GetContent());
 		Util.WriteFile(vfilePath, vfile.Content);
 		Util.WriteFile(vfileInfoPath, Util.GetBytes(vfile.VFileInfo, true, false));
 	}

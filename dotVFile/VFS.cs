@@ -127,7 +127,7 @@ public class VFS
 
 	public VFileInfo? StoreVFile(
 		VFilePath path,
-		byte[] content,
+		VFileContent content,
 		VFileStorageOptions? opts = null)
 	{
 		return StoreVFile(new StoreVFileRequest(path, content, opts));
@@ -162,15 +162,17 @@ public class VFS
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStorageOptions;
 
+			var content = request.Content.GetContent();
 			var bytes = opts.Compression == VFileCompression.Compress
-				? Util.Compress(request.Content)
-				: request.Content;
+				? Util.Compress(content)
+				: content;
+			request.Content.Clear(); // free memory
 			var hash = Util.HashSHA256(bytes);
 
 			var existingVFile = Database.GetLatestVFile(vfileId.FilePath);
 			var existingContent = existingVFile?.VFileContent;
 
-			var hashContent = existingContent != null && existingContent.Hash == hash
+			var vfileContent = existingContent != null && existingContent.Hash == hash
 				? existingContent
 				: Database.GetVFileContentByHash(hash);
 
@@ -179,19 +181,24 @@ public class VFS
 				Id = Guid.NewGuid(),
 				VFileId = vfileId,
 				FilePath = vfileId.FilePath,
-				RelativePath = vfileId.RelativePath,
+				Directory = vfileId.Directory,
 				FileName = vfileId.FileName,
 				FileExtension = Util.FileExtension(vfileId.FileName),
-				TTL = opts.TTL?.Ticks,
 				DeleteAt = opts.TTL.HasValue ? now + opts.TTL : null,
 				CreationTime = now,
 				ContentId = Guid.NewGuid(),
 				Hash = hash,
-				Size = request.Content.Length,
+				Size = content.Length,
 				SizeStored = bytes.Length,
 				Compression = opts.Compression,
 				ContentCreationTime = now
 			};
+
+			if (vfileContent == null)
+			{
+				// save new content immediately, GC can free bytes
+				vfileContent = Database.SaveVFileContent(newInfo, bytes);
+			}
 
 			if (existingVFile == null)
 			{
@@ -199,7 +206,7 @@ public class VFS
 			}
 			else
 			{
-				// previous VFileInfo already exists but Hash is different than new content.
+				// previous VFileInfo already exists but content is different.
 				var contentDifference = existingContent != null && existingContent.Hash != hash;
 				switch (opts.VersionOpts.Behavior)
 				{
@@ -258,16 +265,8 @@ public class VFS
 						}
 				}
 			}
-
-			if (hashContent == null)
-			{
-				state.NewVFileContents.Add((newInfo, bytes));
-			}
 		}
 
-		//Hooks.Log(new { state.NewVFileInfos, state.UpdateVFileInfos, state.DeleteVFileInfos, NewVFileContentsCount = state.NewVFileContents.Count, state.DeleteVFileContents }.ToJson(true)!);
-
-		Hooks.Log($"state.DeleteVFileInfos.Count: {state.DeleteVFileInfos.Count}");
 		Database.SaveStoreVFilesState(state);
 
 		// @TODO: probably move this into the clean-up operation
@@ -298,13 +297,13 @@ public class VFS
 
 	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)
 	{
-		var relativePath = NormalizeRelativePath(path.Path);
+		var relativePath = NormalizeRelativePath(path.Directory);
 		return BuildVFileId(relativePath, path.FileName, versioned);
 	}
 
 	private static VFileId BuildVFileId(Db.VFileInfo info)
 	{
-		return BuildVFileId(info.RelativePath, info.FileName, info.Versioned);
+		return BuildVFileId(info.Directory, info.FileName, info.Versioned);
 	}
 
 	private static VFileId BuildVFileId(string relativePath, string fileName, DateTimeOffset? versioned = null)
@@ -334,7 +333,7 @@ public class VFS
 			Id = vfile.VFileInfo.Id,
 			VFileId = BuildVFileId(vfile.VFileInfo),
 			FilePath = vfile.VFileInfo.FilePath,
-			RelativePath = vfile.VFileInfo.RelativePath,
+			Directory = vfile.VFileInfo.Directory,
 			FileName = vfile.VFileInfo.FileName,
 			FileExtension = vfile.VFileInfo.FileExtension,
 			Versioned = vfile.VFileInfo.Versioned,

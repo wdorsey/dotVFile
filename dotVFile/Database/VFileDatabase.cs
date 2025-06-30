@@ -29,11 +29,10 @@ CREATE TABLE IF NOT EXISTS VFileInfo (
 	Id						TEXT NOT NULL,
 	VFileContentRowId		INTEGER NOT NULL,
 	FilePath				TEXT NOT NULL,
-	RelativePath			TEXT NOT NULL,
+	Directory				TEXT NOT NULL,
 	FileName				TEXT NOT NULL,
 	FileExtension			TEXT NOT NULL,
 	Versioned				TEXT,
-	TTL						INTEGER,
 	DeleteAt				TEXT,
 	CreationTime			TEXT NOT NULL,
 	CreateTimestamp			TEXT NOT NULL,
@@ -169,11 +168,10 @@ WHERE
 			var info = new Db.VFileInfo().ReadEntityValues(reader);
 			info.VFileContentRowId = reader.GetInt64("VFileContentRowId");
 			info.FilePath = reader.GetString("FilePath");
-			info.RelativePath = reader.GetString("RelativePath");
+			info.Directory = reader.GetString("Directory");
 			info.FileName = reader.GetString("FileName");
 			info.FileExtension = reader.GetString("FileExtension");
 			info.Versioned = reader.GetDateTimeOffsetNullable("Versioned");
-			info.TTL = reader.GetInt64Nullable("TTL");
 			info.DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt");
 			info.CreationTime = reader.GetDateTimeOffset("CreationTime");
 
@@ -270,11 +268,10 @@ SELECT
 	RowId,
 	VFileContentRowId,
 	FilePath,
-	RelativePath,
+	Directory,
 	FileName,
 	FileExtension,
 	Versioned,
-	TTL,
 	DeleteAt,
 	CreationTime,
 	CreateTimestamp
@@ -295,11 +292,10 @@ WHERE
 			var info = new Db.VFileInfo().ReadEntityValues(reader);
 			info.VFileContentRowId = reader.GetInt64("VFileContentRowId");
 			info.FilePath = reader.GetString("FilePath");
-			info.RelativePath = reader.GetString("RelativePath");
+			info.Directory = reader.GetString("Directory");
 			info.FileName = reader.GetString("FileName");
 			info.FileExtension = reader.GetString("FileExtension");
 			info.Versioned = reader.GetDateTimeOffsetNullable("Versioned");
-			info.TTL = reader.GetInt64Nullable("TTL");
 			info.DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt");
 			info.CreationTime = reader.GetDateTimeOffset("CreationTime");
 
@@ -350,24 +346,9 @@ WHERE
 		return null;
 	}
 
-	public Db.StoreVFilesResult SaveStoreVFilesState(StoreVFilesState state)
+	public Db.VFileContent SaveVFileContent(VFileInfo info, byte[] content)
 	{
-		// transactionally write all State changes required.
-		// order:
-		//	NewVFileContents
-		//	DeleteVFileInfos
-		//  UpdateVFileInfos
-		//	NewVFileInfos (requires link to VFileContentRowId)
-		var result = new Db.StoreVFilesResult();
-		int idx = 0;
-		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
-		using var transaction = connection.BeginTransaction();
-		var cmd = new SqliteCommand(string.Empty, connection, transaction);
-
-		foreach (var (info, content) in state.NewVFileContents.DistinctBy(x => x.Info.Hash))
-		{
-			cmd.CommandText += $@"
+		const string sql = $@"
 INSERT INTO VFileContent (
 	Id,
 	Hash,
@@ -378,28 +359,45 @@ INSERT INTO VFileContent (
 	CreationTime,
 	CreateTimestamp)
 VALUES (
-	@Id_{idx},
-	@Hash_{idx},
-	@Size_{idx},
-	@SizeStored_{idx},
-	@Compression_{idx},
-	@Content_{idx},
-	@CreationTime_{idx},
-	@CreateTimestamp_{idx});
+	@Id,
+	@Hash,
+	@Size,
+	@SizeStored,
+	@Compression,
+	@Content,
+	@CreationTime,
+	@CreateTimestamp);
 {SelectInsertedRowId}
 ";
-			var db = ToDbVFileContent(info, content).Stamp();
-			cmd.Parameters.AddWithValue($"@Id_{idx}", db.Id.ToString());
-			cmd.Parameters.AddWithValue($"@Hash_{idx}", db.Hash);
-			cmd.Parameters.AddWithValue($"@Size_{idx}", db.Size);
-			cmd.Parameters.AddWithValue($"@SizeStored_{idx}", db.SizeStored);
-			cmd.Parameters.AddWithValue($"@Compression_{idx}", db.Compression);
-			cmd.Parameters.AddWithValue($"@Content_{idx}", db.Content);
-			cmd.Parameters.AddWithValue($"@CreationTime_{idx}", db.CreationTime.ToDefaultString());
-			cmd.Parameters.AddWithValue($"@CreateTimestamp_{idx}", db.CreateTimestamp.ToDefaultString());
-			idx++;
-			result.NewVFileContents.Add(db);
-		}
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		var db = ToDbVFileContent(info, content).Stamp();
+		cmd.Parameters.AddWithValue($"@Id", db.Id.ToString());
+		cmd.Parameters.AddWithValue($"@Hash", db.Hash);
+		cmd.Parameters.AddWithValue($"@Size", db.Size);
+		cmd.Parameters.AddWithValue($"@SizeStored", db.SizeStored);
+		cmd.Parameters.AddWithValue($"@Compression", db.Compression);
+		cmd.Parameters.AddWithValue($"@Content", db.Content);
+		cmd.Parameters.AddWithValue($"@CreationTime", db.CreationTime.ToDefaultString());
+		cmd.Parameters.AddWithValue($"@CreateTimestamp", db.CreateTimestamp.ToDefaultString());
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		return db.ReadRowId(reader);
+	}
+
+	public Db.StoreVFilesResult SaveStoreVFilesState(StoreVFilesState state)
+	{
+		// All VFileInfo changes written transactionally.
+		// order:
+		//	DeleteVFileInfos
+		//  UpdateVFileInfos
+		//	NewVFileInfos (requires link to VFileContentRowId)
+		var result = new Db.StoreVFilesResult();
+		int idx = 0;
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		using var transaction = connection.BeginTransaction();
+		var cmd = new SqliteCommand(string.Empty, connection, transaction);
 
 		foreach (var delete in state.DeleteVFileInfos)
 		{
@@ -412,18 +410,16 @@ DELETE FROM VFileInfo WHERE RowId = @RowId_{idx};
 
 		foreach (var update in state.UpdateVFileInfos)
 		{
-			// only update-able fields are Versioned, TTL, and DeleteAt
+			// only update-able fields are Versioned and DeleteAt
 			cmd.CommandText += $@"
 UPDATE VFileInfo
 SET 
 	Versioned = @Versioned_{idx},
-	TTL = @TTL_{idx},
 	DeleteAt = @DeleteAt_{idx}
 WHERE
 	RowId = @RowId_{idx};
 ";
 			cmd.Parameters.AddWithValue($"@Versioned_{idx}", (update.Versioned?.ToDefaultString()).NullCoalesce());
-			cmd.Parameters.AddWithValue($"@TTL_{idx}", update.TTL.NullCoalesce());
 			cmd.Parameters.AddWithValue($"@DeleteAt_{idx}", (update.DeleteAt?.ToDefaultString()).NullCoalesce());
 			cmd.Parameters.AddWithValue($"@RowId_{idx}", update.RowId);
 			idx++;
@@ -437,11 +433,10 @@ INSERT INTO VFileInfo (
 	Id,
 	VFileContentRowId,
 	FilePath,
-	RelativePath,
+	Directory,
 	FileName,
 	FileExtension,
 	Versioned,
-	TTL,
 	DeleteAt,
 	CreationTime,
 	CreateTimestamp)
@@ -449,11 +444,10 @@ VALUES (
 	@Id_{idx},
 	(SELECT RowId FROM VFileContent WHERE Hash = @Hash_{idx}),
 	@FilePath_{idx},
-	@RelativePath_{idx},
+	@Directory_{idx},
 	@FileName_{idx},
 	@FileExtension_{idx},
 	@Versioned_{idx},
-	@TTL_{idx},
 	@DeleteAt_{idx},
 	@CreationTime_{idx},
 	@CreateTimestamp_{idx});
@@ -463,11 +457,10 @@ VALUES (
 			cmd.Parameters.AddWithValue($"@Id_{idx}", db.Id.ToString());
 			cmd.Parameters.AddWithValue($"@Hash_{idx}", info.Hash);
 			cmd.Parameters.AddWithValue($"@FilePath_{idx}", db.FilePath);
-			cmd.Parameters.AddWithValue($"@RelativePath_{idx}", db.RelativePath);
+			cmd.Parameters.AddWithValue($"@Directory_{idx}", db.Directory);
 			cmd.Parameters.AddWithValue($"@FileName_{idx}", db.FileName);
 			cmd.Parameters.AddWithValue($"@FileExtension_{idx}", db.FileExtension);
 			cmd.Parameters.AddWithValue($"@Versioned_{idx}", (db.Versioned?.ToDefaultString()).NullCoalesce());
-			cmd.Parameters.AddWithValue($"@TTL_{idx}", db.TTL.NullCoalesce());
 			cmd.Parameters.AddWithValue($"@DeleteAt_{idx}", (db.DeleteAt?.ToDefaultString()).NullCoalesce());
 			cmd.Parameters.AddWithValue($"@CreationTime_{idx}", db.CreationTime.ToDefaultString());
 			cmd.Parameters.AddWithValue($"@CreateTimestamp_{idx}", db.CreateTimestamp.ToDefaultString());
@@ -498,11 +491,10 @@ VALUES (
 		{
 			Id = info.Id,
 			FilePath = info.FilePath,
-			RelativePath = info.RelativePath,
+			Directory = info.Directory,
 			FileName = info.FileName,
 			FileExtension = info.FileExtension,
 			Versioned = info.Versioned,
-			TTL = info.TTL,
 			DeleteAt = info.DeleteAt,
 			CreationTime = info.CreationTime
 		};
