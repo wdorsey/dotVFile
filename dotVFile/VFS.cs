@@ -22,7 +22,7 @@ public class VFS
 		DefaultStorageOptions = opts.DefaultStorageOptions ?? GetDefaultStorageOptions();
 	}
 
-	private VFileDatabase Database { get; }
+	internal VFileDatabase Database { get; }
 	public string Name { get; }
 	public string VFileDirectory { get; }
 	public IVFileHooks Hooks { get; }
@@ -62,13 +62,13 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		var vfiles = Database.GetVFiles([.. paths.Select(x => BuildVFileId(x).Id)], VFileInfoVersionQuery.Latest);
+		var vfiles = Database.GetVFiles([.. paths.Select(x => BuildVFileId(x).FilePath)], VFileInfoVersionQuery.Latest);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFileId> ids)
 	{
-		var vfiles = Database.GetVFiles([.. ids.Select(x => x.Id)], VFileInfoVersionQuery.Latest);
+		var vfiles = Database.GetVFiles([.. ids.Select(x => x.FilePath)], VFileInfoVersionQuery.Latest);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -79,22 +79,20 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfoVersions(VFileId id, VFileInfoVersionQuery versionQuery)
 	{
-		var vfiles = Database.GetVFiles(id.Id.AsList(), versionQuery);
+		var vfiles = Database.GetVFiles(id.FilePath.AsList(), versionQuery);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public VFile? GetVFile(VFilePath path)
 	{
-		var info = GetVFileInfo(path);
-		if (info == null) return null;
-		return GetVFiles(info.AsList()).SingleOrDefault();
+		return GetVFile(BuildVFileId(path));
 	}
 
 	public VFile? GetVFile(VFileId id)
 	{
-		var info = GetVFileInfo(id);
-		if (info == null) return null;
-		return GetVFiles(info.AsList()).SingleOrDefault();
+		var vfile = Database.GetLatestVFile(id.FilePath);
+		if (vfile == null) return null;
+		return GetVFiles(vfile.AsList()).SingleOrDefault();
 	}
 
 	public List<VFile> GetVFiles(List<VFilePath> paths)
@@ -109,9 +107,11 @@ public class VFS
 
 	public List<VFile> GetVFiles(List<VFileInfo> vfiles)
 	{
-		var map = vfiles.ToDictionary(x => x.Id, x => x);
+		return GetVFiles(Database.GetVFiles([.. vfiles.Select(x => x.Id)]));
+	}
 
-		var dbVFiles = Database.GetVFiles([.. vfiles.Select(x => x.Id)]);
+	private List<VFile> GetVFiles(List<Db.VFile> dbVFiles)
+	{
 		Database.FetchContent([.. dbVFiles.Select(x => x.VFileContent)]);
 
 		return [.. dbVFiles.Select(x =>
@@ -121,7 +121,7 @@ public class VFS
 				? x.VFileContent.Content ?? Util.EmptyBytes()
 				: Util.Decompress(x.VFileContent.Content ?? Util.EmptyBytes());
 
-			return new VFile(map[x.VFileInfo.Id], content);
+			return new VFile(DbVFileToVFileInfo(x), content);
 		})];
 	}
 
@@ -167,17 +167,22 @@ public class VFS
 				: request.Content;
 			var hash = Util.HashSHA256(bytes);
 
-			var existingVFile = Database.GetVFiles(vfileId.Id.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
-			var existingContent = existingVFile?.VFileContent ?? Database.GetVFileContentByHash(hash);
+			var existingVFile = Database.GetLatestVFile(vfileId.FilePath);
+			var existingContent = existingVFile?.VFileContent;
+
+			var hashContent = existingContent != null && existingContent.Hash == hash
+				? existingContent
+				: Database.GetVFileContentByHash(hash);
 
 			var newInfo = new VFileInfo
 			{
 				Id = Guid.NewGuid(),
 				VFileId = vfileId,
-				FullPath = vfileId.Id,
+				FilePath = vfileId.FilePath,
 				RelativePath = vfileId.RelativePath,
 				FileName = vfileId.FileName,
 				FileExtension = Util.FileExtension(vfileId.FileName),
+				TTL = opts.TTL?.Ticks,
 				DeleteAt = opts.TTL.HasValue ? now + opts.TTL : null,
 				CreationTime = now,
 				ContentId = Guid.NewGuid(),
@@ -194,64 +199,80 @@ public class VFS
 			}
 			else
 			{
-				var versions = Database.GetVFiles(vfileId.Id.AsList(), VFileInfoVersionQuery.Versions);
-
-				// existingContent will never be null here because existingInfo
-				// can only be not null if it also has content.
-				if (existingContent!.Hash != hash)
+				// previous VFileInfo already exists but Hash is different than new content.
+				var contentDifference = existingContent != null && existingContent.Hash != hash;
+				switch (opts.VersionOpts.Behavior)
 				{
-					switch (opts.VersionOpts.Behavior)
-					{
-						case VFileVersionBehavior.Overwrite:
+					case VFileVersionBehavior.Overwrite:
+						{
+							if (contentDifference)
 							{
 								state.DeleteVFileInfos.Add(existingVFile.VFileInfo);
 								state.NewVFileInfos.Add(newInfo);
-								break;
 							}
-						case VFileVersionBehavior.Error:
+							break;
+						}
+					case VFileVersionBehavior.Error:
+						{
+							if (contentDifference)
 							{
 								var msg = $"Requested to overwrite existing file: {vfileId}";
 								Hooks.Error(new(VFileErrorCodes.VersionBehaviorViolation, msg, nameof(StoreVFiles)));
 								return [];
 							}
-						case VFileVersionBehavior.Version:
+							break;
+						}
+					case VFileVersionBehavior.Version:
+						{
+							var versions = Database.GetVFiles(vfileId.FilePath.AsList(), VFileInfoVersionQuery.Versions);
+							if (contentDifference)
 							{
 								// rebuilding FileId will just add the Versioned field,
 								// so we don't need to update any other corresponding VFileId fields.
-								existingVFile.VFileInfo.FileId = BuildVFileId(path, now).Id;
 								existingVFile.VFileInfo.Versioned = now;
-								existingVFile.VFileInfo.DeleteAt = opts.VersionOpts.VersionTTL.HasValue
-									? now + opts.VersionOpts.VersionTTL
-									: null;
 								versions.Add(existingVFile);
 								state.UpdateVFileInfos.Add(existingVFile.VFileInfo);
 								state.NewVFileInfos.Add(newInfo);
-								break;
 							}
-					}
-				}
 
-				int? maxVersions = opts.VersionOpts.MaxVersionsRetained;
-				if (maxVersions.HasValue && versions.Count > maxVersions)
-				{
-					var delete = versions.OrderByDescending(x => x.VFileInfo.Versioned).Skip(maxVersions.Value).ToList();
-					state.DeleteVFileInfos.AddRange(delete.Select(x => x.VFileInfo));
+							// always check for TTL and MaxVersions changes
+							var ticks = opts.VersionOpts.TTL?.Ticks;
+							foreach (var v in versions)
+							{
+								if (v.VFileInfo.TTL != ticks)
+								{
+									v.VFileInfo.TTL = ticks;
+									v.VFileInfo.DeleteAt = v.VFileInfo.Versioned + opts.VersionOpts.TTL;
+									// sometimes this dupes existingVFile, that's ok
+									state.UpdateVFileInfos.Add(v.VFileInfo);
+								}
+							}
+
+							var maxVersions = opts.VersionOpts.MaxVersionsRetained;
+							if (maxVersions.HasValue && versions.Count > maxVersions)
+							{
+								var delete = versions.OrderByDescending(x => x.VFileInfo.Versioned).Skip(maxVersions.Value).ToList();
+								state.DeleteVFileInfos.AddRange(delete.Select(x => x.VFileInfo));
+							}
+							break;
+						}
 				}
 			}
 
-			if (existingContent == null)
+			if (hashContent == null)
 			{
 				state.NewVFileContents.Add((newInfo, bytes));
 			}
 		}
 
-		// @TODO: check DeleteVFileInfos to see if data can be added to DeleteVFileData
-		// write sql query to get count of infos with DeleteVFileInfos.Hash
-		// if this proves too slow, remove it
+		//Hooks.Log(new { state.NewVFileInfos, state.UpdateVFileInfos, state.DeleteVFileInfos, NewVFileContentsCount = state.NewVFileContents.Count, state.DeleteVFileContents }.ToJson(true)!);
 
-		Hooks.Log(new { state.NewVFileInfos, state.UpdateVFileInfos, state.DeleteVFileInfos, NewVFileContentsCount = state.NewVFileContents.Count, state.DeleteVFileContents }.ToJson(true)!);
-
+		Hooks.Log($"state.DeleteVFileInfos.Count: {state.DeleteVFileInfos.Count}");
 		Database.SaveStoreVFilesState(state);
+
+		// @TODO: probably move this into the clean-up operation
+		var rowIds = Database.GetUnreferencedVFileContentRowIds();
+		Database.DeleteVFileContent(rowIds);
 
 		return state.NewVFileInfos;
 	}
@@ -278,56 +299,54 @@ public class VFS
 	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)
 	{
 		var relativePath = NormalizeRelativePath(path.Path);
+		return BuildVFileId(relativePath, path.FileName, versioned);
+	}
+
+	private static VFileId BuildVFileId(Db.VFileInfo info)
+	{
+		return BuildVFileId(info.RelativePath, info.FileName, info.Versioned);
+	}
+
+	private static VFileId BuildVFileId(string relativePath, string fileName, DateTimeOffset? versioned = null)
+	{
 		var parts = GetRelativePathParts(relativePath);
+
+		var filePath = $"{relativePath}{fileName}";
 
 		var versionPart = versioned != null
 			? $"?v={versioned.ToDefaultString()}"
 			: string.Empty;
 
-		var id = $"{relativePath}{path.FileName}{versionPart}";
+		var id = $"{filePath}{versionPart}";
 
-		return new VFileId(id, relativePath, parts, path.FileName, versioned);
-	}
-
-	private static VFileId ParseVFileId(string id)
-	{
-		var idx = id.LastIndexOf(PathDirectorySeparator) + 1;
-		var versionIdx = id.LastIndexOf("?v=");
-		var relativePath = id[..idx];
-		var parts = GetRelativePathParts(relativePath);
-		string? versionQueryString = versionIdx > 0 ? id[versionIdx..] : null;
-		DateTimeOffset? versioned = null;
-		string fileName = id[idx..];
-		if (versionQueryString != null)
-		{
-			versioned = DateTimeOffset.Parse(versionQueryString.Skip(3).GetString());
-			fileName = fileName.Replace(versionQueryString, string.Empty);
-		}
-
-		return new(id, relativePath, parts, fileName, versioned);
+		return new VFileId(id, relativePath, parts, fileName, filePath, versioned);
 	}
 
 	private static List<VFileInfo> DbVFileToVFileInfo(List<Db.VFile> vfiles)
 	{
-		return [.. vfiles.Select(x =>
-			new VFileInfo
-			{
-				Id = x.VFileInfo.Id,
-				VFileId = ParseVFileId(x.VFileInfo.FileId),
-				FullPath = x.VFileInfo.FileId,
-				RelativePath = x.VFileInfo.RelativePath,
-				FileName = x.VFileInfo.FileName,
-				FileExtension = x.VFileInfo.FileExtension,
-				Versioned = x.VFileInfo.Versioned,
-				DeleteAt = x.VFileInfo.DeleteAt,
-				CreationTime = x.VFileInfo.CreationTime,
-				ContentId = x.VFileContent.Id,
-				Hash = x.VFileContent.Hash,
-				Size = x.VFileContent.Size,
-				SizeStored = x.VFileContent.SizeStored,
-				Compression = (VFileCompression)x.VFileContent.Compression,
-				ContentCreationTime = x.VFileContent.CreationTime
-			})];
+		return [.. vfiles.Select(DbVFileToVFileInfo)];
+	}
+
+	private static VFileInfo DbVFileToVFileInfo(Db.VFile vfile)
+	{
+		return new VFileInfo
+		{
+			Id = vfile.VFileInfo.Id,
+			VFileId = BuildVFileId(vfile.VFileInfo),
+			FilePath = vfile.VFileInfo.FilePath,
+			RelativePath = vfile.VFileInfo.RelativePath,
+			FileName = vfile.VFileInfo.FileName,
+			FileExtension = vfile.VFileInfo.FileExtension,
+			Versioned = vfile.VFileInfo.Versioned,
+			DeleteAt = vfile.VFileInfo.DeleteAt,
+			CreationTime = vfile.VFileInfo.CreationTime,
+			ContentId = vfile.VFileContent.Id,
+			Hash = vfile.VFileContent.Hash,
+			Size = vfile.VFileContent.Size,
+			SizeStored = vfile.VFileContent.SizeStored,
+			Compression = (VFileCompression)vfile.VFileContent.Compression,
+			ContentCreationTime = vfile.VFileContent.CreationTime
+		};
 	}
 
 	private bool Assert_ValidFileName(string fileName, string context)

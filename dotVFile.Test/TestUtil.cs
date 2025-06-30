@@ -17,36 +17,20 @@ public record TestFile(
 	List<string> RelativePath,
 	string FileName)
 {
-	public VFileId? VFileId { get; set; }
-	public VFilePath VFilePath { get; } = new(string.Join(VFS.PathDirectorySeparator, RelativePath), FileName);
-	public List<byte[]> Content { get; } = [Util.GetFileBytes(Path.Combine(TestUtil.TestFilesDir, FileName))];
+	public VFilePath VFilePath = new(string.Join(VFS.PathDirectorySeparator, RelativePath), FileName);
+	public string FileExtension = Util.FileExtension(FileName);
+	public byte[] Content = [];// = Util.GetFileBytes(Path.Combine(TestUtil.TestFilesDir, FileName));
 }
 
 public static class TestUtil
 {
 	public static string TestFilesDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
-	public static string ResultsDir { get; } = Path.Combine(Environment.CurrentDirectory, "Results");
+	public static string ResultsDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestResults");
+	public static List<TestFile> TestFiles = [];
 
-	public static void RunStandardTest(VFS vfs, VFileStorageOptions opts, string testName)
+	public static void LoadTestFiles()
 	{
-		var files = GetTestFiles();
-		var requests = files.Select(x => new StoreVFileRequest(x.VFilePath, x.Content.Last(), opts)).ToList();
-		var infos = vfs.StoreVFiles(requests);
-		for (var i = 0; i < infos.Count; i++)
-		{
-			var file = files[i];
-			var info = infos[i];
-			Console.WriteLine(info.VFileId.ToString());
-			var vfile = vfs.GetVFile(file.VFilePath) ?? throw new Exception($"null vfile {info.VFileId}");
-			WriteFiles(file, vfile, testName);
-			AssertFile(file, vfile);
-		}
-	}
-
-	public static List<TestFile> GetTestFiles()
-	{
-		return
-		[
+		TestFiles = [
 			new([], "test-file-1.json"),
 			new([], "test-file-1 - Copy.json"),
 			new(["/"], "test-file-2.json"),
@@ -73,6 +57,48 @@ public static class TestUtil
 			new(["img"], "demon-slayer-infinity-castle-96-days.jpg"),
 			new(["img"], "demon-slayer-infinity-castle-97-days.jpg")
 		];
+
+		foreach (var file in TestFiles)
+		{
+			file.Content = Util.GetFileBytes(Path.Combine(TestFilesDir, file.FileName));
+		}
+	}
+
+	public static void RunStandardTest(VFS vfs, VFileStorageOptions opts, string testName)
+	{
+		Console.WriteLine($"=== {testName} ===");
+		var files = GetTestFiles();
+		var requests = files.Select(x => new StoreVFileRequest(x.VFilePath, x.Content, opts)).ToList();
+		var infos = vfs.StoreVFiles(requests);
+		foreach (var file in files)
+		{
+			Console.WriteLine(file.VFilePath.ToString());
+			var vfile = vfs.GetVFile(file.VFilePath) ?? throw new Exception($"null vfile: {file.VFilePath}");
+			WriteFiles(file, vfile, $"{testName}");
+			AssertFile(file, vfile);
+		}
+	}
+
+	public static List<TestFile> GetTestFiles()
+	{
+		// this randomizes the content of each file
+		var results = new List<TestFile>();
+		var rand = new Random();
+
+		foreach (var ext in TestFiles.GroupBy(x => x.FileExtension))
+		{
+			foreach (var file in ext)
+			{
+				var contentFile = ext.ElementAt(rand.Next(0, ext.Count()));
+				var testFile = new TestFile(file.RelativePath, file.FileName)
+				{
+					Content = contentFile.Content
+				};
+				results.Add(testFile);
+			}
+		}
+
+		return results;
 	}
 
 	public static void AssertFile(TestFile file, VFile vfile)
@@ -80,13 +106,13 @@ public static class TestUtil
 		// We only assert that the Content (byte[]) matches.
 		// The reason for this is because that is all that ultimately matters.
 		// At the end of the day, all this system does is store and get files. StoreVFile and GetVFile.
-		// So, if we're storing files and then getting them via it's VFileId (path + fileName),
-		// then the content matching proves it's doing everything correctly. At least, everything critical.
+		// So, if we're storing files and then getting them via VFileId (path + fileName) or VFilePath,
+		// then the Content matching proves it's doing everything correctly. At least, everything critical.
 		// If the content matches, everything is working.
-		// Trying to verify every bit individually would make for a whole lot more work
+		// Trying to verify every little bit individually would make for a whole lot more work
 		// in writing this testing while providing very little value.
 
-		byte[] expected = file.Content.Last();
+		byte[] expected = file.Content;
 		if (expected.Length != vfile.Content.Length)
 		{
 			Console.WriteLine($"file content Length mismatch. {file.FileName}");
@@ -111,7 +137,7 @@ public static class TestUtil
 		var vfilePath = Path.Combine(dir, $"vfile_{file.FileName}");
 		var vfileInfoPath = Path.Combine(dir, $"VFileInfo_{name}.json");
 
-		Util.WriteFile(filePath, file.Content.Last());
+		Util.WriteFile(filePath, file.Content);
 		Util.WriteFile(vfilePath, vfile.Content);
 		Util.WriteFile(vfileInfoPath, Util.GetBytes(vfile.VFileInfo, true, false));
 	}

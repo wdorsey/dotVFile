@@ -30,6 +30,12 @@ internal static class DbUtil
 		return str.HasValue() ? DateTimeOffset.Parse(str) : null;
 	}
 
+	public static long? GetInt64Nullable(this SqliteDataReader reader, string name)
+	{
+		var value = reader[name];
+		return value != null && value != DBNull.Value ? Convert.ToInt64(value) : null;
+	}
+
 	public static DateTimeOffset GetDateTimeOffset(this SqliteDataReader reader, string name)
 	{
 		return reader[name].ConvertDateTimeOffset();

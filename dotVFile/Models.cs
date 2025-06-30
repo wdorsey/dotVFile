@@ -64,6 +64,7 @@ public record VFileId(
 	string RelativePath,
 	List<string> RelativePathParts,
 	string FileName,
+	string FilePath,
 	DateTimeOffset? Versioned)
 {
 	public override string ToString()
@@ -72,19 +73,20 @@ public record VFileId(
 	}
 
 	public static VFileId Default() =>
-		new(string.Empty, string.Empty, [], string.Empty, null);
+		new(string.Empty, string.Empty, [], string.Empty, string.Empty, null);
 }
 
 public record VFileInfo
 {
 	public Guid Id;
 	public VFileId VFileId = VFileId.Default();
-	public string FullPath = string.Empty;
+	public string FilePath = string.Empty;
 	public string RelativePath = string.Empty;
 	public string FileName = string.Empty;
 	public string FileExtension = string.Empty;
 	public DateTimeOffset? Versioned;
 	public bool IsVersion => Versioned.HasValue;
+	public long? TTL;
 	public DateTimeOffset? DeleteAt;
 	public DateTimeOffset CreationTime;
 
@@ -131,6 +133,11 @@ public record VFilePath
 	/// </summary>
 	public string? Path { get; }
 	public string FileName { get; }
+
+	public override string ToString()
+	{
+		return $"{Path}{VFS.PathDirectorySeparator}{FileName}";
+	}
 }
 
 public record StoreVFileRequest(
@@ -171,7 +178,12 @@ public enum VFileCompression
 public record VFileVersionOptions(
 	VFileVersionBehavior Behavior,
 	int? MaxVersionsRetained,
-	TimeSpan? VersionTTL);
+	TimeSpan? TTL)
+{
+	public VFileVersionBehavior Behavior = Behavior;
+	public int? MaxVersionsRetained = MaxVersionsRetained;
+	public TimeSpan? TTL = TTL;
+}
 
 /// <summary>
 /// Default: VFS.GetDefaultStorageOptions()
@@ -205,5 +217,4 @@ internal record StoreVFilesState
 	public List<Db.VFileInfo> UpdateVFileInfos = [];
 	public List<Db.VFileInfo> DeleteVFileInfos = [];
 	public List<(VFileInfo Info, byte[] Content)> NewVFileContents = [];
-	public List<Db.VFileContent> DeleteVFileContents = [];
 }

@@ -17,11 +17,12 @@ public static class Db
 	public record VFileInfo : Entity
 	{
 		public long VFileContentRowId;
-		public string FileId = string.Empty;
+		public string FilePath = string.Empty;
 		public string RelativePath = string.Empty;
 		public string FileName = string.Empty;
 		public string FileExtension = string.Empty;
 		public DateTimeOffset? Versioned;
+		public long? TTL;
 		public DateTimeOffset? DeleteAt;
 		public DateTimeOffset CreationTime;
 	}
