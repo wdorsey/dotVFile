@@ -34,3 +34,4 @@ TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL");
 
 storageOpts.VersionOpts.MaxVersionsRetained = 1;
 TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL-MaxVersionsRetained_1");
+TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL-MaxVersionsRetained_1");

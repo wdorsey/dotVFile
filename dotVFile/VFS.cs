@@ -211,58 +211,62 @@ public class VFS
 				switch (opts.VersionOpts.Behavior)
 				{
 					case VFileVersionBehavior.Overwrite:
+					{
+						if (contentDifference)
 						{
-							if (contentDifference)
-							{
-								state.DeleteVFileInfos.Add(existingVFile.VFileInfo);
-								state.NewVFileInfos.Add(newInfo);
-							}
-							break;
+							state.DeleteVFileInfos.Add(existingVFile.VFileInfo);
+							state.NewVFileInfos.Add(newInfo);
 						}
+						break;
+					}
+
 					case VFileVersionBehavior.Error:
+					{
+						if (contentDifference)
 						{
-							if (contentDifference)
-							{
-								var msg = $"Requested to overwrite existing file: {vfileId}";
-								Hooks.Error(new(VFileErrorCodes.VersionBehaviorViolation, msg, nameof(StoreVFiles)));
-								return [];
-							}
-							break;
+							var msg = $"Requested to overwrite existing file: {vfileId}";
+							Hooks.Error(new(VFileErrorCodes.VersionBehaviorViolation, msg, nameof(StoreVFiles)));
+							return [];
 						}
+						break;
+					}
+
 					case VFileVersionBehavior.Version:
+					{
+						var versions = Database.GetVFiles(vfileId.FilePath.AsList(), VFileInfoVersionQuery.Versions);
+
+						if (contentDifference)
 						{
-							var versions = Database.GetVFiles(vfileId.FilePath.AsList(), VFileInfoVersionQuery.Versions);
-							if (contentDifference)
-							{
-								// rebuilding FileId will just add the Versioned field,
-								// so we don't need to update any other corresponding VFileId fields.
-								existingVFile.VFileInfo.Versioned = now;
-								versions.Add(existingVFile);
-								state.UpdateVFileInfos.Add(existingVFile.VFileInfo);
-								state.NewVFileInfos.Add(newInfo);
-							}
-
-							// always check for TTL and MaxVersions changes
-							var ticks = opts.VersionOpts.TTL?.Ticks;
-							foreach (var v in versions)
-							{
-								if (v.VFileInfo.TTL != ticks)
-								{
-									v.VFileInfo.TTL = ticks;
-									v.VFileInfo.DeleteAt = v.VFileInfo.Versioned + opts.VersionOpts.TTL;
-									// sometimes this dupes existingVFile, that's ok
-									state.UpdateVFileInfos.Add(v.VFileInfo);
-								}
-							}
-
-							var maxVersions = opts.VersionOpts.MaxVersionsRetained;
-							if (maxVersions.HasValue && versions.Count > maxVersions)
-							{
-								var delete = versions.OrderByDescending(x => x.VFileInfo.Versioned).Skip(maxVersions.Value).ToList();
-								state.DeleteVFileInfos.AddRange(delete.Select(x => x.VFileInfo));
-							}
-							break;
+							existingVFile.VFileInfo.Versioned = now;
+							versions.Add(existingVFile);
+							state.UpdateVFileInfos.Add(existingVFile.VFileInfo);
+							state.NewVFileInfos.Add(newInfo);
 						}
+
+						// always check for TTL and MaxVersions changes
+						foreach (var v in versions)
+						{
+							// always updates version's DeleteAt to the current opts.VersionOpts.TTL that is passed in.
+							// DeleteAt calculated off the Versioned timestamp.
+							var expected = opts.VersionOpts.TTL.HasValue
+								? v.VFileInfo.Versioned + opts.VersionOpts.TTL
+								: null;
+							if (v.VFileInfo.DeleteAt != expected)
+							{
+								v.VFileInfo.DeleteAt = expected;
+								// sometimes this adds a dupe existingVFile, that's ok
+								state.UpdateVFileInfos.Add(v.VFileInfo);
+							}
+						}
+
+						var maxVersions = opts.VersionOpts.MaxVersionsRetained;
+						if (maxVersions.HasValue && versions.Count > maxVersions)
+						{
+							var delete = versions.OrderByDescending(x => x.VFileInfo.Versioned).Skip(maxVersions.Value).ToList();
+							state.DeleteVFileInfos.AddRange(delete.Select(x => x.VFileInfo));
+						}
+						break;
+					}
 				}
 			}
 		}
