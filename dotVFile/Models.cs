@@ -50,7 +50,7 @@ public record VFSOptions(
 	string? Name,
 	string VFileDirectory,
 	IVFileHooks? Hooks = null,
-	VFileStorageOptions? DefaultStorageOptions = null);
+	VFileStoreOptions? DefaultStoreOptions = null);
 
 /// <summary>
 /// Uniquely identifies a VFile.<br/>
@@ -151,7 +151,7 @@ public record VFileContent
 public record StoreVFileRequest(
 	VFilePath Path,
 	VFileContent Content,
-	VFileStorageOptions? Opts = null);
+	VFileStoreOptions? Opts = null);
 
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileVersionBehavior
@@ -194,9 +194,9 @@ public record VFileVersionOptions(
 }
 
 /// <summary>
-/// Default: VFS.GetDefaultStorageOptions()
+/// Default: VFS.GetDefaultStoreOptions()
 /// </summary>
-public record VFileStorageOptions(
+public record VFileStoreOptions(
 	VFileCompression Compression,
 	TimeSpan? TTL,
 	VFileVersionOptions VersionOpts)
@@ -209,6 +209,12 @@ public record VFileStorageOptions(
 	/// Default: VFS.GetDefaultVersionOptions()
 	/// </summary>
 	public VFileVersionOptions VersionOpts = VersionOpts;
+
+	public VFileStoreOptions SetVersionOpts(VFileVersionOptions opts)
+	{
+		VersionOpts = opts;
+		return this;
+	}
 }
 
 [JsonConverter(typeof(StringEnumConverter))]

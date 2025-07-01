@@ -1,11 +1,13 @@
-﻿namespace dotVFile;
+﻿using Microsoft.Data.Sqlite;
 
-public record VFileDatabaseOptions(
+namespace dotVFile;
+
+internal record VFileDatabaseOptions(
 	string Name,
 	string VFileDirectory,
 	IVFileHooks Hooks);
 
-public static class Db
+internal static class Db
 {
 	public record Entity
 	{
@@ -46,4 +48,6 @@ public static class Db
 		public List<VFileInfo> UpdatedVFileInfos = [];
 		public List<VFileContent> NewVFileContents = [];
 	}
+
+	public record InParams(string Sql, List<SqliteParameter> Parameters);
 }

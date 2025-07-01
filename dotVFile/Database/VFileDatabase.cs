@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Text;
 using Microsoft.Data.Sqlite;
 
 namespace dotVFile;
@@ -44,6 +45,7 @@ CREATE INDEX IF NOT EXISTS        VFileInfo_VFileContentRowId ON VFileInfo(VFile
 CREATE INDEX IF NOT EXISTS        VFileInfo_FilePath ON VFileInfo(FilePath);
 CREATE INDEX IF NOT EXISTS        VFileInfo_FilePathLatest ON VFileInfo(FilePath, Versioned) WHERE Versioned IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_FilePathVersioned ON VFileInfo(FilePath, Versioned);
+CREATE INDEX IF NOT EXISTS        VFileInfo_Directory ON VFileInfo(Directory);
 CREATE INDEX IF NOT EXISTS        VFileInfo_DeleteAt ON VFileInfo(DeleteAt) WHERE DeleteAt IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS VFileContent (
@@ -73,6 +75,7 @@ DROP INDEX IF EXISTS VFileInfo_VFileContentInfoRowId;
 DROP INDEX IF EXISTS VFileInfo_FilePath;
 DROP INDEX IF EXISTS VFileInfo_FilePathLatest;
 DROP INDEX IF EXISTS VFileInfo_FilePathVersioned;
+DROP INDEX IF EXISTS VFileInfo_Directory;
 DROP INDEX IF EXISTS VFileInfo_DeleteAt;
 DROP INDEX IF EXISTS VFileContent_Id;
 DROP INDEX IF EXISTS VFileContent_Hash;
@@ -101,19 +104,13 @@ DROP TABLE IF EXISTS VFileContent;
 	{
 		var results = new List<Db.VFile>();
 
-		var versionedCond = versionQuery switch
-		{
-			VFileInfoVersionQuery.Latest => "AND Versioned IS NULL",
-			VFileInfoVersionQuery.Versions => "AND Versioned IS NOT NULL",
-			VFileInfoVersionQuery.Both => string.Empty,
-			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
-		};
+		var versionedCond = VersionSql(versionQuery);
 
 		foreach (var list in filePaths.Distinct().Partition(50))
 		{
-			var inClause = string.Join(',', list.Select(x => $"'{x}'"));
-			var where = $@"	i.FilePath IN ({inClause}) {versionedCond} ";
-			results.AddRange(GetVFiles(where));
+			var inParams = DbUtil.BuildInParams(list.Select(x => x), "@Path", SqliteType.Text);
+			var where = $"	i.FilePath IN ({inParams.Sql}) {versionedCond} ";
+			results.AddRange(GetVFiles(where, inParams.Parameters));
 		}
 
 		return results;
@@ -130,15 +127,23 @@ DROP TABLE IF EXISTS VFileContent;
 
 		foreach (var list in ids.Distinct().Partition(50))
 		{
-			var inClause = string.Join(',', list.Select(x => $"'{x}'"));
-			var where = $@"	i.Id IN ({inClause}) ";
-			results.AddRange(GetVFiles(where));
+			var inParams = DbUtil.BuildInParams(list.Select(x => x.ToString()), "@Id", SqliteType.Text);
+			var where = $@"	i.Id IN ({inParams.Sql}) ";
+			results.AddRange(GetVFiles(where, inParams.Parameters));
 		}
 
 		return results;
 	}
 
-	private List<Db.VFile> GetVFiles(string where)
+	public List<Db.VFile> GetVFilesByDirectory(string directory, VFileInfoVersionQuery versionQuery)
+	{
+		var versionedCond = VersionSql(versionQuery);
+		var where = $" i.Directory = @Directory {versionedCond} ";
+		var param = new SqliteParameter("@Directory", directory);
+		return GetVFiles(where, [param]);
+	}
+
+	private List<Db.VFile> GetVFiles(string whereSql, List<SqliteParameter> parameters)
 	{
 		var results = new List<Db.VFile>();
 
@@ -157,10 +162,11 @@ FROM
 	VFileInfo i
 	INNER JOIN VFileContent c ON c.RowId = i.VFileContentRowId
 WHERE
-	{where};
+	{whereSql};
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddRange(parameters);
 		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
@@ -186,6 +192,17 @@ WHERE
 		}
 
 		return results;
+	}
+
+	private static string VersionSql(VFileInfoVersionQuery versionQuery)
+	{
+		return versionQuery switch
+		{
+			VFileInfoVersionQuery.Latest => "AND Versioned IS NULL",
+			VFileInfoVersionQuery.Versions => "AND Versioned IS NOT NULL",
+			VFileInfoVersionQuery.Both => string.Empty,
+			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
+		};
 	}
 
 	public List<long> GetUnreferencedVFileContentRowIds()

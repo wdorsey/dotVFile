@@ -10,28 +10,19 @@ VFS vfs = new(opts);
 // wipe data from test vfs at the start of each run
 vfs.DANGER_WipeData();
 
-/* TESTING */
-Util.DeleteDirectoryContent(TestUtil.ResultsDir, true);
 TestUtil.LoadTestFiles();
-var storageOpts = VFS.GetDefaultStorageOptions();
+var file = TestUtil.TestFiles.First();
 
-TestUtil.RunStandardTest(vfs, storageOpts, "default");
+// use stream to store file
+VFileInfo? info = null;
+using (FileStream fs = File.OpenRead(file.FilePath))
+{
+	info = vfs.StoreVFile(
+		new VFilePath("stream_directory", file.FileName),
+		new VFileContent(fs));
 
-storageOpts.Compression = VFileCompression.Compress;
-TestUtil.RunStandardTest(vfs, storageOpts, "compress");
+	var vfile = vfs.GetVFile(info!);
+}
+TestUtil.AssertFileContent(vfs, file, info);
 
-storageOpts.Compression = VFileCompression.None;
-storageOpts.TTL = TimeSpan.FromSeconds(1);
-TestUtil.RunStandardTest(vfs, storageOpts, "TTL");
-// @TODO: clean-up operation to check it deletes TLL
-
-storageOpts.TTL = null;
-storageOpts.VersionOpts.Behavior = VFileVersionBehavior.Version;
-TestUtil.RunStandardTest(vfs, storageOpts, "Version");
-
-storageOpts.VersionOpts.TTL = TimeSpan.FromSeconds(1);
-TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL");
-
-storageOpts.VersionOpts.MaxVersionsRetained = 1;
-TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL-MaxVersionsRetained_1");
-TestUtil.RunStandardTest(vfs, storageOpts, "Version-TTL-MaxVersionsRetained_1");
+TestUtil.RunTests(vfs);

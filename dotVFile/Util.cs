@@ -87,28 +87,21 @@ internal static class Util
 
 		if (content.Stream != null)
 		{
-			var buffer = new Span<byte>();
+			Span<byte> buffer = new byte[1024];
 			var result = new List<byte>();
-			while (content.Stream.Read(buffer) > 0)
+
+			int read;
+			while ((read = content.Stream.Read(buffer)) > 0)
 			{
-				result.AddRange(buffer);
+				result.AddRange(buffer[..read]);
 			}
 
-			content.Stream.Dispose();
 			content.Bytes = [.. result];
 
 			return content.Bytes;
 		}
 
 		throw new Exception("unable to get VFileContent bytes.");
-	}
-
-	public static void Clear(this VFileContent content)
-	{
-		content.Bytes = null;
-		content.FilePath = null;
-		content.Stream?.Dispose();
-		content.Stream = null;
 	}
 
 	public static string FileExtension(string fileName)

@@ -86,4 +86,28 @@ internal static class DbUtil
 		connection.Open();
 		cmd.ExecuteNonQuery();
 	}
+
+	public static Db.InParams BuildInParams<T>(
+		IEnumerable<T> values,
+		string paramName,
+		SqliteType type)
+	{
+		var parameters = new List<SqliteParameter>();
+		var paramKeys = new List<string>();
+		var idx = 0;
+		foreach (var value in values)
+		{
+			var key = $"{paramName}_{idx++}";
+			paramKeys.Add(key);
+			var @param = new SqliteParameter(key, type)
+			{
+				Value = value
+			};
+			parameters.Add(@param);
+		}
+
+		var sql = string.Join(',', paramKeys);
+
+		return new Db.InParams(sql, parameters);
+	}
 }

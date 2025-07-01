@@ -4,7 +4,7 @@ public class VFS
 {
 	public const char PathDirectorySeparator = '/';
 
-	public static VFileStorageOptions GetDefaultStorageOptions() =>
+	public static VFileStoreOptions GetDefaultStoreOptions() =>
 		new(VFileCompression.None, null, GetDefaultVersionOptions());
 
 	public static VFileVersionOptions GetDefaultVersionOptions() =>
@@ -19,14 +19,14 @@ public class VFS
 		VFileDirectory = Util.CreateDir(opts.VFileDirectory);
 		Hooks = opts.Hooks ?? new NotImplementedHooks();
 		Database = new VFileDatabase(new(Name, VFileDirectory, Hooks));
-		DefaultStorageOptions = opts.DefaultStorageOptions ?? GetDefaultStorageOptions();
+		DefaultStoreOptions = opts.DefaultStoreOptions ?? GetDefaultStoreOptions();
 	}
 
 	internal VFileDatabase Database { get; }
 	public string Name { get; }
 	public string VFileDirectory { get; }
 	public IVFileHooks Hooks { get; }
-	public VFileStorageOptions DefaultStorageOptions { get; }
+	public VFileStoreOptions DefaultStoreOptions { get; }
 
 	/// <summary>
 	/// !!! DANGER !!!
@@ -60,6 +60,13 @@ public class VFS
 		return GetVFileInfoVersions(id, VFileInfoVersionQuery.Latest).SingleOrDefault();
 	}
 
+	public List<VFileInfo> GetVFileInfos(string directory)
+	{
+		var normalized = NormalizePath(directory);
+		var vfiles = Database.GetVFilesByDirectory(normalized, VFileInfoVersionQuery.Latest);
+		return DbVFileToVFileInfo(vfiles);
+	}
+
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
 		var vfiles = Database.GetVFiles([.. paths.Select(x => BuildVFileId(x).FilePath)], VFileInfoVersionQuery.Latest);
@@ -83,6 +90,13 @@ public class VFS
 		return DbVFileToVFileInfo(vfiles);
 	}
 
+	public List<VFileInfo> GetVFileInfoVersions(string directory, VFileInfoVersionQuery versionQuery)
+	{
+		var normalized = NormalizePath(directory);
+		var vfiles = Database.GetVFilesByDirectory(normalized, versionQuery);
+		return DbVFileToVFileInfo(vfiles);
+	}
+
 	public VFile? GetVFile(VFilePath path)
 	{
 		return GetVFile(BuildVFileId(path));
@@ -93,6 +107,11 @@ public class VFS
 		var vfile = Database.GetLatestVFile(id.FilePath);
 		if (vfile == null) return null;
 		return GetVFiles(vfile.AsList()).SingleOrDefault();
+	}
+
+	public VFile? GetVFile(VFileInfo info)
+	{
+		return GetVFiles(info.AsList()).SingleOrDefault();
 	}
 
 	public List<VFile> GetVFiles(List<VFilePath> paths)
@@ -108,6 +127,11 @@ public class VFS
 	public List<VFile> GetVFiles(List<VFileInfo> vfiles)
 	{
 		return GetVFiles(Database.GetVFiles([.. vfiles.Select(x => x.Id)]));
+	}
+
+	public List<VFile> GetVFiles(string directory)
+	{
+		return GetVFiles(GetVFileInfos(directory));
 	}
 
 	private List<VFile> GetVFiles(List<Db.VFile> dbVFiles)
@@ -128,7 +152,7 @@ public class VFS
 	public VFileInfo? StoreVFile(
 		VFilePath path,
 		VFileContent content,
-		VFileStorageOptions? opts = null)
+		VFileStoreOptions? opts = null)
 	{
 		return StoreVFile(new StoreVFileRequest(path, content, opts));
 	}
@@ -160,13 +184,12 @@ public class VFS
 			uniqueMap.Add(vfileId.Id);
 
 			var now = DateTimeOffset.Now;
-			var opts = request.Opts ?? DefaultStorageOptions;
+			var opts = request.Opts ?? DefaultStoreOptions;
 
 			var content = request.Content.GetContent();
 			var bytes = opts.Compression == VFileCompression.Compress
 				? Util.Compress(content)
 				: content;
-			request.Content.Clear(); // free memory
 			var hash = Util.HashSHA256(bytes);
 
 			var existingVFile = Database.GetLatestVFile(vfileId.FilePath);
@@ -280,29 +303,23 @@ public class VFS
 		return state.NewVFileInfos;
 	}
 
-	private static string NormalizeRelativePath(string? path)
+	private static string NormalizePath(string? path)
 	{
-		char[] dividers = { '/', '\\' };
+		char[] dividers = ['/', '\\'];
 		var parts = path?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
-		var relativePath = PathDirectorySeparator.ToString();
+		var result = PathDirectorySeparator.ToString();
 		if (parts.AnySafe())
 		{
-			relativePath += string.Join(PathDirectorySeparator, parts);
-			relativePath += PathDirectorySeparator;
+			result += string.Join(PathDirectorySeparator, parts);
+			result += PathDirectorySeparator;
 		}
-		return relativePath;
-	}
-
-	private static List<string> GetRelativePathParts(string relativePath)
-	{
-		// @note: this explicitly works only with a NormalizeRelativePath
-		return [.. relativePath.Split(PathDirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+		return result;
 	}
 
 	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)
 	{
-		var relativePath = NormalizeRelativePath(path.Directory);
-		return BuildVFileId(relativePath, path.FileName, versioned);
+		var directory = NormalizePath(path.Directory);
+		return BuildVFileId(directory, path.FileName, versioned);
 	}
 
 	private static VFileId BuildVFileId(Db.VFileInfo info)
@@ -310,11 +327,11 @@ public class VFS
 		return BuildVFileId(info.Directory, info.FileName, info.Versioned);
 	}
 
-	private static VFileId BuildVFileId(string relativePath, string fileName, DateTimeOffset? versioned = null)
+	private static VFileId BuildVFileId(string directory, string fileName, DateTimeOffset? versioned = null)
 	{
-		var parts = GetRelativePathParts(relativePath);
+		var parts = directory.Split(PathDirectorySeparator, StringSplitOptions.RemoveEmptyEntries).ToList();
 
-		var filePath = $"{relativePath}{fileName}";
+		var filePath = $"{directory}{fileName}";
 
 		var versionPart = versioned != null
 			? $"?v={versioned.ToDefaultString()}"
@@ -322,7 +339,7 @@ public class VFS
 
 		var id = $"{filePath}{versionPart}";
 
-		return new VFileId(id, relativePath, parts, fileName, filePath, versioned);
+		return new VFileId(id, directory, parts, fileName, filePath, versioned);
 	}
 
 	private static List<VFileInfo> DbVFileToVFileInfo(List<Db.VFile> vfiles)
