@@ -164,6 +164,7 @@ public class VFS
 
 	public List<VFileInfo> StoreVFiles(List<StoreVFileRequest> requests)
 	{
+		var result = new List<VFileInfo>();
 		var state = new StoreVFilesState();
 		var uniqueMap = new HashSet<string>();
 
@@ -175,9 +176,9 @@ public class VFS
 
 			var vfileId = BuildVFileId(path, null);
 
-			if (uniqueMap.Contains(vfileId.Id))
+			if (uniqueMap.Contains(vfileId.FilePath))
 			{
-				Hooks.Error(new(VFileErrorCodes.Duplicate, $"Duplicate file detected: {vfileId}", nameof(StoreVFiles)));
+				Hooks.Error(new(VFileErrorCodes.Duplicate, $"Duplicate file detected: {vfileId.FilePath}", nameof(StoreVFiles)));
 				return [];
 			}
 
@@ -226,11 +227,13 @@ public class VFS
 			if (existingVFile == null)
 			{
 				state.NewVFileInfos.Add(newInfo);
+				result.Add(newInfo);
 			}
 			else
 			{
-				// previous VFileInfo already exists but content is different.
+				// previous VFileInfo exists but content is different.
 				var contentDifference = existingContent != null && existingContent.Hash != hash;
+				result.Add(contentDifference ? newInfo : DbVFileToVFileInfo(existingVFile));
 				switch (opts.VersionOpts.Behavior)
 				{
 					case VFileVersionBehavior.Overwrite:
@@ -300,7 +303,7 @@ public class VFS
 		var rowIds = Database.GetUnreferencedVFileContentRowIds();
 		Database.DeleteVFileContent(rowIds);
 
-		return state.NewVFileInfos;
+		return result;
 	}
 
 	private static string NormalizePath(string? path)

@@ -104,12 +104,12 @@ DROP TABLE IF EXISTS VFileContent;
 	{
 		var results = new List<Db.VFile>();
 
-		var versionedCond = VersionSql(versionQuery);
+		var versionedCond = VersionedSql(versionQuery);
 
 		foreach (var list in filePaths.Distinct().Partition(50))
 		{
-			var inParams = DbUtil.BuildInParams(list.Select(x => x), "@Path", SqliteType.Text);
-			var where = $"	i.FilePath IN ({inParams.Sql}) {versionedCond} ";
+			var inParams = DbUtil.BuildInParams(list, "@Path", SqliteType.Text);
+			var where = $" i.FilePath IN ({inParams.Sql}) {versionedCond} ";
 			results.AddRange(GetVFiles(where, inParams.Parameters));
 		}
 
@@ -137,7 +137,7 @@ DROP TABLE IF EXISTS VFileContent;
 
 	public List<Db.VFile> GetVFilesByDirectory(string directory, VFileInfoVersionQuery versionQuery)
 	{
-		var versionedCond = VersionSql(versionQuery);
+		var versionedCond = VersionedSql(versionQuery);
 		var where = $" i.Directory = @Directory {versionedCond} ";
 		var param = new SqliteParameter("@Directory", directory);
 		return GetVFiles(where, [param]);
@@ -194,12 +194,12 @@ WHERE
 		return results;
 	}
 
-	private static string VersionSql(VFileInfoVersionQuery versionQuery)
+	private static string VersionedSql(VFileInfoVersionQuery versionQuery)
 	{
 		return versionQuery switch
 		{
-			VFileInfoVersionQuery.Latest => "AND Versioned IS NULL",
-			VFileInfoVersionQuery.Versions => "AND Versioned IS NOT NULL",
+			VFileInfoVersionQuery.Latest => " AND Versioned IS NULL ",
+			VFileInfoVersionQuery.Versions => " AND Versioned IS NOT NULL ",
 			VFileInfoVersionQuery.Both => string.Empty,
 			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
 		};
