@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Text;
 using Microsoft.Data.Sqlite;
 
 namespace dotVFile;
@@ -13,6 +14,8 @@ internal static class DbUtil
 		return entity;
 	}
 
+	public static string Alias(string alias, string column) => $"{alias}.{column}";
+
 	public static object NullCoalesce(this object? value)
 	{
 		return value ?? DBNull.Value;
@@ -21,6 +24,18 @@ internal static class DbUtil
 	public static bool IsDbNull(this object? value)
 	{
 		return value == null || value == DBNull.Value;
+	}
+
+	public static Db.VFileQuery Latest(this Db.VFileQuery query)
+	{
+		query.VersionQuery = VFileInfoVersionQuery.Latest;
+		return query;
+	}
+
+	public static Db.VFileQuery Versions(this Db.VFileQuery query)
+	{
+		query.VersionQuery = VFileInfoVersionQuery.Versions;
+		return query;
 	}
 
 	public static DateTimeOffset ConvertDateTimeOffset(this object? value)
@@ -80,12 +95,12 @@ internal static class DbUtil
 		return cmd;
 	}
 
-	public static T ReadEntityValues<T>(this T entity, SqliteDataReader reader, string prefix = "")
+	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader, string tableAlias)
 		where T : Db.Entity
 	{
-		entity.RowId = reader.GetInt64(prefix + "RowId");
-		entity.Id = reader.GetGuid(prefix + "Id");
-		entity.CreateTimestamp = reader.GetDateTimeOffset(prefix + "CreateTimestamp");
+		entity.RowId = reader.GetInt64(tableAlias + "RowId");
+		entity.Id = reader.GetGuid(tableAlias + "Id");
+		entity.CreateTimestamp = reader.GetDateTimeOffset(tableAlias + "CreateTimestamp");
 		return entity;
 	}
 
@@ -97,7 +112,10 @@ internal static class DbUtil
 		return entity;
 	}
 
-	public static List<T> ReadRowId<T>(this List<T> entities, SqliteDataReader reader)
+	/// <summary>
+	/// Expected to be used solely after inserts. Calls NextResult after each Read.
+	/// </summary>
+	public static List<T> ReadInsertedRowIds<T>(this List<T> entities, SqliteDataReader reader)
 		where T : Db.Entity
 	{
 		foreach (var entity in entities)
@@ -108,52 +126,85 @@ internal static class DbUtil
 		return entities;
 	}
 
+	public static SqliteCommand BuildSelect(
+		this SqliteCommand cmd,
+		Db.Select select)
+	{
+		cmd.CommandText += @$"
+SELECT 
+	{select.Columns.Sql} 
+FROM 
+	{select.From.Sql} 
+WHERE 
+	{select.Where.Sql};
+";
+		cmd.Parameters.AddRange(select.Parameters);
+		return cmd;
+	}
+
+	public static SqliteCommand BuildDelete(
+		this SqliteCommand cmd,
+		Db.Delete delete)
+	{
+		cmd.CommandText += $" DELETE FROM {delete.From.Sql} WHERE {delete.Where.Sql}; ";
+		cmd.Parameters.AddRange(delete.Parameters);
+		return cmd;
+	}
+
+	public static SqliteCommand BuildDeleteByRowId(
+		this SqliteCommand cmd,
+		Db.SqlExpr from,
+		List<long> rowIds)
+	{
+		var clauses = BuildInClause(rowIds, "RowId", SqliteType.Integer);
+
+		foreach (var clause in clauses)
+		{
+			cmd.BuildDelete(new(from, clause));
+		}
+
+		return cmd;
+	}
+
+	/// <summary>
+	/// Returns multiple InClauses because it needs to partition the values to
+	/// limit how many values are in each IN statement.
+	/// returns Sql: " {columnName} IN ({parameters}) "
+	/// </summary>
+	public static List<Db.SqlExpr> BuildInClause<T>(
+		IEnumerable<T> values,
+		string columnName,
+		SqliteType type)
+	{
+		var result = new List<Db.SqlExpr>();
+
+		var pIdx = 0;
+		foreach (var value in values.Partition(50))
+		{
+			var parameters = new List<SqliteParameter>();
+			var paramKeys = new List<string>();
+			var itemIdx = 0;
+			foreach (var item in value)
+			{
+				var key = $"@IN__{columnName}_{pIdx}_{itemIdx}";
+				paramKeys.Add(key);
+				var @param = NewParameter(key, type, item);
+				parameters.Add(@param);
+				itemIdx++;
+			}
+			result.Add(new($" {columnName} IN ({string.Join(',', paramKeys)}) ", parameters));
+			pIdx++;
+		}
+
+		return result;
+	}
+
 	public static void ExecuteNonQuery(string connectionString, string sql)
 	{
 		using var connection = new SqliteConnection(connectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		connection.Open();
 		cmd.ExecuteNonQuery();
-	}
-
-	public static Db.InParams BuildInParams<T>(
-		IEnumerable<T> values,
-		string paramName,
-		SqliteType type)
-	{
-		var parameters = new List<SqliteParameter>();
-		var paramKeys = new List<string>();
-		var idx = 0;
-		foreach (var value in values)
-		{
-			var key = $"{paramName}_{idx++}";
-			paramKeys.Add(key);
-			var @param = NewParameter(key, type, value);
-			parameters.Add(@param);
-		}
-
-		var sql = string.Join(',', paramKeys);
-
-		return new Db.InParams(sql, parameters);
-	}
-
-	public static SqliteCommand BuildDeleteByRowId(
-		this SqliteCommand cmd,
-		string tableName,
-		List<long> rowIds)
-	{
-		if (rowIds.IsEmpty()) return cmd;
-
-		int idx = 0;
-		foreach (var list in rowIds.Partition(50))
-		{
-			var inParams = BuildInParams(list, $"@D_{tableName}_{idx}_RowId", SqliteType.Integer);
-			cmd.CommandText += $@" DELETE FROM {tableName} WHERE RowId IN ({inParams.Sql}); ";
-			cmd.Parameters.AddRange(inParams.Parameters);
-			idx++;
-		}
-
-		return cmd;
 	}
 
 	public static void ExecuteDeleteByRowId(
@@ -165,8 +216,37 @@ internal static class DbUtil
 
 		using var connection = new SqliteConnection(connectionString);
 		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildDeleteByRowId(tableName, rowIds);
+		cmd.BuildDeleteByRowId(new(tableName), rowIds);
 		connection.Open();
 		cmd.ExecuteNonQuery();
+	}
+
+	public static Db.SqlExpr Merge(this List<Db.SqlExpr> exprs, string join)
+	{
+		var sb = new StringBuilder();
+		var parameters = new List<SqliteParameter>();
+
+		foreach (var expr in exprs)
+		{
+			if (expr.Sql.HasValue())
+			{
+				sb.Append(expr.Sql);
+				sb.AppendLine(join);
+				parameters.AddRange(expr.Parameters);
+			}
+		}
+
+		return new(sb.ToString().TrimEnd(join.ToCharArray()), parameters);
+	}
+
+	public static Db.SqlExpr Wrap(this Db.SqlExpr expr, string start, string end)
+	{
+		expr.Sql = start + expr.Sql + end;
+		return expr;
+	}
+
+	public static Db.SqlExpr Append(this Db.SqlExpr expr, Db.SqlExpr append)
+	{
+		return new List<Db.SqlExpr> { expr, append }.Merge("");
 	}
 }

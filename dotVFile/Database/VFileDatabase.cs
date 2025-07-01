@@ -93,116 +93,154 @@ DROP TABLE IF EXISTS VFileContent;
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
-	public Db.VFile? GetLatestVFile(string filePath)
+	public List<Db.VFile> GetVFiles(Db.VFileQuery query)
 	{
-		return GetVFiles(filePath.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
-	}
+		var result = new List<Db.VFile>();
+		const string infoAlias = "i";
+		const string contentAlias = "c";
 
-	public List<Db.VFile> GetVFiles(
-		List<string> filePaths,
-		VFileInfoVersionQuery versionQuery)
-	{
-		var results = new List<Db.VFile>();
-
-		var versionedCond = VersionedSql(versionQuery);
-
-		foreach (var list in filePaths.Distinct().Partition(50))
+		var columns = new List<Db.SqlExpr>
 		{
-			var inParams = DbUtil.BuildInParams(list, "@Path", SqliteType.Text);
-			var where = $" i.FilePath IN ({inParams.Sql}) {versionedCond} ";
-			results.AddRange(GetVFiles(where, inParams.Parameters));
-		}
+			VFileInfoColumns(infoAlias),
+			VFileContentColumns(contentAlias)
+		}.Merge(",");
 
-		return results;
-	}
+		var from = new Db.SqlExpr(@$"
+VFileInfo {infoAlias}
+INNER JOIN VFileContent {contentAlias} ON {contentAlias}.RowId = {infoAlias}.VFileContentRowId
+", []);
 
-	public Db.VFile? GetVFile(Guid id)
-	{
-		return GetVFiles(id.AsList()).SingleOrDefault();
-	}
+		List<Db.SqlExpr> wheres = [
+			.. DbUtil.BuildInClause(query.VFileInfoRowIds, DbUtil.Alias(infoAlias, "RowId"), SqliteType.Integer),
+			.. DbUtil.BuildInClause(query.VFileInfoIds.Select(x => x.ToString()), DbUtil.Alias(infoAlias, "Id"), SqliteType.Text),
+			.. DbUtil.BuildInClause(query.VFileContentRowIds, DbUtil.Alias(contentAlias, "RowId"), SqliteType.Integer),
+			.. DbUtil.BuildInClause(query.VFileContentIds.Select(x => x.ToString()), DbUtil.Alias(contentAlias, "Id"), SqliteType.Text),
+			.. DbUtil.BuildInClause(query.FilePaths, DbUtil.Alias(infoAlias, "FilePath"), SqliteType.Text),
+			.. DbUtil.BuildInClause(query.Directories, DbUtil.Alias(infoAlias, "Directory"), SqliteType.Text),
+			.. DbUtil.BuildInClause(query.Hashes, DbUtil.Alias(contentAlias, "Hash"), SqliteType.Text)
+			];
 
-	public List<Db.VFile> GetVFiles(List<Guid> ids)
-	{
-		var results = new List<Db.VFile>();
+		var where = wheres.Merge(" OR ").Wrap("(", ")")
+			.Append(BuildVersionedSql(query.VersionQuery));
 
-		foreach (var list in ids.Distinct().Partition(50))
-		{
-			var inParams = DbUtil.BuildInParams(list.Select(x => x.ToString()), "@Id", SqliteType.Text);
-			var where = $@"	i.Id IN ({inParams.Sql}) ";
-			results.AddRange(GetVFiles(where, inParams.Parameters));
-		}
-
-		return results;
-	}
-
-	public List<Db.VFile> GetVFilesByDirectory(string directory, VFileInfoVersionQuery versionQuery)
-	{
-		var versionedCond = VersionedSql(versionQuery);
-		var where = $" i.Directory = @Directory {versionedCond} ";
-		var param = new SqliteParameter("@Directory", directory);
-		return GetVFiles(where, [param]);
-	}
-
-	private List<Db.VFile> GetVFiles(string whereSql, List<SqliteParameter> parameters)
-	{
-		var results = new List<Db.VFile>();
-
-		var sql = $@"
-SELECT 
-	i.*,
-	c.RowId as ContentRowId,
-	c.Id as ContentId,
-	c.Hash,
-	c.Size,
-	c.SizeStored,
-	c.Compression,
-	c.CreationTime as ContentCreationTime,
-	c.CreateTimestamp as ContentCreateTimestamp
-FROM
-	VFileInfo i
-	INNER JOIN VFileContent c ON c.RowId = i.VFileContentRowId
-WHERE
-	{whereSql};
-";
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddRange(parameters);
+		var cmd = new SqliteCommand(string.Empty, connection);
+		cmd.BuildSelect(new(columns, from, where));
 		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
-			var info = new Db.VFileInfo().ReadEntityValues(reader);
-			info.VFileContentRowId = reader.GetInt64("VFileContentRowId");
-			info.FilePath = reader.GetString("FilePath");
-			info.Directory = reader.GetString("Directory");
-			info.FileName = reader.GetString("FileName");
-			info.FileExtension = reader.GetString("FileExtension");
-			info.Versioned = reader.GetDateTimeOffsetNullable("Versioned");
-			info.DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt");
-			info.CreationTime = reader.GetDateTimeOffset("CreationTime");
-
-			var content = new Db.VFileContent().ReadEntityValues(reader, "Content");
-			content.Hash = reader.GetString("Hash");
-			content.Size = reader.GetInt64("Size");
-			content.SizeStored = reader.GetInt64("SizeStored");
-			content.Compression = reader.GetByte("Compression");
-			content.CreationTime = reader.GetDateTimeOffset("ContentCreationTime");
-
-			results.Add(new(info, content));
+			var info = GetVFileInfo(reader, infoAlias);
+			var content = GetVFileContent(reader, contentAlias);
+			result.Add(new(info, content));
 		}
 
-		return results;
+		return result;
 	}
 
-	private static string VersionedSql(VFileInfoVersionQuery versionQuery)
+	private static Db.VFileInfo GetVFileInfo(SqliteDataReader reader, string tableAlias)
 	{
-		return versionQuery switch
+		var info = new Db.VFileInfo().GetEntityValues(reader, tableAlias);
+		info.VFileContentRowId = reader.GetInt64(tableAlias + "VFileContentRowId");
+		info.FilePath = reader.GetString(tableAlias + "FilePath");
+		info.Directory = reader.GetString(tableAlias + "Directory");
+		info.FileName = reader.GetString(tableAlias + "FileName");
+		info.FileExtension = reader.GetString(tableAlias + "FileExtension");
+		info.Versioned = reader.GetDateTimeOffsetNullable(tableAlias + "Versioned");
+		info.DeleteAt = reader.GetDateTimeOffsetNullable(tableAlias + "DeleteAt");
+		info.CreationTime = reader.GetDateTimeOffset(tableAlias + "CreationTime");
+		return info;
+	}
+
+	private static Db.VFileContent GetVFileContent(SqliteDataReader reader, string tableAlias)
+	{
+		var content = new Db.VFileContent().GetEntityValues(reader, tableAlias);
+		content.Hash = reader.GetString(tableAlias + "Hash");
+		content.Size = reader.GetInt64(tableAlias + "Size");
+		content.SizeStored = reader.GetInt64(tableAlias + "SizeStored");
+		content.Compression = reader.GetByte(tableAlias + "Compression");
+		content.CreationTime = reader.GetDateTimeOffset(tableAlias + "CreationTime");
+		return content;
+	}
+
+	private static Db.SqlExpr VFileInfoColumns(string tableAlias)
+	{
+		var alias = tableAlias.HasValue() ? $"{tableAlias}." : string.Empty;
+
+		return new($@"
+{alias}{tableAlias}RowId,
+{alias}{tableAlias}Id,
+{alias}{tableAlias}VFileContentRowId,
+{alias}{tableAlias}FilePath,
+{alias}{tableAlias}Directory,
+{alias}{tableAlias}FileName,
+{alias}{tableAlias}FileExtension,
+{alias}{tableAlias}Versioned,
+{alias}{tableAlias}DeleteAt,
+{alias}{tableAlias}CreationTime,
+{alias}{tableAlias}CreateTimestamp
+", []);
+	}
+
+	private static SqliteCommand BuildVFileInfoSelect(
+		SqliteCommand cmd,
+		string tableAlias,
+		Db.SqlExpr from,
+		Db.SqlExpr where)
+	{
+		var columns = VFileInfoColumns(tableAlias);
+
+		cmd.BuildSelect(new(columns, from, where));
+
+		return cmd;
+	}
+
+	/// <summary>
+	/// Does not select Content column.
+	/// </summary>
+	private static Db.SqlExpr VFileContentColumns(string tableAlias)
+	{
+		var alias = tableAlias.HasValue() ? $"{tableAlias}." : string.Empty;
+
+		return new($@"
+{alias}{tableAlias}RowId,
+{alias}{tableAlias}Id,
+{alias}{tableAlias}Hash,
+{alias}{tableAlias}Size,
+{alias}{tableAlias}SizeStored,
+{alias}{tableAlias}Compression,
+{alias}{tableAlias}CreationTime,
+{alias}{tableAlias}CreateTimestamp
+", []);
+	}
+
+	/// <summary>
+	/// Does not select Content column.
+	/// </summary>
+	private static SqliteCommand BuildVFileContentSelect(
+		SqliteCommand cmd,
+		string tableAlias,
+		Db.SqlExpr from,
+		Db.SqlExpr where)
+	{
+		var columns = VFileContentColumns(tableAlias);
+
+		cmd.BuildSelect(new(columns, from, where));
+
+		return cmd;
+	}
+
+	private static Db.SqlExpr BuildVersionedSql(VFileInfoVersionQuery versionQuery)
+	{
+		var sql = versionQuery switch
 		{
 			VFileInfoVersionQuery.Latest => " AND Versioned IS NULL ",
 			VFileInfoVersionQuery.Versions => " AND Versioned IS NOT NULL ",
 			VFileInfoVersionQuery.Both => string.Empty,
 			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
 		};
+
+		return new(sql);
 	}
 
 	public List<long> GetUnreferencedVFileContentRowIds()

@@ -62,20 +62,34 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfos(string directory)
 	{
-		var normalized = NormalizePath(directory);
-		var vfiles = Database.GetVFilesByDirectory(normalized, VFileInfoVersionQuery.Latest);
+		var query = new Db.VFileQuery
+		{
+			Directories = NormalizePath(directory).AsList(),
+			VersionQuery = VFileInfoVersionQuery.Latest
+		};
+		var vfiles = Database.GetVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		var vfiles = Database.GetVFiles([.. paths.Select(x => BuildVFileId(x).FilePath)], VFileInfoVersionQuery.Latest);
+		var query = new Db.VFileQuery
+		{
+			FilePaths = [.. paths.Select(BuildFilePath)],
+			VersionQuery = VFileInfoVersionQuery.Latest
+		};
+		var vfiles = Database.GetVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFileId> ids)
 	{
-		var vfiles = Database.GetVFiles([.. ids.Select(x => x.FilePath)], VFileInfoVersionQuery.Latest);
+		var query = new Db.VFileQuery
+		{
+			FilePaths = [.. ids.Select(x => x.FilePath)],
+			VersionQuery = VFileInfoVersionQuery.Latest
+		};
+		var vfiles = Database.GetVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -86,14 +100,23 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfoVersions(VFileId id, VFileInfoVersionQuery versionQuery)
 	{
-		var vfiles = Database.GetVFiles(id.FilePath.AsList(), versionQuery);
+		var query = new Db.VFileQuery
+		{
+			FilePaths = id.FilePath.AsList(),
+			VersionQuery = versionQuery
+		};
+		var vfiles = Database.GetVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(string directory, VFileInfoVersionQuery versionQuery)
 	{
-		var normalized = NormalizePath(directory);
-		var vfiles = Database.GetVFilesByDirectory(normalized, versionQuery);
+		var query = new Db.VFileQuery
+		{
+			Directories = NormalizePath(directory).AsList(),
+			VersionQuery = versionQuery
+		};
+		var vfiles = Database.GetVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -104,7 +127,12 @@ public class VFS
 
 	public VFile? GetVFile(VFileId id)
 	{
-		var vfile = Database.GetLatestVFile(id.FilePath);
+		var query = new Db.VFileQuery
+		{
+			FilePaths = id.FilePath.AsList(),
+			VersionQuery = VFileInfoVersionQuery.Latest
+		};
+		var vfile = Database.GetVFiles(query).SingleOrDefault();
 		if (vfile == null) return null;
 		return GetVFiles(vfile.AsList()).SingleOrDefault();
 	}
@@ -124,9 +152,14 @@ public class VFS
 		return GetVFiles(GetVFileInfos(ids));
 	}
 
-	public List<VFile> GetVFiles(List<VFileInfo> vfiles)
+	public List<VFile> GetVFiles(List<VFileInfo> infos)
 	{
-		return GetVFiles(Database.GetVFiles([.. vfiles.Select(x => x.Id)]));
+		var query = new Db.VFileQuery
+		{
+			VFileInfoIds = [.. infos.Select(x => x.Id)]
+		};
+		var vfiles = Database.GetVFiles(query);
+		return GetVFiles(vfiles);
 	}
 
 	public List<VFile> GetVFiles(string directory)
@@ -193,7 +226,13 @@ public class VFS
 				: content;
 			var hash = Util.HashSHA256(bytes);
 
-			var existingVFile = Database.GetLatestVFile(vfileId.FilePath);
+			var existingVFile = Database.GetVFiles(
+				new Db.VFileQuery
+				{
+					FilePaths = vfileId.FilePath.AsList(),
+					VersionQuery = VFileInfoVersionQuery.Latest
+				}).SingleOrDefault();
+
 			var existingContent = existingVFile?.VFileContent;
 
 			var vfileContent = existingContent != null && existingContent.Hash == hash
@@ -259,7 +298,12 @@ public class VFS
 
 					case VFileVersionBehavior.Version:
 					{
-						var versions = Database.GetVFiles(vfileId.FilePath.AsList(), VFileInfoVersionQuery.Versions);
+						var versions = Database.GetVFiles(
+							new Db.VFileQuery
+							{
+								FilePaths = vfileId.FilePath.AsList(),
+								VersionQuery = VFileInfoVersionQuery.Versions
+							});
 
 						if (contentDifference)
 						{
@@ -317,6 +361,12 @@ public class VFS
 			result += PathDirectorySeparator;
 		}
 		return result;
+	}
+
+	private static string BuildFilePath(VFilePath path)
+	{
+		var directory = NormalizePath(path.Directory);
+		return $"{directory}{path.FileName}";
 	}
 
 	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)

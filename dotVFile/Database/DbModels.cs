@@ -49,5 +49,51 @@ internal static class Db
 		public List<VFileContent> NewVFileContents = [];
 	}
 
-	public record InParams(string Sql, List<SqliteParameter> Parameters);
+	public record VFileQuery
+	{
+		public List<long> VFileInfoRowIds = [];
+		public List<Guid> VFileInfoIds = [];
+		public List<long> VFileContentRowIds = [];
+		public List<Guid> VFileContentIds = [];
+		public List<string> FilePaths = [];
+		public List<string> Directories = [];
+		public List<string> Hashes = [];
+		/// <summary>
+		/// Default is Both, which generates no sql.
+		/// </summary>
+		public VFileInfoVersionQuery VersionQuery = VFileInfoVersionQuery.Both;
+	}
+
+	public record Select(
+		SqlExpr Columns,
+		SqlExpr From,
+		SqlExpr Where)
+	{
+		public List<SqliteParameter> Parameters => [
+			.. Columns.Parameters,
+			.. From.Parameters,
+			.. Where.Parameters];
+	}
+
+	public record Delete(
+		SqlExpr From,
+		SqlExpr Where)
+	{
+		public List<SqliteParameter> Parameters => [
+			.. From.Parameters,
+			.. Where.Parameters];
+	}
+
+	public record SqlExpr
+	{
+		public SqlExpr(string sql) : this(sql, []) { }
+		public SqlExpr(string sql, List<SqliteParameter> parameters)
+		{
+			Sql = sql;
+			Parameters = parameters;
+		}
+
+		public string Sql;
+		public List<SqliteParameter> Parameters = [];
+	}
 }
