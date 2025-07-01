@@ -18,6 +18,11 @@ internal static class DbUtil
 		return value ?? DBNull.Value;
 	}
 
+	public static bool IsDbNull(this object? value)
+	{
+		return value == null || value == DBNull.Value;
+	}
+
 	public static DateTimeOffset ConvertDateTimeOffset(this object? value)
 	{
 		var str = value?.ToString() ?? throw new NoNullAllowedException("value");
@@ -33,7 +38,7 @@ internal static class DbUtil
 	public static long? GetInt64Nullable(this SqliteDataReader reader, string name)
 	{
 		var value = reader[name];
-		return value != null && value != DBNull.Value ? Convert.ToInt64(value) : null;
+		return IsDbNull(value) ? null : Convert.ToInt64(value);
 	}
 
 	public static DateTimeOffset GetDateTimeOffset(this SqliteDataReader reader, string name)
@@ -49,6 +54,30 @@ internal static class DbUtil
 	public static Guid GetGuid(this SqliteDataReader reader, string name)
 	{
 		return Guid.Parse(reader.GetString(name));
+	}
+
+	public static byte[] GetBytes(this SqliteDataReader reader, string name)
+	{
+		return (byte[])reader[name];
+	}
+
+	public static SqliteParameter NewParameter(string name, SqliteType type, object? value)
+	{
+		return new SqliteParameter(name, type)
+		{
+			Value = NullCoalesce(value)
+		};
+	}
+
+	public static SqliteCommand AddParameter(
+		this SqliteCommand cmd,
+		string name,
+		SqliteType type,
+		object value)
+	{
+		cmd.Parameters.Add(NewParameter(name, type, value));
+
+		return cmd;
 	}
 
 	public static T ReadEntityValues<T>(this T entity, SqliteDataReader reader, string prefix = "")
@@ -99,15 +128,45 @@ internal static class DbUtil
 		{
 			var key = $"{paramName}_{idx++}";
 			paramKeys.Add(key);
-			var @param = new SqliteParameter(key, type)
-			{
-				Value = value
-			};
+			var @param = NewParameter(key, type, value);
 			parameters.Add(@param);
 		}
 
 		var sql = string.Join(',', paramKeys);
 
 		return new Db.InParams(sql, parameters);
+	}
+
+	public static SqliteCommand BuildDeleteByRowId(
+		this SqliteCommand cmd,
+		string tableName,
+		List<long> rowIds)
+	{
+		if (rowIds.IsEmpty()) return cmd;
+
+		int idx = 0;
+		foreach (var list in rowIds.Partition(50))
+		{
+			var inParams = BuildInParams(list, $"@D_{tableName}_{idx}_RowId", SqliteType.Integer);
+			cmd.CommandText += $@" DELETE FROM {tableName} WHERE RowId IN ({inParams.Sql}); ";
+			cmd.Parameters.AddRange(inParams.Parameters);
+			idx++;
+		}
+
+		return cmd;
+	}
+
+	public static void ExecuteDeleteByRowId(
+		string connectionString,
+		string tableName,
+		List<long> rowIds)
+	{
+		if (rowIds.IsEmpty()) return;
+
+		using var connection = new SqliteConnection(connectionString);
+		var cmd = new SqliteCommand(string.Empty, connection);
+		cmd.BuildDeleteByRowId(tableName, rowIds);
+		connection.Open();
+		cmd.ExecuteNonQuery();
 	}
 }

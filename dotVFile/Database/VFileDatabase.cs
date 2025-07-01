@@ -232,20 +232,7 @@ WHERE
 
 	public void DeleteVFileContent(List<long> rowIds)
 	{
-		if (rowIds.IsEmpty()) return;
-		int idx = 0;
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
-		foreach (var rowId in rowIds)
-		{
-			cmd.CommandText += $@"
-DELETE FROM VFileContent WHERE RowId = @RowId_{idx};
-";
-			cmd.Parameters.AddWithValue($"@RowId_{idx}", rowId);
-			idx++;
-		}
-		connection.Open();
-		cmd.ExecuteNonQuery();
+		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFileContent", rowIds);
 	}
 
 	public List<Db.VFileContent> FetchContent(List<Db.VFileContent> vfiles)
@@ -416,14 +403,7 @@ VALUES (
 		using var transaction = connection.BeginTransaction();
 		var cmd = new SqliteCommand(string.Empty, connection, transaction);
 
-		foreach (var delete in state.DeleteVFileInfos)
-		{
-			cmd.CommandText += $@"
-DELETE FROM VFileInfo WHERE RowId = @RowId_{idx};
-";
-			cmd.Parameters.AddWithValue($"@RowId_{idx}", delete.RowId);
-			idx++;
-		}
+		cmd.BuildDeleteByRowId("VFileInfo", [.. state.DeleteVFileInfos.Select(x => x.RowId)]);
 
 		foreach (var update in state.UpdateVFileInfos)
 		{

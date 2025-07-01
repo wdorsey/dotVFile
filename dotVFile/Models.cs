@@ -204,8 +204,6 @@ public record VFileStoreOptions(
 	public VFileCompression Compression = Compression;
 	public TimeSpan? TTL = TTL;
 	/// <summary>
-	/// Version options are only applied if the file already
-	/// exists and it is different from the new file.
 	/// Default: VFS.GetDefaultVersionOptions()
 	/// </summary>
 	public VFileVersionOptions VersionOpts = VersionOpts;
