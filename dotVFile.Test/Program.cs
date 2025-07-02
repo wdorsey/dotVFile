@@ -22,6 +22,8 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 		new VFileContent(fs));
 
 	var vfile = vfs.GetVFile(info!);
+
+	Console.WriteLine(vfile!.VFileInfo.ToJson(true));
 }
 TestUtil.AssertFileContent(vfs, file, info);
 

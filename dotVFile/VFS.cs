@@ -58,12 +58,10 @@ public class VFS
 
 	public VFileInfo? GetVFileInfo(VFilePath path)
 	{
-		return GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
-	}
-
-	public VFileInfo? GetVFileInfo(VFileId id)
-	{
-		return GetVFileInfoVersions(id, VFileInfoVersionQuery.Latest).SingleOrDefault();
+		return GetVFileInfoVersions(
+			StandardizePath(path),
+			VFileInfoVersionQuery.Latest)
+			.SingleOrDefault();
 	}
 
 	public List<VFileInfo> GetVFileInfos(string directory, bool recursive)
@@ -86,19 +84,7 @@ public class VFS
 	{
 		var query = new Db.VFileInfoQuery
 		{
-			FilePaths = [.. paths.Select(BuildFilePath)],
-			VersionQuery = VFileInfoVersionQuery.Latest
-		};
-		var vfiles = Database.QueryVFiles(query);
-
-		return DbVFileToVFileInfo(vfiles);
-	}
-
-	public List<VFileInfo> GetVFileInfos(List<VFileId> ids)
-	{
-		var query = new Db.VFileInfoQuery
-		{
-			FilePaths = [.. ids.Select(x => x.FilePath)],
+			FilePaths = [.. paths.Select(x => StandardizePath(x).FilePath)],
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfiles = Database.QueryVFiles(query);
@@ -108,14 +94,9 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
 	{
-		return GetVFileInfoVersions(BuildVFileId(path), versionQuery);
-	}
-
-	public List<VFileInfo> GetVFileInfoVersions(VFileId id, VFileInfoVersionQuery versionQuery)
-	{
 		var query = new Db.VFileInfoQuery
 		{
-			FilePaths = id.FilePath.AsList(),
+			FilePaths = StandardizePath(path).FilePath.AsList(),
 			VersionQuery = versionQuery
 		};
 		var vfiles = Database.QueryVFiles(query);
@@ -141,14 +122,9 @@ public class VFS
 
 	public VFile? GetVFile(VFilePath path)
 	{
-		return GetVFile(BuildVFileId(path));
-	}
-
-	public VFile? GetVFile(VFileId id)
-	{
 		var query = new Db.VFileInfoQuery
 		{
-			FilePaths = id.FilePath.AsList(),
+			FilePaths = StandardizePath(path).FilePath.AsList(),
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfile = Database.QueryVFiles(query).SingleOrDefault();
@@ -166,11 +142,6 @@ public class VFS
 	public List<VFile> GetVFiles(List<VFilePath> paths)
 	{
 		return GetVFiles(GetVFileInfos(paths));
-	}
-
-	public List<VFile> GetVFiles(List<VFileId> ids)
-	{
-		return GetVFiles(GetVFileInfos(ids));
 	}
 
 	public List<VFile> GetVFiles(List<VFileInfo> infos)
@@ -192,11 +163,6 @@ public class VFS
 	public byte[]? GetVFileBytes(VFilePath path)
 	{
 		return GetVFile(path)?.Content;
-	}
-
-	public byte[]? GetVFileBytes(VFileId vFileId)
-	{
-		return GetVFile(vFileId)?.Content;
 	}
 
 	private List<VFile> GetVFiles(List<Db.VFile> dbVFiles)
@@ -241,23 +207,20 @@ public class VFS
 
 		foreach (var request in requests)
 		{
-			var path = request.Path;
+			var path = StandardizePath(request.Path);
 
 			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
 				return [];
 
-			var vfileId = BuildVFileId(path, null);
-
-			if (uniqueMap.Contains(vfileId.FilePath))
+			if (uniqueMap.Contains(path.FilePath))
 			{
 				Hooks.ErrorHandler(new(
 					VFileErrorCodes.DuplicateStoreVFileRequest,
-					$"Duplicate StoreVFileRequest detected: {vfileId.FilePath}",
+					$"Duplicate StoreVFileRequest detected: {request.Path.FilePath}",
 					request));
 				return [];
 			}
-
-			uniqueMap.Add(vfileId.Id);
+			uniqueMap.Add(path.FilePath);
 
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStoreOptions;
@@ -271,7 +234,7 @@ public class VFS
 			var existingVFile = Database.QueryVFiles(
 				new Db.VFileInfoQuery
 				{
-					FilePaths = vfileId.FilePath.AsList(),
+					FilePaths = path.FilePath.AsList(),
 					VersionQuery = VFileInfoVersionQuery.Latest
 				}).SingleOrDefault();
 
@@ -290,11 +253,8 @@ public class VFS
 			var newInfo = new VFileInfo
 			{
 				Id = Guid.NewGuid(),
-				VFileId = vfileId,
-				FilePath = vfileId.FilePath,
-				Directory = vfileId.Directory,
-				FileName = vfileId.FileName,
-				FileExtension = Util.FileExtension(vfileId.FileName),
+				VFilePath = path,
+				UserVFilePath = request.Path,
 				DeleteAt = opts.TTL.HasValue ? now + opts.TTL : null,
 				CreationTime = now,
 				ContentId = Guid.NewGuid(),
@@ -337,10 +297,9 @@ public class VFS
 					{
 						if (contentDifference)
 						{
-							var msg = $"Requested to overwrite existing file: {vfileId}";
 							Hooks.ErrorHandler(new(
 								VFileErrorCodes.OverwriteNotAllowed,
-								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {vfileId.FilePath}",
+								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {request.Path.FilePath}",
 								request));
 							return [];
 						}
@@ -352,7 +311,7 @@ public class VFS
 						var versions = Database.QueryVFiles(
 							new Db.VFileInfoQuery
 							{
-								FilePaths = vfileId.FilePath.AsList(),
+								FilePaths = path.FilePath.AsList(),
 								VersionQuery = VFileInfoVersionQuery.Versions
 							});
 
@@ -421,8 +380,19 @@ public class VFS
 		return result;
 	}
 
-	private static List<string> DirectoryParts(string directory) =>
-		[.. directory.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+	private static VFilePath StandardizePath(VFilePath path)
+	{
+		var dir = StandardizeDirectory(path.Directory);
+		return new(dir, path.FileName, $"{dir}{path.FileName}");
+	}
+
+	internal static List<string> DirectoryParts(string? directory)
+	{
+		if (directory.IsEmpty()) return [];
+
+		char[] dividers = ['/', '\\'];
+		return [.. directory.Split(dividers, StringSplitOptions.RemoveEmptyEntries)];
+	}
 
 	/// <summary>
 	/// /x/y/z/ => [/x/, /x/y/, /x/y/z/]
@@ -440,38 +410,6 @@ public class VFS
 		return result;
 	}
 
-	private static string BuildFilePath(VFilePath path)
-	{
-		var directory = StandardizeDirectory(path.Directory);
-		return $"{directory}{path.FileName}";
-	}
-
-	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)
-	{
-		var directory = StandardizeDirectory(path.Directory);
-		return BuildVFileId(directory, path.FileName, versioned);
-	}
-
-	private static VFileId BuildVFileId(Db.VFileInfo info)
-	{
-		return BuildVFileId(info.Directory, info.FileName, info.Versioned);
-	}
-
-	private static VFileId BuildVFileId(string directory, string fileName, DateTimeOffset? versioned = null)
-	{
-		var parts = DirectoryParts(directory);
-
-		var filePath = $"{directory}{fileName}";
-
-		var versionPart = versioned != null
-			? $"?v={versioned.ToDefaultString()}"
-			: string.Empty;
-
-		var id = $"{filePath}{versionPart}";
-
-		return new VFileId(id, directory, parts, fileName, filePath, versioned);
-	}
-
 	private static List<VFileInfo> DbVFileToVFileInfo(List<Db.VFile> vfiles)
 	{
 		return [.. vfiles.Select(DbVFileToVFileInfo)];
@@ -482,11 +420,7 @@ public class VFS
 		return new VFileInfo
 		{
 			Id = vfile.VFileInfo.Id,
-			VFileId = BuildVFileId(vfile.VFileInfo),
-			FilePath = vfile.VFileInfo.FilePath,
-			Directory = vfile.VFileInfo.Directory,
-			FileName = vfile.VFileInfo.FileName,
-			FileExtension = vfile.VFileInfo.FileExtension,
+			VFilePath = new(vfile.VFileInfo.Directory, vfile.VFileInfo.FileName, vfile.VFileInfo.FilePath),
 			Versioned = vfile.VFileInfo.Versioned,
 			DeleteAt = vfile.VFileInfo.DeleteAt,
 			CreationTime = vfile.VFileInfo.CreationTime,

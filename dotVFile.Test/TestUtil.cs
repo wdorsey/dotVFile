@@ -17,7 +17,7 @@ public record TestFile(
 	List<string> Directories,
 	string FileName)
 {
-	public VFilePath VFilePath = new(FileName, [.. Directories]);
+	public VFilePath VFilePath = new(Path.Combine([.. Directories]), FileName);
 	public VFileContent VFileContent = new(Util.EmptyBytes());
 	public string FileExtension = Util.FileExtension(FileName);
 	public string FilePath = string.Empty;
@@ -46,7 +46,7 @@ public static class TestUtil
 	public static readonly Random Rand = new();
 	public static string TestFilesDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
 	public static string ResultsDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestResults");
-	public const string TestFileMetadataDir = "metadata";
+	public static string TestFileMetadataDir = Path.Combine("test", "metadata");
 	public static List<TestFile> TestFiles = [];
 	private static bool TestFilesLoaded = false;
 
@@ -131,7 +131,7 @@ public static class TestUtil
 				// order of infos should mirror TestFiles
 				var info = infos[k];
 				var file = TestFiles[k];
-				var vfile = vfs.GetVFile(info) ?? throw new Exception($"null vfile: {info.FilePath}");
+				var vfile = vfs.GetVFile(info) ?? throw new Exception($"null vfile: {info.VFilePath.FilePath}");
 				// write files for debugging
 				// WriteFiles(file, vfile, @case.Name);
 				AssertFileContent(file, vfile);
@@ -147,7 +147,7 @@ public static class TestUtil
 
 			foreach (var vfile in vfiles)
 			{
-				Assert(vfile.SizeStored <= vfile.Size, $"Compressed Size is not smaller than SizeStored: {vfile.FilePath}");
+				Assert(vfile.SizeStored <= vfile.Size, $"Compressed Size is not smaller than SizeStored: {vfile.VFilePath.FilePath}");
 			}
 		}
 
@@ -157,7 +157,7 @@ public static class TestUtil
 
 			foreach (var vfile in vfiles)
 			{
-				Assert(vfile.DeleteAt.HasValue, $"DeleteAt null: {vfile.FilePath}");
+				Assert(vfile.DeleteAt.HasValue, $"DeleteAt null: {vfile.VFilePath.FilePath}");
 			}
 		}
 
@@ -206,7 +206,7 @@ public static class TestUtil
 				versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 				foreach (var vfile in versions)
 				{
-					Assert(vfile.DeleteAt.HasValue, $"DeleteAt null: {vfile.FilePath}");
+					Assert(vfile.DeleteAt.HasValue, $"DeleteAt null: {vfile.VFilePath.FilePath}");
 				}
 			}
 		}

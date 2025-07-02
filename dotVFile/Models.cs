@@ -52,38 +52,11 @@ public record VFSOptions(
 	IVFileHooks? Hooks = null,
 	VFileStoreOptions? DefaultStoreOptions = null);
 
-/// <summary>
-/// Uniquely identifies a VFile.<br/>
-/// Examples of Id:<br/>
-///	/file.txt<br/>
-///	/folder/subfolder/file.txt<br/>
-///	/folder/file.txt?v={Version}
-/// </summary>
-public record VFileId(
-	string Id,
-	string Directory,
-	List<string> DirectoryParts,
-	string FileName,
-	string FilePath,
-	DateTimeOffset? Versioned)
-{
-	public override string ToString()
-	{
-		return Id;
-	}
-
-	public static VFileId Default() =>
-		new(string.Empty, string.Empty, [], string.Empty, string.Empty, null);
-}
-
 public record VFileInfo
 {
 	public Guid Id;
-	public VFileId VFileId = VFileId.Default();
-	public string FilePath = string.Empty;
-	public string Directory = string.Empty;
-	public string FileName = string.Empty;
-	public string FileExtension = string.Empty;
+	public VFilePath VFilePath = VFilePath.Default();
+	public VFilePath UserVFilePath = VFilePath.Default();
 	public DateTimeOffset? Versioned;
 	public bool IsVersion => Versioned.HasValue;
 	public DateTimeOffset? DeleteAt;
@@ -110,26 +83,35 @@ public record VFile(VFileInfo VFileInfo, byte[] Content);
 public record VFilePath
 {
 	public VFilePath(string? directory, string fileName)
+		: this(directory, fileName, Path.Combine(directory ?? string.Empty, fileName)) { }
+
+	public VFilePath(string filePath) : this(new FileInfo(filePath)) { }
+
+	public VFilePath(FileInfo fi) : this(fi.DirectoryName, fi.Name, fi.FullName) { }
+
+	internal VFilePath(
+		string? directory,
+		string fileName,
+		string filePath)
 	{
 		Directory = directory;
+		DirectoryParts = VFS.DirectoryParts(Directory);
 		FileName = fileName;
+		FileExtension = fileName.HasValue() ? Util.FileExtension(fileName) : string.Empty;
+		FilePath = filePath;
 	}
-	public VFilePath(string filePath) : this(new FileInfo(filePath)) { }
-	public VFilePath(FileInfo fi) : this(fi.DirectoryName ?? string.Empty, fi.Name) { }
-	/// <summary>
-	/// PathParts should not include any directory separators.
-	/// </summary>
-	/// <param name="directories">Individual directories, in order. Should not include any directory separators.</param>
-	public VFilePath(string fileName, params string[] directories)
-		: this(string.Join(VFS.DirectorySeparator, directories), fileName) { }
+
+	internal static VFilePath Default() => new(string.Empty, string.Empty);
 
 	public string? Directory { get; }
+	public List<string> DirectoryParts = [];
 	public string FileName { get; }
+	public string FileExtension { get; }
+	public string FilePath { get; }
 
 	public override string ToString()
 	{
-		var dir = Directory?.TrimEnd('/').TrimEnd('\\');
-		return $"{dir}{VFS.DirectorySeparator}{FileName}";
+		return FilePath;
 	}
 }
 

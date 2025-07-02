@@ -456,10 +456,10 @@ VALUES (
 		return new Db.VFileInfo
 		{
 			Id = info.Id,
-			FilePath = info.FilePath,
-			Directory = info.Directory,
-			FileName = info.FileName,
-			FileExtension = info.FileExtension,
+			FilePath = info.VFilePath.FilePath,
+			Directory = info.VFilePath.Directory ?? string.Empty,
+			FileName = info.VFilePath.FileName,
+			FileExtension = info.VFilePath.FileExtension,
 			Versioned = info.Versioned,
 			DeleteAt = info.DeleteAt,
 			CreationTime = info.CreationTime
