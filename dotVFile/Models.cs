@@ -40,6 +40,7 @@ public record VFileError(
 		return $@"
 === VFileError {ErrorCode} ===
 {Message}
+{Data.ToJson(true)}
 ==================
 ";
 	}
@@ -150,7 +151,13 @@ public record VFileContent
 public record StoreVFileRequest(
 	VFilePath Path,
 	VFileContent Content,
-	VFileStoreOptions? Opts = null);
+	VFileStoreOptions? Opts = null)
+{
+	public VFilePath Path = Path;
+	[JsonIgnore]
+	public VFileContent Content = Content;
+	public VFileStoreOptions? Opts = Opts;
+}
 
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileVersionBehavior

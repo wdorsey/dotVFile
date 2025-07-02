@@ -29,6 +29,12 @@ public class VFS
 	public VFileStoreOptions DefaultStoreOptions { get; }
 
 	/// <summary>
+	/// Gets the single database file path that _is_ the entire virtual file system.
+	/// This file could potentially be very large, so take care in how you retrieve it programmatically.
+	/// </summary>
+	public string SingleFilePath => Database.DatabaseFilePath;
+
+	/// <summary>
 	/// !!! DANGER !!!
 	/// This will delete EVERYTHING.
 	/// It will then recreate the Database.
