@@ -353,7 +353,7 @@ VALUES (
 		return dbContent.ReadRowId(reader);
 	}
 
-	public Db.StoreVFilesResult SaveStoreVFilesState(StoreVFilesState state)
+	public Db.StoreVFilesResult? SaveStoreVFilesState(StoreVFilesState state)
 	{
 		// All VFileInfo changes written transactionally.
 		// order:
@@ -440,9 +440,12 @@ VALUES (
 		}
 		catch (SqliteException e)
 		{
-			Hooks.Error(new(VFileErrorCodes.SqliteException, e.Message, nameof(SaveStoreVFilesState)));
+			Hooks.ErrorHandler(new(
+				VFileErrorCodes.DatabaseException,
+				e.ToString(),
+				nameof(SaveVFileContent)));
 			transaction.Rollback();
-			throw;
+			return null; // null indicates error
 		}
 
 		return result;

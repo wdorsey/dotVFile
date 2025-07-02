@@ -229,7 +229,10 @@ public class VFS
 
 			if (uniqueMap.Contains(vfileId.FilePath))
 			{
-				Hooks.Error(new(VFileErrorCodes.Duplicate, $"Duplicate file detected: {vfileId.FilePath}", nameof(StoreVFiles)));
+				Hooks.ErrorHandler(new(
+					VFileErrorCodes.DuplicateStoreVFileRequest,
+					$"Duplicate StoreVFileRequest detected: {vfileId.FilePath}",
+					request));
 				return [];
 			}
 
@@ -312,7 +315,10 @@ public class VFS
 						if (contentDifference)
 						{
 							var msg = $"Requested to overwrite existing file: {vfileId}";
-							Hooks.Error(new(VFileErrorCodes.VersionBehaviorViolation, msg, nameof(StoreVFiles)));
+							Hooks.ErrorHandler(new(
+								VFileErrorCodes.OverwriteNotAllowed,
+								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {vfileId.FilePath}",
+								request));
 							return [];
 						}
 						break;
@@ -363,13 +369,13 @@ public class VFS
 			}
 		}
 
-		Database.SaveStoreVFilesState(state);
+		var dbResult = Database.SaveStoreVFilesState(state);
 
 		// @TODO: probably move this into the clean-up operation
 		var rowIds = Database.GetUnreferencedVFileContentRowIds();
 		Database.DeleteVFileContent(rowIds);
 
-		return result;
+		return dbResult != null ? result : [];
 	}
 
 	private static string StandardizeDirectory(string? directory)
@@ -464,7 +470,10 @@ public class VFS
 	{
 		if (fileName.IsEmpty())
 		{
-			Hooks.Error(new(VFileErrorCodes.InvalidParameter, "fileName must have value", context));
+			Hooks.ErrorHandler(new(
+				VFileErrorCodes.InvalidParameter,
+				$"{context}: Invalid FileName - must have a value",
+				"FileName"));
 			return false;
 		}
 

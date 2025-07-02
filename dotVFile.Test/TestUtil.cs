@@ -2,7 +2,7 @@
 
 public class TestHooks : IVFileHooks
 {
-	public void Error(VFileError err)
+	public void ErrorHandler(VFileError err)
 	{
 		Console.WriteLine(err.ToString());
 	}

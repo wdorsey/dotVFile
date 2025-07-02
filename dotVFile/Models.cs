@@ -5,13 +5,13 @@ namespace dotVFile;
 
 public interface IVFileHooks
 {
-	void Error(VFileError error);
+	void ErrorHandler(VFileError error);
 	void Log(string msg);
 }
 
 public class NotImplementedHooks : IVFileHooks
 {
-	public void Error(VFileError error)
+	public void ErrorHandler(VFileError error)
 	{
 		// no impl
 	}
@@ -24,22 +24,21 @@ public class NotImplementedHooks : IVFileHooks
 
 public static class VFileErrorCodes
 {
-	public const string Duplicate = "DUPLICATE";
+	public const string DuplicateStoreVFileRequest = "DUPLICATE_STORE_VFILE_REQUEST";
+	public const string DatabaseException = "DATABASE_EXCEPTION";
 	public const string InvalidParameter = "INVALID_PARAMETER";
-	public const string SqliteException = "SQLITE_EXCEPTION";
-	public const string VersionBehaviorViolation = "VERSION_BEHAVIOR_VIOLATION";
+	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
 }
 
 public record VFileError(
 	string ErrorCode,
 	string Message,
-	string Context)
+	object? Data)
 {
 	public override string ToString()
 	{
 		return $@"
 === VFileError {ErrorCode} ===
-{Context}
 {Message}
 ==================
 ";
