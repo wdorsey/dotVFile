@@ -62,34 +62,34 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfos(string directory)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			Directories = NormalizePath(directory).AsList(),
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			FilePaths = [.. paths.Select(BuildFilePath)],
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFileId> ids)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			FilePaths = [.. ids.Select(x => x.FilePath)],
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -100,23 +100,23 @@ public class VFS
 
 	public List<VFileInfo> GetVFileInfoVersions(VFileId id, VFileInfoVersionQuery versionQuery)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			FilePaths = id.FilePath.AsList(),
 			VersionQuery = versionQuery
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(string directory, VFileInfoVersionQuery versionQuery)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			Directories = NormalizePath(directory).AsList(),
 			VersionQuery = versionQuery
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -127,12 +127,12 @@ public class VFS
 
 	public VFile? GetVFile(VFileId id)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
 			FilePaths = id.FilePath.AsList(),
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
-		var vfile = Database.GetVFiles(query).SingleOrDefault();
+		var vfile = Database.QueryVFiles(query).SingleOrDefault();
 		if (vfile == null) return null;
 		return GetVFiles(vfile.AsList()).SingleOrDefault();
 	}
@@ -154,11 +154,11 @@ public class VFS
 
 	public List<VFile> GetVFiles(List<VFileInfo> infos)
 	{
-		var query = new Db.VFileQuery
+		var query = new Db.VFileInfoQuery
 		{
-			VFileInfoIds = [.. infos.Select(x => x.Id)]
+			Ids = [.. infos.Select(x => x.Id)]
 		};
-		var vfiles = Database.GetVFiles(query);
+		var vfiles = Database.QueryVFiles(query);
 		return GetVFiles(vfiles);
 	}
 
@@ -226,8 +226,8 @@ public class VFS
 				: content;
 			var hash = Util.HashSHA256(bytes);
 
-			var existingVFile = Database.GetVFiles(
-				new Db.VFileQuery
+			var existingVFile = Database.QueryVFiles(
+				new Db.VFileInfoQuery
 				{
 					FilePaths = vfileId.FilePath.AsList(),
 					VersionQuery = VFileInfoVersionQuery.Latest
@@ -237,7 +237,11 @@ public class VFS
 
 			var vfileContent = existingContent != null && existingContent.Hash == hash
 				? existingContent
-				: Database.GetVFileContentByHash(hash);
+				: Database.QueryVFileContent(
+					new Db.VFileContentQuery
+					{
+						Hashes = hash.AsList()
+					}).SingleOrDefault();
 
 			var newInfo = new VFileInfo
 			{
@@ -298,8 +302,8 @@ public class VFS
 
 					case VFileVersionBehavior.Version:
 					{
-						var versions = Database.GetVFiles(
-							new Db.VFileQuery
+						var versions = Database.QueryVFiles(
+							new Db.VFileInfoQuery
 							{
 								FilePaths = vfileId.FilePath.AsList(),
 								VersionQuery = VFileInfoVersionQuery.Versions

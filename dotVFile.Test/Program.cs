@@ -1,7 +1,7 @@
 ﻿using dotVFile;
 using dotVFile.Test;
 
-ConsoleUtil.InitializeConsole();
+ConsoleUtil.InitializeConsole(height: 1000);
 
 var path = Path.Combine(Environment.CurrentDirectory, "vfs");
 var opts = new VFSOptions("dotVFile.Test", path, new TestHooks());

@@ -49,28 +49,45 @@ internal static class Db
 		public List<VFileContent> NewVFileContents = [];
 	}
 
-	public record VFileQuery
+	public record VFileInfoQuery
 	{
-		public List<long> VFileInfoRowIds = [];
-		public List<Guid> VFileInfoIds = [];
-		public List<long> VFileContentRowIds = [];
-		public List<Guid> VFileContentIds = [];
+		public List<long> RowIds = [];
+		public List<Guid> Ids = [];
 		public List<string> FilePaths = [];
 		public List<string> Directories = [];
-		public List<string> Hashes = [];
 		/// <summary>
 		/// Default is Both, which generates no sql.
 		/// </summary>
 		public VFileInfoVersionQuery VersionQuery = VFileInfoVersionQuery.Both;
 	}
 
+	public record VFileContentQuery
+	{
+		public List<long> RowIds = [];
+		public List<Guid> Ids = [];
+		public List<string> Hashes = [];
+	}
+
+	public record SelectColumn(
+		string Name,
+		string? TableAlias = null,
+		bool PrefixAlias = false)
+	{
+		public string Name = Name;
+		public string? TableAlias = TableAlias;
+		/// <summary>
+		/// Prefix the TableAlias to the selected columns.
+		/// if alias is 'x': SELECT x.RowId AS xRowId
+		/// </summary>
+		public bool ColumnNamePrefixAlias = PrefixAlias;
+	}
+
 	public record Select(
-		SqlExpr Columns,
+		List<SelectColumn> SelectColumns,
 		SqlExpr From,
 		SqlExpr Where)
 	{
 		public List<SqliteParameter> Parameters => [
-			.. Columns.Parameters,
 			.. From.Parameters,
 			.. Where.Parameters];
 	}
