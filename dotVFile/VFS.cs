@@ -2,7 +2,7 @@
 
 public class VFS
 {
-	public const char PathDirectorySeparator = '/';
+	public const char DirectorySeparator = '/';
 
 	public static VFileStoreOptions GetDefaultStoreOptions() =>
 		new(VFileCompression.None, null, GetDefaultVersionOptions());
@@ -376,26 +376,26 @@ public class VFS
 	{
 		char[] dividers = ['/', '\\'];
 		var parts = directory?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
-		var result = PathDirectorySeparator.ToString();
+		var result = DirectorySeparator.ToString();
 		if (parts.AnySafe())
 		{
-			result += string.Join(PathDirectorySeparator, parts);
-			result += PathDirectorySeparator;
+			result += string.Join(DirectorySeparator, parts);
+			result += DirectorySeparator;
 		}
 		return result;
 	}
 
 	private static List<string> DirectoryParts(string directory) =>
-		[.. directory.Split(PathDirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+		[.. directory.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
 
 	private static List<string> GetDirectoriesRecursive(string directory)
 	{
 		var result = new List<string>();
 		var parts = DirectoryParts(StandardizeDirectory(directory));
-		var prev = PathDirectorySeparator.ToString();
+		var prev = DirectorySeparator.ToString();
 		foreach (var dir in parts)
 		{
-			prev += dir + PathDirectorySeparator;
+			prev += dir + DirectorySeparator;
 			result.Add(prev);
 		}
 		return result;

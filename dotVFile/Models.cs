@@ -114,7 +114,7 @@ public record VFilePath
 	/// </summary>
 	/// <param name="directories">Individual directories, in order. Should not include any directory separators.</param>
 	public VFilePath(string fileName, params string[] directories)
-		: this(string.Join(VFS.PathDirectorySeparator, directories), fileName) { }
+		: this(string.Join(VFS.DirectorySeparator, directories), fileName) { }
 
 	public string? Directory { get; }
 	public string FileName { get; }
@@ -122,7 +122,7 @@ public record VFilePath
 	public override string ToString()
 	{
 		var dir = Directory?.TrimEnd('/').TrimEnd('\\');
-		return $"{dir}{VFS.PathDirectorySeparator}{FileName}";
+		return $"{dir}{VFS.DirectorySeparator}{FileName}";
 	}
 }
 
