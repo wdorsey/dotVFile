@@ -60,11 +60,15 @@ public class VFS
 		return GetVFileInfoVersions(id, VFileInfoVersionQuery.Latest).SingleOrDefault();
 	}
 
-	public List<VFileInfo> GetVFileInfos(string directory)
+	public List<VFileInfo> GetVFileInfos(string directory, bool recursive)
 	{
+		var directories = recursive
+			? GetDirectoriesRecursive(directory)
+			: StandardizeDirectory(directory).AsList();
+
 		var query = new Db.VFileInfoQuery
 		{
-			Directories = NormalizePath(directory).AsList(),
+			Directories = directories,
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfiles = Database.QueryVFiles(query);
@@ -109,11 +113,15 @@ public class VFS
 		return DbVFileToVFileInfo(vfiles);
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(string directory, VFileInfoVersionQuery versionQuery)
+	public List<VFileInfo> GetVFileInfoVersions(string directory, bool recursive, VFileInfoVersionQuery versionQuery)
 	{
+		var directories = recursive
+			? GetDirectoriesRecursive(directory)
+			: StandardizeDirectory(directory).AsList();
+
 		var query = new Db.VFileInfoQuery
 		{
-			Directories = NormalizePath(directory).AsList(),
+			Directories = directories,
 			VersionQuery = versionQuery
 		};
 		var vfiles = Database.QueryVFiles(query);
@@ -162,9 +170,19 @@ public class VFS
 		return GetVFiles(vfiles);
 	}
 
-	public List<VFile> GetVFiles(string directory)
+	public List<VFile> GetVFiles(string directory, bool recursive)
 	{
-		return GetVFiles(GetVFileInfos(directory));
+		return GetVFiles(GetVFileInfos(directory, recursive));
+	}
+
+	public byte[]? GetVFileBytes(VFilePath path)
+	{
+		return GetVFile(path)?.Content;
+	}
+
+	public byte[]? GetVFileBytes(VFileId vFileId)
+	{
+		return GetVFile(vFileId)?.Content;
 	}
 
 	private List<VFile> GetVFiles(List<Db.VFile> dbVFiles)
@@ -354,10 +372,10 @@ public class VFS
 		return result;
 	}
 
-	private static string NormalizePath(string? path)
+	private static string StandardizeDirectory(string? directory)
 	{
 		char[] dividers = ['/', '\\'];
-		var parts = path?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
+		var parts = directory?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
 		var result = PathDirectorySeparator.ToString();
 		if (parts.AnySafe())
 		{
@@ -367,15 +385,31 @@ public class VFS
 		return result;
 	}
 
+	private static List<string> DirectoryParts(string directory) =>
+		[.. directory.Split(PathDirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+
+	private static List<string> GetDirectoriesRecursive(string directory)
+	{
+		var result = new List<string>();
+		var parts = DirectoryParts(StandardizeDirectory(directory));
+		var prev = PathDirectorySeparator.ToString();
+		foreach (var dir in parts)
+		{
+			prev += dir + PathDirectorySeparator;
+			result.Add(prev);
+		}
+		return result;
+	}
+
 	private static string BuildFilePath(VFilePath path)
 	{
-		var directory = NormalizePath(path.Directory);
+		var directory = StandardizeDirectory(path.Directory);
 		return $"{directory}{path.FileName}";
 	}
 
 	private static VFileId BuildVFileId(VFilePath path, DateTimeOffset? versioned = null)
 	{
-		var directory = NormalizePath(path.Directory);
+		var directory = StandardizeDirectory(path.Directory);
 		return BuildVFileId(directory, path.FileName, versioned);
 	}
 
@@ -386,7 +420,7 @@ public class VFS
 
 	private static VFileId BuildVFileId(string directory, string fileName, DateTimeOffset? versioned = null)
 	{
-		var parts = directory.Split(PathDirectorySeparator, StringSplitOptions.RemoveEmptyEntries).ToList();
+		var parts = DirectoryParts(directory);
 
 		var filePath = $"{directory}{fileName}";
 

@@ -166,7 +166,7 @@ public static class TestUtil
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
 			vfs.StoreVFiles(requests);
-			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, VFileInfoVersionQuery.Versions);
+			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 			Assert(versions.Count == 0, $"versions found w/ Overwrite behavior: versions.Count={versions.Count}");
 		}
 		else if (opts.VersionOpts.Behavior == VFileVersionBehavior.Error)
@@ -181,7 +181,7 @@ public static class TestUtil
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
 			var result = vfs.StoreVFiles(requests);
-			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, VFileInfoVersionQuery.Versions);
+			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 			Assert(versions.Count == result.Count, $"Version count mismatch: versions.Count={versions.Count}");
 
 			if (opts.VersionOpts.MaxVersionsRetained.HasValue)
@@ -193,7 +193,7 @@ public static class TestUtil
 					requests = GenerateMetadataRequests(opts, true);
 					vfs.StoreVFiles(requests);
 				}
-				versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, VFileInfoVersionQuery.Versions);
+				versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 				var expected = max * result.Count;
 				Assert(versions.Count == expected, $"MaxVersionsRetained: Expected {expected} versions, got {versions.Count}");
 			}
@@ -203,7 +203,7 @@ public static class TestUtil
 				// store new files with different content
 				requests = GenerateMetadataRequests(opts, true);
 				vfs.StoreVFiles(requests);
-				versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, VFileInfoVersionQuery.Versions);
+				versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 				foreach (var vfile in versions)
 				{
 					Assert(vfile.DeleteAt.HasValue, $"DeleteAt null: {vfile.FilePath}");
@@ -216,7 +216,7 @@ public static class TestUtil
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFS vfs, int expectedCount)
 	{
-		var vfiles = vfs.GetVFileInfos(TestFileMetadataDir);
+		var vfiles = vfs.GetVFileInfos(TestFileMetadataDir, false);
 
 		Assert(vfiles.Count == expectedCount, $"GetVFileInfos by directory did not return expected file count. vfiles.Count={vfiles.Count}, expectedCount={expectedCount}");
 

@@ -255,6 +255,28 @@ WHERE
 		return results;
 	}
 
+	public List<string> GetDistinctDirectories()
+	{
+		var results = new List<string>();
+
+		const string sql = @"
+SELECT DISTINCT
+	Directory
+FROM
+	VFileInfo
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			results.Add(reader.GetString("Directory"));
+		}
+
+		return results;
+	}
+
 	public void DeleteVFileContent(List<long> rowIds)
 	{
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFileContent", rowIds);
