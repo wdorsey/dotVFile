@@ -78,6 +78,7 @@ public class VFS
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -89,6 +90,7 @@ public class VFS
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -100,6 +102,7 @@ public class VFS
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -116,6 +119,7 @@ public class VFS
 			VersionQuery = versionQuery
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -131,6 +135,7 @@ public class VFS
 			VersionQuery = versionQuery
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return DbVFileToVFileInfo(vfiles);
 	}
 
@@ -147,7 +152,9 @@ public class VFS
 			VersionQuery = VFileInfoVersionQuery.Latest
 		};
 		var vfile = Database.QueryVFiles(query).SingleOrDefault();
-		if (vfile == null) return null;
+		if (vfile == null)
+			return null;
+
 		return GetVFiles(vfile.AsList()).SingleOrDefault();
 	}
 
@@ -173,6 +180,7 @@ public class VFS
 			Ids = [.. infos.Select(x => x.Id)]
 		};
 		var vfiles = Database.QueryVFiles(query);
+
 		return GetVFiles(vfiles);
 	}
 
@@ -197,7 +205,7 @@ public class VFS
 
 		return [.. dbVFiles.Select(x =>
 		{
-			// @note: Content should never be null here, just null coalescing to make the compile happy.
+			// @note: Content should never be null here, only null coalescing here to make the compiler happy.
 			var content = x.VFileContent.Compression == (byte)VFileCompression.None
 				? x.VFileContent.Content ?? Util.EmptyBytes()
 				: Util.Decompress(x.VFileContent.Content ?? Util.EmptyBytes());
@@ -221,6 +229,12 @@ public class VFS
 
 	public List<VFileInfo> StoreVFiles(List<StoreVFileRequest> requests)
 	{
+		// this function builds up all the VFileInfo changes within
+		// a StoreVFilesState object.
+		// Any new VFileContent is immediately saved so that the file bytes
+		// are not kept around in memory. This is not harmful should
+		// the state fail to save, any orphaned content can be cleaned up later.
+
 		var result = new List<VFileInfo>();
 		var state = new StoreVFilesState();
 		var uniqueMap = new HashSet<string>();
@@ -228,6 +242,7 @@ public class VFS
 		foreach (var request in requests)
 		{
 			var path = request.Path;
+
 			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
 				return [];
 
@@ -262,6 +277,8 @@ public class VFS
 
 			var existingContent = existingVFile?.VFileContent;
 
+			// if the existingVFile content matches the passed in content (via hash),
+			// then we can just use that instead of having to query the database.
 			var vfileContent = existingContent != null && existingContent.Hash == hash
 				? existingContent
 				: Database.QueryVFileContent(
@@ -350,7 +367,7 @@ public class VFS
 						// always check for TTL and MaxVersions changes
 						foreach (var v in versions)
 						{
-							// always updates version's DeleteAt to the current opts.VersionOpts.TTL that is passed in.
+							// always updates version's DeleteAt to the current opts.VersionOpts.TTL.
 							// DeleteAt calculated off the Versioned timestamp.
 							var expected = opts.VersionOpts.TTL.HasValue
 								? v.VFileInfo.Versioned + opts.VersionOpts.TTL
@@ -358,16 +375,18 @@ public class VFS
 							if (v.VFileInfo.DeleteAt != expected)
 							{
 								v.VFileInfo.DeleteAt = expected;
-								// sometimes this adds a dupe existingVFile, that's ok
-								state.UpdateVFileInfos.Add(v.VFileInfo);
+								// AddSafe to prevent adding the existingVFile twice
+								state.UpdateVFileInfos.AddSafe(v.VFileInfo);
 							}
 						}
 
 						var maxVersions = opts.VersionOpts.MaxVersionsRetained;
 						if (maxVersions.HasValue && versions.Count > maxVersions)
 						{
-							var delete = versions.OrderByDescending(x => x.VFileInfo.Versioned).Skip(maxVersions.Value).ToList();
-							state.DeleteVFileInfos.AddRange(delete.Select(x => x.VFileInfo));
+							var delete = versions.Select(x => x.VFileInfo)
+								.OrderByDescending(x => x.Versioned)
+								.Skip(maxVersions.Value);
+							state.DeleteVFileInfos.AddRange(delete);
 						}
 						break;
 					}
@@ -384,6 +403,11 @@ public class VFS
 		return dbResult != null ? result : [];
 	}
 
+	/// <summary>
+	/// Standardizes all directories to use DirectorySeparator '/'
+	/// and the full path always starts and ends with '/'.
+	/// e.g. /x/y/z/ 
+	/// </summary>
 	private static string StandardizeDirectory(string? directory)
 	{
 		char[] dividers = ['/', '\\'];
@@ -400,6 +424,9 @@ public class VFS
 	private static List<string> DirectoryParts(string directory) =>
 		[.. directory.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
 
+	/// <summary>
+	/// /x/y/z/ => [/x/, /x/y/, /x/y/z/]
+	/// </summary>
 	private static List<string> GetDirectoriesRecursive(string directory)
 	{
 		var result = new List<string>();

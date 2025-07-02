@@ -92,7 +92,14 @@ public record VFileInfo
 	// Content fields
 	public Guid ContentId;
 	public string Hash = string.Empty;
+	/// <summary>
+	/// Size of VFile content.
+	/// </summary>
 	public long Size;
+	/// <summary>
+	/// Size of VFile content stored in database.
+	/// This can be different than Size because of compression.
+	/// </summary>
 	public long SizeStored;
 	public VFileCompression Compression;
 	public DateTimeOffset ContentCreationTime;

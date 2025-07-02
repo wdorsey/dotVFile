@@ -29,6 +29,15 @@ internal static class Util
 		return obj == null ? [] : [obj];
 	}
 
+	public static List<T> AddSafe<T>(this List<T> list, T item)
+	{
+		if (!list.Contains(item))
+		{
+			list.Add(item);
+		}
+		return list;
+	}
+
 	public static bool HasValue([NotNullWhen(true)] this string? value)
 	{
 		return !string.IsNullOrEmpty(value);
