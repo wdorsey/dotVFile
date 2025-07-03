@@ -112,6 +112,10 @@ public record VFilePath
 	public string FileName { get; }
 	public string FileExtension { get; }
 	public string FilePath { get; }
+	/// <summary>
+	/// Converts FilePath to a path standardized for the current system via Path.Combine.
+	/// </summary>
+	public string SystemFilePath => this.GetSystemFilePath();
 
 	public override string ToString()
 	{

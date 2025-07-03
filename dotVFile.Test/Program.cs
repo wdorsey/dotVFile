@@ -23,6 +23,8 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 		new VFilePath("stream_directory", file.FileName),
 		new VFileContent(fs));
 
+	Console.WriteLine($"{info!.VFilePath.FilePath} => {info!.VFilePath.SystemFilePath}");
+
 	vfs.Hooks.DebugLog(info!.ToJson(true)!);
 	var vfile = vfs.GetVFile(info!);
 	vfs.Hooks.DebugLog(vfile!.VFileInfo.ToJson(true)!);
