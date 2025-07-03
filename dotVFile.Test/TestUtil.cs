@@ -4,12 +4,18 @@ public class TestHooks : IVFileHooks
 {
 	public void ErrorHandler(VFileError err)
 	{
-		Console.WriteLine(err.ToString());
+		Console.WriteLine(Prefix() + err.ToString());
 	}
 
 	public void DebugLog(string msg)
 	{
-		Console.WriteLine(msg);
+		Console.WriteLine(Prefix() + msg);
+	}
+
+	private static string Prefix()
+	{
+		var now = DateTime.Now;
+		return $"{now:HH:mm:ss.fff}> ";
 	}
 }
 
@@ -112,9 +118,8 @@ public static class TestUtil
 		{
 			vfs.DANGER_WipeData();
 			RunTest(vfs, @case);
+			vfs.Clean();
 		}
-
-		vfs.Clean();
 	}
 
 	public static void RunTest(VFS vfs, TestCase @case)

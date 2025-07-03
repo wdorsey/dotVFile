@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -12,7 +13,7 @@ internal static class Util
 	private static Encoding Encoding => Encoding.UTF8;
 	public static byte[] EmptyBytes() => [];
 
-	public const string DefaultDateTimeFormat = "yyyy-MM-dd HH:mm:ss.ffffff zzz";
+	public const string DefaultDateTimeFormat = "yyyy-MM-ddTHH:mm:ss.ffffffzzz";
 
 	public static string ToDefaultString(this DateTimeOffset dt)
 	{
@@ -327,9 +328,9 @@ internal static class Util
 
 	/* json utils */
 	public static string? ToJson(
-	this object? obj,
-	bool format = false,
-	JsonSerializerSettings? settings = null)
+		this object? obj,
+		bool format = false,
+		JsonSerializerSettings? settings = null)
 	{
 		if (obj == null)
 			return null;
@@ -389,5 +390,61 @@ internal static class Util
 		settings.NullValueHandling = NullValueHandling.Ignore;
 
 		return settings;
+	}
+
+	/* Timer utils */
+	public static Timer TimerStart(string name)
+	{
+		return new Timer(name, Stopwatch.StartNew());
+	}
+
+	public static Timer Stop(this Timer timer)
+	{
+		timer.Stopwatch.Stop();
+		return timer;
+	}
+
+	public static Timer LogTimerStart(this IVFileHooks hooks, string name)
+	{
+		var timer = TimerStart(name);
+		hooks.DebugLog($"{name} start");
+		return timer;
+	}
+
+	public static void LogTimerEnd(this IVFileHooks hooks, Timer timer)
+	{
+		timer.Stop();
+		hooks.DebugLog($"{timer.Name} end -- {timer.Stopwatch.Elapsed.TimeString()}");
+	}
+
+	public static string ToStringNumber(this short value) => value.ToString("N0");
+	public static string ToStringNumber(this int value) => value.ToString("N0");
+	public static string ToStringNumber(this long value) => value.ToString("N0");
+	public static string ToStringNumber(this double value) => value.ToString("N2");
+	public static string ToStringNumber(this decimal value) => value.ToString("N2");
+
+	public static string NanosecondsString(this TimeSpan ts)
+	{
+		return $"0.{((int)ts.TotalNanoseconds).ToString().PadLeft(6, '0')}ms";
+	}
+
+	public static string MillisecondsString(this TimeSpan ts)
+	{
+		return $"{((int)ts.TotalMilliseconds).ToStringNumber()}ms";
+	}
+
+	public static string SecondsString(this TimeSpan ts)
+	{
+		return $"{ts.Seconds.ToStringNumber()}.{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')}s";
+	}
+
+	public static string TimeString(this TimeSpan ts)
+	{
+		// only works if less than 60 seconds
+		return ts.TotalSeconds >= 1
+			? ts.SecondsString()
+			: ts.TotalMilliseconds >= 1
+			? ts.MillisecondsString()
+			: ts.NanosecondsString();
 	}
 }

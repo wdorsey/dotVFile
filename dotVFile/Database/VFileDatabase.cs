@@ -6,23 +6,30 @@ namespace dotVFile;
 
 internal class VFileDatabase
 {
+	private Guid? ApplicationId;
+
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
 		VFileDirectory = opts.VFileDirectory;
+		Version = opts.Version;
 		Hooks = opts.Hooks;
+		EnforceSingleInstance = opts.EnforceSingleInstance;
 		DatabaseFilePath = new(Path.Combine(VFileDirectory, $"{opts.Name}.vfile.db"));
 		ConnectionString = $"Data Source={DatabaseFilePath};";
 		CreateDatabase();
+		GetOrSetSystemInfo();
 	}
 
 	public string VFileDirectory { get; }
+	public string Version { get; }
 	public IVFileHooks Hooks { get; }
+	public bool EnforceSingleInstance { get; }
 	public string DatabaseFilePath { get; }
 	public string ConnectionString { get; }
 
 	public void CreateDatabase()
 	{
-		const string sql = @"
+		var sql = @"
 CREATE TABLE IF NOT EXISTS VFile (
 	RowId					INTEGER NOT NULL UNIQUE,
 	Id						TEXT NOT NULL,
@@ -67,7 +74,14 @@ CREATE TABLE IF NOT EXISTS Directory (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Id ON Directory(Id);
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
-";
+
+CREATE TABLE IF NOT EXISTS SystemInfo (
+	ApplicationId	TEXT NOT NULL,
+	Version			TEXT NOT NULL,
+	LastClean		TEXT,
+	LastUpdate		TEXT NOT NULL
+);";
+
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
 	}
 
@@ -92,6 +106,7 @@ DROP INDEX IF EXISTS Directory_Path;
 DROP TABLE IF EXISTS VFile;
 DROP TABLE IF EXISTS FileContent;
 DROP TABLE IF EXISTS Directory;
+DROP TABLE IF EXISTS SystemInfo;
 ";
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
 	}
@@ -102,8 +117,125 @@ DROP TABLE IF EXISTS Directory;
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
+	/// <summary>
+	/// Logically named public function for getting the SystemInfo.
+	/// Hides the bit more complicated internal implementation.
+	/// </summary>
+	public Db.SystemInfo GetSystemInfo() => GetOrSetSystemInfo();
+
+	/// <summary>
+	/// Creates new SystemInfo if it does not already exist in the database.
+	/// </summary>
+	private Db.SystemInfo GetOrSetSystemInfo()
+	{
+		// if ApplicationId has yet to be set,
+		// then we need to update the SystemInfo.
+		if (ApplicationId != null)
+		{
+			var existing = GetSystemInfoFromDatabase();
+			if (existing != null)
+				return existing;
+		}
+
+		ApplicationId = Guid.NewGuid();
+
+		return UpdateSystemInfo(new(
+			ApplicationId.Value,
+			Version,
+			null,
+			DateTimeOffset.Now));
+	}
+
+	private Db.SystemInfo? GetSystemInfoFromDatabase()
+	{
+		Db.SystemInfo? result = null;
+		// SystemInfo only ever has 1 row
+		const string sql = @"SELECT * FROM SystemInfo";
+
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		if (reader.Read())
+		{
+			result = new(
+				reader.GetGuid("ApplicationId"),
+				reader.GetString("Version"),
+				reader.GetDateTimeOffsetNullable("LastClean"),
+				reader.GetDateTimeOffset("LastUpdate"));
+		}
+
+		return result;
+	}
+
+	public Db.SystemInfo UpdateSystemInfo(Db.SystemInfo info)
+	{
+		var db = info with { LastUpdate = DateTimeOffset.Now };
+
+		const string sql = @"
+-- create SystemInfo row if not exists
+INSERT INTO SystemInfo (
+	ApplicationId,
+	Version,
+	LastClean,
+	LastUpdate)
+SELECT
+	@ApplicationId,
+	@Version,
+	@LastClean,
+	@LastUpdate
+WHERE NOT EXISTS (SELECT 1 FROM SystemInfo);
+
+-- no where clause needed, only 1 row in the table
+UPDATE SystemInfo
+SET 
+	ApplicationId = @ApplicationId,
+	Version = @Version,
+	LastClean = @LastClean,
+	LastUpdate = @LastUpdate;
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("@ApplicationId", SqliteType.Text, db.ApplicationId)
+			.AddParameter("@Version", SqliteType.Text, db.Version)
+			.AddParameter("@LastClean", SqliteType.Text, (db.LastClean?.ToDefaultString()).NullCoalesce())
+			.AddParameter("@LastUpdate", SqliteType.Text, db.LastUpdate.ToDefaultString());
+
+		connection.Open();
+		cmd.ExecuteNonQuery();
+
+		return db;
+	}
+
+	/// <summary>
+	/// This function enforces that only a single application instance
+	/// is using this VFS instance at any given time.
+	/// This prevents data corruption due to race conditions and when in-memory caching is used.
+	/// This is configurable via EnforceSingleInstance.
+	/// </summary>
+	public void VerifySingleInstance()
+	{
+		if (!EnforceSingleInstance) return;
+
+		var info = GetOrSetSystemInfo();
+
+		if (ApplicationId != info.ApplicationId)
+		{
+			Hooks.ErrorHandler(new(
+				VFileErrorCodes.MultipleApplicationInstances,
+				"Multiple applications using same VFS instance simultaneously detected.",
+				null));
+			throw new Exception(VFileErrorCodes.MultipleApplicationInstances);
+		}
+	}
+
 	public Db.UnreferencedEntities GetUnreferencedEntities()
 	{
+		var t = LogTimerStart(nameof(GetUnreferencedEntities));
+
+		VerifySingleInstance();
+
 		var result = new Db.UnreferencedEntities();
 
 		List<(string tableName, string columnName)> vfileReferences = [
@@ -138,11 +270,17 @@ WHERE
 			result.FileContentRowIds.Add(reader.GetInt64("RowId"));
 		}
 
+		Hooks.LogTimerEnd(t);
+
 		return result;
 	}
 
 	public List<Db.VFile> GetExpiredVFile(DateTimeOffset cutoff)
 	{
+		var t = LogTimerStart(nameof(GetExpiredVFile));
+
+		VerifySingleInstance();
+
 		var results = new List<Db.VFile>();
 
 		const string sql = @"
@@ -164,11 +302,17 @@ WHERE
 			results.Add(GetVFile(reader));
 		}
 
+		Hooks.LogTimerEnd(t);
+
 		return results;
 	}
 
 	public HashSet<string> GetDirectories()
 	{
+		var t = LogTimerStart(nameof(GetDirectories));
+
+		VerifySingleInstance();
+
 		var results = new HashSet<string>();
 
 		// Path is a Unique column
@@ -187,6 +331,8 @@ FROM
 			results.Add(reader.GetString("Path"));
 		}
 
+		Hooks.LogTimerEnd(t);
+
 		return results;
 	}
 
@@ -194,10 +340,18 @@ FROM
 	{
 		if (ids.IsEmpty()) return [];
 
+		var t = LogTimerStart(nameof(GetVFilesById));
+
+		VerifySingleInstance();
+
 		var inClause = DbUtil.BuildInClause(ids.Select(x => x.ToString()), "Id", "VFile", SqliteType.Text);
 		var sql = GetVFilesSql(inClause.Sql);
 
-		return ExecuteVFiles(sql, inClause.Parameters);
+		var result = ExecuteVFiles(sql, inClause.Parameters);
+
+		Hooks.LogTimerEnd(t);
+
+		return result;
 	}
 
 	public List<Db.VFileModel> GetVFilesByDirectory(
@@ -206,12 +360,20 @@ FROM
 	{
 		if (directories.IsEmpty()) return [];
 
+		var t = LogTimerStart(nameof(GetVFilesByDirectory));
+
+		VerifySingleInstance();
+
 		var inClause = DbUtil.BuildInClause(directories, "Path", "Directory", SqliteType.Text);
 		var version = GetVersionedSql(versionQuery);
 		var where = $"{inClause.Sql} AND {version}";
 		var sql = GetVFilesSql(where);
 
-		return ExecuteVFiles(sql, inClause.Parameters);
+		var result = ExecuteVFiles(sql, inClause.Parameters);
+
+		Hooks.LogTimerEnd(t);
+
+		return result;
 	}
 
 	public List<Db.VFileModel> GetVFilesByFilePath(
@@ -219,6 +381,10 @@ FROM
 		VFileInfoVersionQuery versionQuery)
 	{
 		if (paths.IsEmpty()) return [];
+
+		var t = LogTimerStart(nameof(GetVFilesByFilePath));
+
+		VerifySingleInstance();
 
 		var results = new List<Db.VFileModel>();
 		var idx = 0;
@@ -242,6 +408,8 @@ FROM
 
 			results.AddRange(ExecuteVFiles(sql, parameters));
 		}
+
+		Hooks.LogTimerEnd(t);
 
 		return results;
 	}
@@ -332,32 +500,49 @@ WHERE
 
 	public void DeleteVFiles(List<long> rowIds)
 	{
+		var t = LogTimerStart(nameof(DeleteVFiles));
+		VerifySingleInstance();
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFile", rowIds);
+		Hooks.LogTimerEnd(t);
 	}
 
 	public void DeleteFileContent(List<long> rowIds)
 	{
+		var t = LogTimerStart(nameof(DeleteFileContent));
+		VerifySingleInstance();
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "FileContent", rowIds);
+		Hooks.LogTimerEnd(t);
 	}
 
 	public void DeleteDirectory(List<long> rowIds)
 	{
+		var t = LogTimerStart(nameof(DeleteDirectory));
+		VerifySingleInstance();
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "Directory", rowIds);
+		Hooks.LogTimerEnd(t);
 	}
 
 	public Db.UnreferencedEntities DeleteUnreferencedEntities()
 	{
+		var t = LogTimerStart(nameof(DeleteUnreferencedEntities));
+		VerifySingleInstance();
 		var result = GetUnreferencedEntities();
 		DeleteFileContent(result.FileContentRowIds);
 		DeleteDirectory(result.DirectoryRowIds);
+		Hooks.LogTimerEnd(t);
 		return result;
 	}
 
 	public List<Db.VFile> DeleteExpiredVFiles()
 	{
-		var vfiles = GetExpiredVFile(DateTimeOffset.Now);
+		var t = LogTimerStart(nameof(DeleteExpiredVFiles));
 
+		VerifySingleInstance();
+
+		var vfiles = GetExpiredVFile(DateTimeOffset.Now);
 		DeleteVFiles([.. vfiles.Select(x => x.RowId)]);
+
+		Hooks.LogTimerEnd(t);
 
 		return vfiles;
 	}
@@ -365,6 +550,10 @@ WHERE
 	public List<Db.FileContent> FetchContent(List<Db.FileContent> contents)
 	{
 		if (contents.IsEmpty()) return contents;
+
+		var t = LogTimerStart(nameof(FetchContent));
+
+		VerifySingleInstance();
 
 		var rowIdMap = contents.ToDictionary(x => x.RowId);
 		var clause = DbUtil.BuildInClause(contents.Select(x => x.RowId), "RowId", null, SqliteType.Integer);
@@ -388,11 +577,17 @@ WHERE
 			rowIdMap[rowId].Content = reader.GetBytes("Content");
 		}
 
+		Hooks.LogTimerEnd(t);
+
 		return contents;
 	}
 
 	public Db.FileContent SaveFileContent(VFileInfo info, byte[] content)
 	{
+		var t = LogTimerStart(nameof(SaveFileContent));
+
+		VerifySingleInstance();
+
 		// first check if content already exists
 		var sql = @"
 SELECT
@@ -415,6 +610,7 @@ WHERE
 		var reader = cmd.ExecuteReader();
 		if (reader.Read())
 		{
+			Hooks.LogTimerEnd(t);
 			// return existing
 			return GetFileContent(reader);
 		}
@@ -449,11 +645,19 @@ VALUES (
 			.AddParameter("@Content", SqliteType.Blob, dbContent.Content ?? Util.EmptyBytes());
 
 		reader = cmd.ExecuteReader();
-		return dbContent.ReadRowId(reader);
+		var result = dbContent.ReadRowId(reader);
+
+		Hooks.LogTimerEnd(t);
+
+		return result;
 	}
 
 	public Db.StoreVFilesResult? SaveStoreVFilesState(StoreVFilesState state)
 	{
+		var t = LogTimerStart(nameof(SaveStoreVFilesState));
+
+		VerifySingleInstance();
+
 		// All VFileInfo changes written transactionally.
 		// order:
 		//	DeleteVFileInfos
@@ -562,6 +766,8 @@ VALUES (
 			return null; // null indicates error
 		}
 
+		Hooks.LogTimerEnd(t);
+
 		return result;
 	}
 
@@ -631,5 +837,10 @@ VALUES (
 			Compression = (byte)info.Compression,
 			Content = content
 		};
+	}
+
+	private Timer LogTimerStart(string name)
+	{
+		return Hooks.LogTimerStart($"Database.{name}");
 	}
 }

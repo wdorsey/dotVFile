@@ -5,7 +5,9 @@ namespace dotVFile;
 internal record VFileDatabaseOptions(
 	string Name,
 	string VFileDirectory,
-	IVFileHooks Hooks);
+	string Version,
+	IVFileHooks Hooks,
+	bool EnforceSingleInstance);
 
 internal static class Db
 {
@@ -46,6 +48,12 @@ internal static class Db
 		VFile VFile,
 		FileContent FileContent,
 		Directory Directory);
+
+	public record SystemInfo(
+		Guid ApplicationId,
+		string Version,
+		DateTimeOffset? LastClean,
+		DateTimeOffset LastUpdate);
 
 	public record StoreVFilesResult
 	{

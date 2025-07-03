@@ -33,9 +33,23 @@ var opts = new VFSOptions(
 	path,            // Directory to store VFS's single-file
 	new TestHooks(), // IVFileHooks implementation, pass null to ignore
 	storeOpts,       // Default Store options, null will use VFS.GetDefaultStoreOptions()
+	true,            // Enforces that only a single application instance can access the VFS at a time
 	debug);          // Debug flag enables Hooks.DebugLog
 
 VFS vfs = new(opts);
+
+/*
+EnforceSingleInstance example:
+  opts specifies the exact VFS file location.
+  So creating a different instance would cause vfs2
+  to now be the recognized instance that owns 
+  the VFS at the location specified by opts.
+VFS vfs2 = new(opts);
+	
+  Trying to access the VFS via the first vfs instance,
+  which no longer is the owner, would cause an exception.
+vfs.GetVFiles(); // error
+*/
 
 // wipe data from test vfs at the start of each run
 vfs.DANGER_WipeData();

@@ -19,6 +19,7 @@ internal class HooksWrapper(VFS vfs, IVFileHooks? hooks) : IVFileHooks
 
 public class VFS
 {
+	public const string Version = "1.0.0";
 	public const char DirectorySeparator = '/';
 
 	public static VFileStoreOptions GetDefaultStoreOptions() =>
@@ -35,7 +36,7 @@ public class VFS
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		VFileDirectory = Util.CreateDir(opts.VFileDirectory);
 		Hooks = new HooksWrapper(this, opts.Hooks);
-		Database = new VFileDatabase(new(Name, VFileDirectory, Hooks));
+		Database = new VFileDatabase(new(Name, VFileDirectory, Version, Hooks, opts.EnforceSingleInstance));
 		DefaultStoreOptions = opts.DefaultStoreOptions ?? GetDefaultStoreOptions();
 		Debug = opts.Debug;
 
@@ -48,6 +49,7 @@ public class VFS
 	public IVFileHooks Hooks { get; }
 	public VFileStoreOptions DefaultStoreOptions { get; }
 	public bool Debug { get; set; }
+	public SystemInfo SystemInfo => ConvertDbSystemInfo(Database.GetSystemInfo());
 
 	/// <summary>
 	/// Gets the single database file path that _is_ the entire virtual file system.
@@ -87,12 +89,19 @@ public class VFS
 		// but it is not for both performance reasons and because it has
 		// to be checked here anyways after the expired VFiles are deleted.
 
+		var t = Hooks.LogTimerStart(nameof(Clean));
+
 		// delete expired VFiles first so that their content and directories 
 		// are freed to be cleaned up via DeleteUnreferencedEntities.
 		var expired = Database.DeleteExpiredVFiles();
 		var unreferenced = Database.DeleteUnreferencedEntities();
+
+		var sysInfo = Database.GetSystemInfo() with { LastClean = DateTimeOffset.Now };
+		Database.UpdateSystemInfo(sysInfo);
+
 		var result = new VFileCleanResult(unreferenced, expired);
 		Hooks.DebugLog($"{nameof(Clean)}() result: {result.ToJson(true)}");
+		Hooks.LogTimerEnd(t);
 		return result;
 	}
 
@@ -113,14 +122,14 @@ public class VFS
 	{
 		var vfiles = Database.GetVFilesByFilePath(paths.Select(StandardizePath), VFileInfoVersionQuery.Latest);
 
-		return DbVFileToVFileInfo(vfiles);
+		return ConvertDbVFile(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
 	{
 		var vfiles = Database.GetVFilesByFilePath(StandardizePath(path).AsList(), versionQuery);
 
-		return DbVFileToVFileInfo(vfiles);
+		return ConvertDbVFile(vfiles);
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(string directory, bool recursive, VFileInfoVersionQuery versionQuery)
@@ -131,7 +140,7 @@ public class VFS
 
 		var vfiles = Database.GetVFilesByDirectory(directories, versionQuery);
 
-		return DbVFileToVFileInfo(vfiles);
+		return ConvertDbVFile(vfiles);
 	}
 
 	public VFile? GetVFile(VFilePath path)
@@ -185,7 +194,7 @@ public class VFS
 				? x.FileContent.Content ?? Util.EmptyBytes()
 				: Util.Decompress(x.FileContent.Content ?? Util.EmptyBytes());
 
-			return new VFile(DbVFileToVFileInfo(x), content);
+			return new VFile(ConvertDbVFile(x), content);
 		})];
 	}
 
@@ -209,6 +218,8 @@ public class VFS
 		// Any new VFileContent is immediately saved so that the file bytes
 		// are not kept around in memory. This is not harmful should
 		// the state fail to save, any orphaned content can be cleaned up later.
+
+		var t = Hooks.LogTimerStart(nameof(StoreVFiles));
 
 		var result = new List<VFileInfo>();
 		var state = new StoreVFilesState();
@@ -276,7 +287,7 @@ public class VFS
 			{
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-				result.Add(contentDifference ? newInfo : DbVFileToVFileInfo(existingVFile));
+				result.Add(contentDifference ? newInfo : ConvertDbVFile(existingVFile));
 				switch (opts.VersionOpts.ExistsBehavior)
 				{
 					case VFileExistsBehavior.Overwrite:
@@ -346,6 +357,8 @@ public class VFS
 
 		var dbResult = Database.SaveStoreVFilesState(state);
 
+		Hooks.LogTimerEnd(t);
+
 		return dbResult != null ? result : [];
 	}
 
@@ -397,12 +410,12 @@ public class VFS
 		return result;
 	}
 
-	private static List<VFileInfo> DbVFileToVFileInfo(List<Db.VFileModel> vfiles)
+	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
 	{
-		return [.. vfiles.Select(DbVFileToVFileInfo)];
+		return [.. vfiles.Select(ConvertDbVFile)];
 	}
 
-	private static VFileInfo DbVFileToVFileInfo(Db.VFileModel vfile)
+	private static VFileInfo ConvertDbVFile(Db.VFileModel vfile)
 	{
 		var filePath = $"{vfile.Directory.Path}{vfile.VFile.FileName}";
 		return new VFileInfo
@@ -419,6 +432,15 @@ public class VFS
 			Compression = (VFileCompression)vfile.FileContent.Compression,
 			ContentCreationTime = vfile.FileContent.CreateTimestamp
 		};
+	}
+
+	private static SystemInfo ConvertDbSystemInfo(Db.SystemInfo info)
+	{
+		return new(
+			info.ApplicationId,
+			info.Version,
+			info.LastClean,
+			info.LastUpdate);
 	}
 
 	private bool Assert_ValidFileName(string fileName, string context)

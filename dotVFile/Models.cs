@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System.Diagnostics;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
@@ -28,6 +29,7 @@ public static class VFileErrorCodes
 	public const string DatabaseException = "DATABASE_EXCEPTION";
 	public const string InvalidParameter = "INVALID_PARAMETER";
 	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
+	public const string MultipleApplicationInstances = "MULTIPLE_APPLICATION_INSTANCES";
 }
 
 public record VFileError(
@@ -51,6 +53,7 @@ public record VFSOptions(
 	string VFileDirectory,
 	IVFileHooks? Hooks = null,
 	VFileStoreOptions? DefaultStoreOptions = null,
+	bool EnforceSingleInstance = true,
 	bool Debug = false)
 {
 	/// <summary>
@@ -75,7 +78,15 @@ public record VFSOptions(
 	public VFileStoreOptions? DefaultStoreOptions = DefaultStoreOptions;
 
 	/// <summary>
-	/// Debug flag enables Hooks.DebugLog.
+	/// Enforces that only a single application instance can operate
+	/// on the virtual file system at any given time.
+	/// This prevents potential data corruption from race conditions
+	/// or from using in-memory caching.
+	/// </summary>
+	public bool EnforceSingleInstance = EnforceSingleInstance;
+
+	/// <summary>
+	/// Debug flag enables Hooks.DebugLog. This is _very_ verbose.
 	/// </summary>
 	public bool Debug = Debug;
 }
@@ -304,3 +315,11 @@ public record VFileCleanResult
 	public long DeletedFileContentCount;
 	public long DeletedDirectoryCount;
 }
+
+public record SystemInfo(
+	Guid ApplicationId,
+	string Version,
+	DateTimeOffset? LastClean,
+	DateTimeOffset LastUpdate);
+
+internal record Timer(string Name, Stopwatch Stopwatch);
