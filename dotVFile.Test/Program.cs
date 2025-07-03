@@ -3,7 +3,7 @@ using dotVFile.Test;
 
 ConsoleUtil.InitializeConsole(height: 1000);
 
-var debug = true; // for local dev
+var debug = false; // for local dev
 
 var path = Path.Combine(Environment.CurrentDirectory, "vfs");
 

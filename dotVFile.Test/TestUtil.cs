@@ -126,6 +126,8 @@ public static class TestUtil
 	{
 		var opts = @case.Opts;
 		Console.WriteLine($"=== {@case.Name} Test ===");
+		var t = Util.TimerStart(@case.Name);
+
 		// test file's actual content
 		// not much here, just verifying Store => Get => Assert bytes match
 		// run 2 times to make sure nothing is wrong with saving the same files.
@@ -219,6 +221,8 @@ public static class TestUtil
 		}
 
 		// @TODO: test Get functions
+
+		Console.WriteLine(t.Stop().EndString());
 	}
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFS vfs, int expectedCount)

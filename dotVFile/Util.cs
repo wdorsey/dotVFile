@@ -404,6 +404,11 @@ internal static class Util
 		return timer;
 	}
 
+	public static string EndString(this Timer timer)
+	{
+		return $"{timer.Name} end -- {timer.Stopwatch.Elapsed.TimeString()}";
+	}
+
 	public static Timer LogTimerStart(this IVFileHooks hooks, string name)
 	{
 		var timer = TimerStart(name);
@@ -414,7 +419,7 @@ internal static class Util
 	public static void LogTimerEnd(this IVFileHooks hooks, Timer timer)
 	{
 		timer.Stop();
-		hooks.DebugLog($"{timer.Name} end -- {timer.Stopwatch.Elapsed.TimeString()}");
+		hooks.DebugLog(timer.EndString());
 	}
 
 	public static string ToStringNumber(this short value) => value.ToString("N0");
