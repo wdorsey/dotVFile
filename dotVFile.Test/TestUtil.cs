@@ -101,9 +101,9 @@ public static class TestUtil
 			new("Default", VFS.GetDefaultStoreOptions()),
 			new("Compression", new(VFileCompression.Compress, null, VFS.GetDefaultVersionOptions())),
 			new("TTL", new(VFileCompression.None, TimeSpan.FromMinutes(1), VFS.GetDefaultVersionOptions())),
-			new("VersionBehavior.Error", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileVersionBehavior.Error, null, null))),
-			new("VersionBehavior.Version", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileVersionBehavior.Version, null, null))),
-			new("VersionBehavior.Version2", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileVersionBehavior.Version, 3, TimeSpan.FromMinutes(1)))),
+			new("VersionBehavior.Error", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileExistsBehavior.Error, null, null))),
+			new("VersionBehavior.Version", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileExistsBehavior.Version, null, null))),
+			new("VersionBehavior.Version2", VFS.GetDefaultStoreOptions().SetVersionOpts(new(VFileExistsBehavior.Version, 3, TimeSpan.FromMinutes(1)))),
 		};
 
 		Console.WriteLine("=== RUN TESTS ===");
@@ -161,7 +161,7 @@ public static class TestUtil
 			}
 		}
 
-		if (opts.VersionOpts.Behavior == VFileVersionBehavior.Overwrite)
+		if (opts.VersionOpts.Behavior == VFileExistsBehavior.Overwrite)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
@@ -169,14 +169,14 @@ public static class TestUtil
 			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 			Assert(versions.Count == 0, $"versions found w/ Overwrite behavior: versions.Count={versions.Count}");
 		}
-		else if (opts.VersionOpts.Behavior == VFileVersionBehavior.Error)
+		else if (opts.VersionOpts.Behavior == VFileExistsBehavior.Error)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
 			var result = vfs.StoreVFiles(requests);
 			Assert(result.IsEmpty(), "VFiles stored w/ Error behavior.");
 		}
-		else if (opts.VersionOpts.Behavior == VFileVersionBehavior.Version)
+		else if (opts.VersionOpts.Behavior == VFileExistsBehavior.Version)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);

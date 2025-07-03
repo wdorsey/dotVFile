@@ -157,7 +157,7 @@ public record StoreVFileRequest(
 }
 
 [JsonConverter(typeof(StringEnumConverter))]
-public enum VFileVersionBehavior
+public enum VFileExistsBehavior
 {
 	/// <summary>
 	/// Old file deleted, no versioning.
@@ -187,11 +187,11 @@ public enum VFileCompression
 /// Default: VFS.GetDefaultVersionOptions()
 /// </summary>
 public record VFileVersionOptions(
-	VFileVersionBehavior Behavior,
+	VFileExistsBehavior ExistsBehavior,
 	int? MaxVersionsRetained,
 	TimeSpan? TTL)
 {
-	public VFileVersionBehavior Behavior = Behavior;
+	public VFileExistsBehavior Behavior = ExistsBehavior;
 	public int? MaxVersionsRetained = MaxVersionsRetained;
 	public TimeSpan? TTL = TTL;
 }

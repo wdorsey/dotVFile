@@ -25,7 +25,7 @@ public class VFS
 		new(VFileCompression.None, null, GetDefaultVersionOptions());
 
 	public static VFileVersionOptions GetDefaultVersionOptions() =>
-		new(VFileVersionBehavior.Overwrite, null, null);
+		new(VFileExistsBehavior.Overwrite, null, null);
 
 	public VFS(VFSOptions opts)
 	{
@@ -258,7 +258,7 @@ public class VFS
 				result.Add(contentDifference ? newInfo : DbVFileToVFileInfo(existingVFile));
 				switch (opts.VersionOpts.Behavior)
 				{
-					case VFileVersionBehavior.Overwrite:
+					case VFileExistsBehavior.Overwrite:
 					{
 						if (contentDifference)
 						{
@@ -268,7 +268,7 @@ public class VFS
 						break;
 					}
 
-					case VFileVersionBehavior.Error:
+					case VFileExistsBehavior.Error:
 					{
 						if (contentDifference)
 						{
@@ -281,7 +281,7 @@ public class VFS
 						break;
 					}
 
-					case VFileVersionBehavior.Version:
+					case VFileExistsBehavior.Version:
 					{
 						var versions = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Versions);
 
