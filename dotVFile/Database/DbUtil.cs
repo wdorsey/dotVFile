@@ -105,167 +105,81 @@ internal static class DbUtil
 	public static SqliteCommand AddEntityParameters<T>(
 		this SqliteCommand cmd,
 		T entity,
-		int? idx = null)
+		int? index = null)
 		where T : Db.Entity
 	{
-		cmd.AddParameter("Id", idx, SqliteType.Text, entity.Id.ToString());
-		cmd.AddParameter("CreateTimestamp", idx, SqliteType.Text, entity.CreateTimestamp.ToDefaultString());
+		cmd.AddParameter("Id", index, SqliteType.Text, entity.Id.ToString());
+		cmd.AddParameter("CreateTimestamp", index, SqliteType.Text, entity.CreateTimestamp.ToDefaultString());
 
-		return cmd;
-	}
-
-	public static Db.SqlExpr Merge(this List<Db.SqlExpr> exprs, string join)
-	{
-		var sb = new StringBuilder();
-		var parameters = new List<SqliteParameter>();
-
-		var rest = false;
-		foreach (var expr in exprs)
-		{
-			if (expr.Sql.HasValue())
-			{
-				if (rest)
-					sb.Append(join);
-				sb.AppendLine(expr.Sql);
-				parameters.AddRange(expr.Parameters);
-				rest = true;
-			}
-		}
-
-		return new(sb.ToString(), parameters);
-	}
-
-	public static Db.SqlExpr Wrap(this Db.SqlExpr expr, string start, string end)
-	{
-		if (expr.Sql.IsEmpty()) return expr;
-		expr.Sql = start + expr.Sql + end;
-		return expr;
-	}
-
-	public static Db.SqlExpr And(this Db.SqlExpr expr, Db.SqlExpr append)
-	{
-		return new List<Db.SqlExpr> { expr, append }.Merge(" AND ");
-	}
-
-	public static string GetSql(this Db.SqlExpr expr)
-	{
-		return expr.Sql.Trim(Environment.NewLine.ToCharArray());
-	}
-
-	public static List<Db.SelectColumn> AddEntityColumns(
-		this List<Db.SelectColumn> columns,
-		string? tableAlias = null,
-		bool prefixAlias = false)
-	{
-		columns.Add(new("RowId", tableAlias, prefixAlias));
-		columns.Add(new("Id", tableAlias, prefixAlias));
-		columns.Add(new("CreateTimestamp", tableAlias, prefixAlias));
-		return columns;
-	}
-
-	public static string ToSql(this List<Db.SelectColumn> columns)
-	{
-		var result = new List<string>();
-
-		foreach (var column in columns)
-		{
-			var @as = column.ColumnNamePrefixAlias
-				? $" AS {column.TableAlias}{column.Name}"
-				: string.Empty;
-
-			result.Add($"\t{AliasColumn(column.TableAlias, column.Name)}{@as}");
-		}
-
-		return string.Join($",{Environment.NewLine}", result);
-	}
-
-	public static SqliteCommand BuildSelect(
-		this SqliteCommand cmd,
-		Db.Select select)
-	{
-		var where = select.Where.Sql.HasValue() ? "WHERE" : string.Empty;
-
-		cmd.CommandText += @$"
-SELECT 
-{select.SelectColumns.ToSql()} 
-FROM 
-{select.From.GetSql()} 
-{where}
-{select.Where.GetSql()};
-";
-		cmd.Parameters.AddRange(select.Parameters);
-		return cmd;
-	}
-
-	public static SqliteCommand BuildDelete(
-		this SqliteCommand cmd,
-		Db.Delete delete)
-	{
-		cmd.CommandText += $" DELETE FROM {delete.From.GetSql()} WHERE {delete.Where.GetSql()}; ";
-		cmd.Parameters.AddRange(delete.Parameters);
 		return cmd;
 	}
 
 	public static SqliteCommand BuildDeleteByRowId(
 		this SqliteCommand cmd,
-		Db.SqlExpr from,
+		string tableName,
+		string columnName,
 		List<long> rowIds)
 	{
-		var clauses = BuildInClause(rowIds, "RowId", null, SqliteType.Integer);
+		if (rowIds.IsEmpty()) return cmd;
 
-		foreach (var clause in clauses)
-		{
-			cmd.BuildDelete(new(from, clause));
-		}
+		var clause = BuildInClause(rowIds, columnName, null, SqliteType.Integer);
+
+		cmd.CommandText += $"DELETE FROM {tableName} WHERE {clause.Sql};";
+		cmd.Parameters.AddRange(clause.Parameters);
 
 		return cmd;
 	}
 
+	// global index to prevent any parameter name collisions.
+	private static int _BuildInClauseIndex = 0;
 	/// <summary>
-	/// Returns multiple InClauses because it needs to partition the values to
-	/// limit how many values are in each IN statement.
-	/// returns Sql: " {columnName} IN ({parameters}) "
+	/// Partitions values in groups of 50 and 
+	/// returns IN statements OR'ed together and wrapped in parenthesis.
 	/// </summary>
-	public static List<Db.SqlExpr> BuildInClause<T>(
+	public static Db.SqlExpr BuildInClause<T>(
 		IEnumerable<T> values,
 		string columnName,
 		string? tableAlias,
 		SqliteType type)
 	{
-		var result = new List<Db.SqlExpr>();
+		if (_BuildInClauseIndex >= 1000)
+			_BuildInClauseIndex = 0;
 
-		var pIdx = 0;
+		var ins = new List<string>();
+		var parameters = new List<SqliteParameter>();
 		foreach (var value in values.Partition(50))
 		{
-			var parameters = new List<SqliteParameter>();
-			var paramKeys = new List<string>();
-			var itemIdx = 0;
-			foreach (var item in value)
-			{
-				var key = $"@IN__{columnName}_{pIdx}_{itemIdx}";
-				paramKeys.Add(key);
-				var @param = NewParameter(key, type, item);
-				parameters.Add(@param);
-				itemIdx++;
-			}
-
 			if (value.Count > 0)
 			{
-				result.Add(new($"\t{AliasColumn(tableAlias, columnName)} IN ({string.Join(',', paramKeys)}) ", parameters));
+				var paramKeys = new List<string>();
+				var itemIdx = 0;
+				foreach (var item in value)
+				{
+					var key = $"@IN_{columnName}_{_BuildInClauseIndex}_{itemIdx}";
+					paramKeys.Add(key);
+					parameters.Add(NewParameter(key, type, item));
+					itemIdx++;
+				}
+
+				ins.Add($"{AliasColumn(tableAlias, columnName)} IN ({string.Join(',', paramKeys)})");
 			}
 
-			pIdx++;
+			_BuildInClauseIndex++;
 		}
 
-		return result;
+		var sql = ins.Count > 0
+			? $"({string.Join(" OR ", ins)})"
+			: string.Empty;
+
+		return new(sql, parameters);
 	}
 
-	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader, string tableAlias)
+	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader)
 		where T : Db.Entity
 	{
-		entity.RowId = reader.GetInt64(tableAlias + "RowId");
-		entity.Id = reader.GetGuid(tableAlias + "Id");
-		entity.CreateTimestamp = reader.GetDateTimeOffset(tableAlias + "CreateTimestamp");
+		entity.RowId = reader.GetInt64("RowId");
+		entity.Id = reader.GetGuid("Id");
+		entity.CreateTimestamp = reader.GetDateTimeOffset("CreateTimestamp");
 		return entity;
 	}
 
@@ -308,7 +222,7 @@ FROM
 
 		using var connection = new SqliteConnection(connectionString);
 		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildDeleteByRowId(new(tableName), rowIds);
+		cmd.BuildDeleteByRowId(tableName, "RowId", rowIds);
 		connection.Open();
 		cmd.ExecuteNonQuery();
 	}

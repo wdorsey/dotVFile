@@ -23,43 +23,50 @@ internal class VFileDatabase
 	public void CreateDatabase()
 	{
 		const string sql = @"
-CREATE TABLE IF NOT EXISTS VFileInfo (
+CREATE TABLE IF NOT EXISTS VFile (
 	RowId					INTEGER NOT NULL UNIQUE,
 	Id						TEXT NOT NULL,
-	VFileContentRowId		INTEGER NOT NULL,
-	FilePath				TEXT NOT NULL,
-	Directory				TEXT NOT NULL,
+	DirectoryRowId			INTEGER NOT NULL,
+	FileContentRowId		INTEGER NOT NULL,
 	FileName				TEXT NOT NULL,
 	FileExtension			TEXT NOT NULL,
 	Versioned				TEXT,
 	DeleteAt				TEXT,
-	CreationTime			TEXT NOT NULL,
 	CreateTimestamp			TEXT NOT NULL,
 	PRIMARY KEY(RowId AUTOINCREMENT),
-	FOREIGN KEY(VFileContentRowId) REFERENCES VFileContent(RowId)
+	FOREIGN KEY(DirectoryRowId) REFERENCES Directory(RowId),
+	FOREIGN KEY(FileContentRowId) REFERENCES FileContent(RowId)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_Id ON VFileInfo(Id);
-CREATE INDEX IF NOT EXISTS        VFileInfo_VFileContentRowId ON VFileInfo(VFileContentRowId);
-CREATE INDEX IF NOT EXISTS        VFileInfo_FilePath ON VFileInfo(FilePath);
-CREATE INDEX IF NOT EXISTS        VFileInfo_FilePathLatest ON VFileInfo(FilePath, Versioned) WHERE Versioned IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS VFileInfo_FilePathVersioned ON VFileInfo(FilePath, Versioned);
-CREATE INDEX IF NOT EXISTS        VFileInfo_Directory ON VFileInfo(Directory);
-CREATE INDEX IF NOT EXISTS        VFileInfo_DeleteAt ON VFileInfo(DeleteAt) WHERE DeleteAt IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS VFile_Id ON VFile(Id);
+CREATE INDEX IF NOT EXISTS        VFile_Versioned ON VFile(Versioned) WHERE Versioned IS NOT NULL;
+CREATE INDEX IF NOT EXISTS        VFile_FileNameVersioned ON VFile(FileName, Versioned);
+CREATE INDEX IF NOT EXISTS        VFile_DeleteAt ON VFile(DeleteAt) WHERE DeleteAt IS NOT NULL;
+CREATE INDEX IF NOT EXISTS		  VFile_DirectoryRowId ON VFile(DirectoryRowId);
+CREATE INDEX IF NOT EXISTS		  VFile_FileContentRowId ON VFile(FileContentRowId);
 
-CREATE TABLE IF NOT EXISTS VFileContent (
+CREATE TABLE IF NOT EXISTS FileContent (
 	RowId			INTEGER NOT NULL UNIQUE,
 	Id				TEXT NOT NULL,
 	Hash			TEXT NOT NULL,
 	Size			INTEGER NOT NULL,
-	SizeStored		INTEGER NOT NULL,
+	SizeContent		INTEGER NOT NULL,
 	Compression		INTEGER NOT NULL,
 	Content			BLOB NOT NULL,
-	CreationTime	TEXT NOT NULL,
 	CreateTimestamp	TEXT NOT NULL,
 	PRIMARY KEY(RowId AUTOINCREMENT)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS VFileContent_Id ON VFileContent(Id);
-CREATE UNIQUE INDEX IF NOT EXISTS VFileContent_Hash ON VFileContent(Hash);
+CREATE UNIQUE INDEX IF NOT EXISTS FileContent_Id ON FileContent(Id);
+CREATE UNIQUE INDEX IF NOT EXISTS FileContent_Hash ON FileContent(Hash);
+
+CREATE TABLE IF NOT EXISTS Directory (
+	RowId			INTEGER NOT NULL UNIQUE,
+	Id				TEXT NOT NULL,
+	Path			TEXT NOT NULL,
+	CreateTimestamp	TEXT NOT NULL,
+	PRIMARY KEY(RowId AUTOINCREMENT)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS Directory_Id ON Directory(Id);
+CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
 ";
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
 	}
@@ -68,19 +75,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS VFileContent_Hash ON VFileContent(Hash);
 	{
 		const string sql = @"
 -- indexes
-DROP INDEX IF EXISTS VFileInfo_Id;
-DROP INDEX IF EXISTS VFileInfo_VFileContentInfoRowId;
-DROP INDEX IF EXISTS VFileInfo_FilePath;
-DROP INDEX IF EXISTS VFileInfo_FilePathLatest;
-DROP INDEX IF EXISTS VFileInfo_FilePathVersioned;
-DROP INDEX IF EXISTS VFileInfo_Directory;
-DROP INDEX IF EXISTS VFileInfo_DeleteAt;
-DROP INDEX IF EXISTS VFileContent_Id;
-DROP INDEX IF EXISTS VFileContent_Hash;
+DROP INDEX IF EXISTS VFile_Id;
+DROP INDEX IF EXISTS VFile_Versioned;
+DROP INDEX IF EXISTS VFile_FileNameVersioned;
+DROP INDEX IF EXISTS VFile_DeleteAt;
+DROP INDEX IF EXISTS VFile_DirectoryRowId;
+DROP INDEX IF EXISTS VFile_FileContentRowId;
+
+DROP INDEX IF EXISTS FileContent_Id;
+DROP INDEX IF EXISTS FileContent_Hash;
+
+DROP INDEX IF EXISTS Directory_Id;
+DROP INDEX IF EXISTS Directory_Path;
 
 -- tables
-DROP TABLE IF EXISTS VFileInfo;
-DROP TABLE IF EXISTS VFileContent;
+DROP TABLE IF EXISTS VFile;
+DROP TABLE IF EXISTS FileContent;
+DROP TABLE IF EXISTS Directory;
 ";
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
 	}
@@ -91,157 +102,55 @@ DROP TABLE IF EXISTS VFileContent;
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
-	public List<Db.VFile> QueryVFiles(Db.VFileInfoQuery query)
+	public Db.UnreferencedEntities GetUnreferencedEntities()
 	{
-		var result = new List<Db.VFile>();
-		const string infoAlias = "i";
-		const string contentAlias = "c";
+		var result = new Db.UnreferencedEntities();
 
-		List<Db.SelectColumn> columns =
-		[
-			.. VFileInfoColumns(infoAlias, true),
-			.. VFileContentColumns(contentAlias, true)
-		];
-
-		var from = new Db.SqlExpr(@$"
-	VFileInfo {infoAlias}
-	INNER JOIN VFileContent {contentAlias} ON {contentAlias}.RowId = {infoAlias}.VFileContentRowId
-");
-
-		List<Db.SqlExpr> inQueries = [
-			.. DbUtil.BuildInClause(query.RowIds, "RowId", infoAlias, SqliteType.Integer),
-			.. DbUtil.BuildInClause(query.Ids.Select(x => x.ToString()), "Id", infoAlias, SqliteType.Text),
-			.. DbUtil.BuildInClause(query.FilePaths, "FilePath", infoAlias, SqliteType.Text),
-			.. DbUtil.BuildInClause(query.Directories, "Directory", infoAlias, SqliteType.Text)];
-
-		var where = inQueries.Merge(" OR ").Wrap("(", ")")
-			.And(BuildVersionedSql(query.VersionQuery));
+		List<(string tableName, string columnName)> vfileReferences = [
+			("Directory", "DirectoryRowId"),
+			("FileContent", "FileContentRowId")];
 
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildSelect(new(columns, from, where));
+
+		foreach (var (tableName, columnName) in vfileReferences)
+		{
+			cmd.CommandText += $@"
+SELECT
+	x.RowId
+FROM
+	{tableName} x 
+	LEFT JOIN VFile f ON f.{columnName} = x.RowId
+WHERE
+	f.RowId IS NULL;
+";
+		}
 
 		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
-			var info = GetVFileInfo(reader, infoAlias);
-			var content = GetVFileContent(reader, contentAlias);
-			result.Add(new(info, content));
+			result.DirectoryRowIds.Add(reader.GetInt64("RowId"));
 		}
-
-		return result;
-	}
-
-	public List<Db.VFileContent> QueryVFileContent(Db.VFileContentQuery query)
-	{
-		var result = new List<Db.VFileContent>();
-
-		var columns = VFileContentColumns(null, false);
-		var from = new Db.SqlExpr("\tVFileContent");
-
-		List<Db.SqlExpr> inQueries = [
-			.. DbUtil.BuildInClause(query.RowIds, "RowId", null, SqliteType.Integer),
-			.. DbUtil.BuildInClause(query.Ids.Select(x => x.ToString()), "Id", null, SqliteType.Text),
-			.. DbUtil.BuildInClause(query.Hashes, "Hash", null, SqliteType.Text)];
-
-		var where = inQueries.Merge(" OR ").Wrap("(", ")");
-
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildSelect(new(columns, from, where));
-
-		connection.Open();
-		var reader = cmd.ExecuteReader();
+		reader.NextResult();
 		while (reader.Read())
 		{
-			var content = GetVFileContent(reader, string.Empty);
-			result.Add(content);
+			result.FileContentRowIds.Add(reader.GetInt64("RowId"));
 		}
 
 		return result;
 	}
 
-	private static Db.VFileInfo GetVFileInfo(SqliteDataReader reader, string tableAlias)
+	public HashSet<string> GetDirectories()
 	{
-		var info = new Db.VFileInfo().GetEntityValues(reader, tableAlias);
-		info.VFileContentRowId = reader.GetInt64(tableAlias + "VFileContentRowId");
-		info.FilePath = reader.GetString(tableAlias + "FilePath");
-		info.Directory = reader.GetString(tableAlias + "Directory");
-		info.FileName = reader.GetString(tableAlias + "FileName");
-		info.FileExtension = reader.GetString(tableAlias + "FileExtension");
-		info.Versioned = reader.GetDateTimeOffsetNullable(tableAlias + "Versioned");
-		info.DeleteAt = reader.GetDateTimeOffsetNullable(tableAlias + "DeleteAt");
-		info.CreationTime = reader.GetDateTimeOffset(tableAlias + "CreationTime");
-		return info;
-	}
+		var results = new HashSet<string>();
 
-	private static Db.VFileContent GetVFileContent(SqliteDataReader reader, string tableAlias)
-	{
-		var content = new Db.VFileContent().GetEntityValues(reader, tableAlias);
-		content.Hash = reader.GetString(tableAlias + "Hash");
-		content.Size = reader.GetInt64(tableAlias + "Size");
-		content.SizeStored = reader.GetInt64(tableAlias + "SizeStored");
-		content.Compression = reader.GetByte(tableAlias + "Compression");
-		content.CreationTime = reader.GetDateTimeOffset(tableAlias + "CreationTime");
-		return content;
-	}
-
-	private static List<Db.SelectColumn> VFileInfoColumns(string? tableAlias, bool prefixAlias)
-	{
-		var columns = new List<Db.SelectColumn>()
-			.AddEntityColumns(tableAlias, prefixAlias);
-		columns.Add(new("VFileContentRowId", tableAlias, prefixAlias));
-		columns.Add(new("FilePath", tableAlias, prefixAlias));
-		columns.Add(new("Directory", tableAlias, prefixAlias));
-		columns.Add(new("FileName", tableAlias, prefixAlias));
-		columns.Add(new("FileExtension", tableAlias, prefixAlias));
-		columns.Add(new("Versioned", tableAlias, prefixAlias));
-		columns.Add(new("DeleteAt", tableAlias, prefixAlias));
-		columns.Add(new("CreationTime", tableAlias, prefixAlias));
-		return columns;
-	}
-
-	/// <summary>
-	/// Does not select Content column.
-	/// </summary>
-	private static List<Db.SelectColumn> VFileContentColumns(string? tableAlias, bool prefixAlias)
-	{
-		var columns = new List<Db.SelectColumn>()
-			.AddEntityColumns(tableAlias, prefixAlias);
-		columns.Add(new("Hash", tableAlias, prefixAlias));
-		columns.Add(new("Size", tableAlias, prefixAlias));
-		columns.Add(new("SizeStored", tableAlias, prefixAlias));
-		columns.Add(new("Compression", tableAlias, prefixAlias));
-		columns.Add(new("CreationTime", tableAlias, prefixAlias));
-		return columns;
-	}
-
-	private static Db.SqlExpr BuildVersionedSql(VFileInfoVersionQuery versionQuery)
-	{
-		var sql = versionQuery switch
-		{
-			VFileInfoVersionQuery.Latest => "\tVersioned IS NULL",
-			VFileInfoVersionQuery.Versions => "\tVersioned IS NOT NULL",
-			VFileInfoVersionQuery.Both => string.Empty,
-			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
-		};
-
-		return new(sql);
-	}
-
-	public List<long> GetUnreferencedVFileContentRowIds()
-	{
-		var results = new List<long>();
-
+		// Path is a Unique column
 		const string sql = @"
 SELECT
-	c.RowId
+	Path
 FROM
-	VFileContent c 
-	LEFT JOIN VFileInfo i ON i.VFileContentRowId = c.RowId
-WHERE
-	i.RowId IS NULL
+	Directory;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
@@ -249,107 +158,253 @@ WHERE
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
-			results.Add(reader.GetInt64("RowId"));
+			results.Add(reader.GetString("Path"));
 		}
 
 		return results;
 	}
 
-	public List<string> GetDistinctDirectories()
+	public List<Db.VFileModel> GetVFilesById(IEnumerable<Guid> ids)
 	{
-		var results = new List<string>();
+		if (ids.IsEmpty()) return [];
 
-		const string sql = @"
+		var inClause = DbUtil.BuildInClause(ids.Select(x => x.ToString()), "Id", "VFile", SqliteType.Text);
+		var sql = GetVFilesSql(inClause.Sql);
+
+		return ExecuteVFiles(sql, inClause.Parameters);
+	}
+
+	public List<Db.VFileModel> GetVFilesByDirectory(
+		IEnumerable<string> directories,
+		VFileInfoVersionQuery versionQuery)
+	{
+		if (directories.IsEmpty()) return [];
+
+		var inClause = DbUtil.BuildInClause(directories, "Path", "Directory", SqliteType.Text);
+		var version = GetVersionedSql(versionQuery);
+		var where = $"{inClause.Sql} AND {version}";
+		var sql = GetVFilesSql(where);
+
+		return ExecuteVFiles(sql, inClause.Parameters);
+	}
+
+	public List<Db.VFileModel> GetVFilesByFilePath(
+		IEnumerable<VFilePath> paths,
+		VFileInfoVersionQuery versionQuery)
+	{
+		if (paths.IsEmpty()) return [];
+
+		var results = new List<Db.VFileModel>();
+		var idx = 0;
+		var versionSql = GetVersionedSql(versionQuery);
+		foreach (var pathList in paths.Partition(50))
+		{
+			var parameters = new List<SqliteParameter>();
+			var filePathClauses = new List<string>();
+			foreach (var path in pathList)
+			{
+				var pathParam = DbUtil.ParameterName("Path", idx);
+				var fileNameParam = DbUtil.ParameterName("FileName", idx);
+				filePathClauses.Add($"(Directory.Path = {pathParam} AND VFile.FileName = {fileNameParam} AND {versionSql})");
+				parameters.Add(DbUtil.NewParameter(pathParam, SqliteType.Text, path.Directory));
+				parameters.Add(DbUtil.NewParameter(fileNameParam, SqliteType.Text, path.FileName));
+				idx++;
+			}
+
+			var where = string.Join(" OR ", filePathClauses);
+			var sql = GetVFilesSql(where);
+
+			results.AddRange(ExecuteVFiles(sql, parameters));
+		}
+
+		return results;
+	}
+
+	private List<Db.VFileModel> ExecuteVFiles(string sql, List<SqliteParameter> parameters)
+	{
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddRange(parameters);
+		Hooks.DebugLog(nameof(ExecuteVFiles));
+		Hooks.DebugLog(cmd.DebugString());
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		return GetVFileModels(reader);
+	}
+
+	private static string GetVFilesSql(string where)
+	{
+		// sql returns 4 result sets:
+		// select VFile
+		// select FileContent
+		// select Directory
+
+		var join = @"
+	VFile
+	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
+	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId";
+
+		return $@"
+SELECT
+	VFile.*
+FROM {join}
+WHERE 
+	{where};
+
 SELECT DISTINCT
-	Directory
-FROM
-	VFileInfo
+	FileContent.RowId,
+	FileContent.Id,
+	FileContent.Hash,
+	FileContent.Size,
+	FileContent.SizeContent,
+	FileContent.Compression,
+	FileContent.CreateTimestamp
+FROM {join}
+WHERE 
+	{where};
+
+SELECT DISTINCT
+	Directory.*
+FROM {join}
+WHERE 
+	{where};
 ";
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		connection.Open();
-		var reader = cmd.ExecuteReader();
+	}
+
+	private static List<Db.VFileModel> GetVFileModels(SqliteDataReader reader)
+	{
+		var results = new List<Db.VFileModel>();
+		var vfiles = new List<Db.VFile>();
+		var fcMap = new Dictionary<long, Db.FileContent>();
+		var dirMap = new Dictionary<long, Db.Directory>();
+
 		while (reader.Read())
 		{
-			results.Add(reader.GetString("Directory"));
+			vfiles.Add(GetVFile(reader));
+		}
+		reader.NextResult();
+		while (reader.Read())
+		{
+			var result = GetFileContent(reader);
+			fcMap.Add(result.RowId, result);
+		}
+		reader.NextResult();
+		while (reader.Read())
+		{
+			var result = GetDirectory(reader);
+			dirMap.Add(result.RowId, result);
+		}
+
+		foreach (var vfile in vfiles)
+		{
+			results.Add(new(
+				vfile,
+				fcMap[vfile.FileContentRowId],
+				dirMap[vfile.DirectoryRowId]));
 		}
 
 		return results;
 	}
 
-	public void DeleteVFileContent(List<long> rowIds)
+	public void DeleteFileContent(List<long> rowIds)
 	{
-		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFileContent", rowIds);
+		DbUtil.ExecuteDeleteByRowId(ConnectionString, "FileContent", rowIds);
 	}
 
-	public List<Db.VFileContent> FetchContent(List<Db.VFileContent> vfiles)
+	public void DeleteDirectory(List<long> rowIds)
 	{
-		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
+		DbUtil.ExecuteDeleteByRowId(ConnectionString, "Directory", rowIds);
+	}
 
-		var rowIdMap = vfiles.ToDictionary(x => x.RowId);
-		var clauses = DbUtil.BuildInClause(vfiles.Select(x => x.RowId), "RowId", null, SqliteType.Integer);
+	public List<Db.FileContent> FetchContent(List<Db.FileContent> contents)
+	{
+		if (contents.IsEmpty()) return contents;
 
-		foreach (var clause in clauses)
-		{
-			var sql = $@"
+		var rowIdMap = contents.ToDictionary(x => x.RowId);
+		var clause = DbUtil.BuildInClause(contents.Select(x => x.RowId), "RowId", null, SqliteType.Integer);
+		var sql = $@"
 SELECT
 	RowId,
 	Content
 FROM
-	VFileContent
+	FileContent
 WHERE
 	{clause.Sql};
 ";
-			var cmd = new SqliteCommand(sql, connection);
-			cmd.Parameters.AddRange(clause.Parameters);
-			var reader = cmd.ExecuteReader();
-			while (reader.Read())
-			{
-				var rowId = reader.GetInt64("RowId");
-				rowIdMap[rowId].Content = reader.GetBytes("Content");
-			}
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddRange(clause.Parameters);
+		connection.Open();
+		Hooks.DebugLog(nameof(FetchContent));
+		Hooks.DebugLog(cmd.DebugString());
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			var rowId = reader.GetInt64("RowId");
+			rowIdMap[rowId].Content = reader.GetBytes("Content");
 		}
 
-		return vfiles;
+		return contents;
 	}
 
-	public Db.VFileContent SaveVFileContent(VFileInfo info, byte[] content)
+	public Db.FileContent SaveFileContent(VFileInfo info, byte[] content)
 	{
-		const string sql = $@"
-INSERT INTO VFileContent (
+		// first check if content already exists
+		var sql = @"
+SELECT
+	RowId,
 	Id,
 	Hash,
 	Size,
-	SizeStored,
+	SizeContent,
+	Compression,
+	CreateTimestamp
+FROM
+	FileContent
+WHERE
+	Hash = @Hash
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("@Hash", SqliteType.Text, info.Hash);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		if (reader.Read())
+		{
+			// return existing
+			return GetFileContent(reader);
+		}
+
+		// does not exist, insert
+		sql = $@"
+INSERT INTO FileContent (
+	Id,
+	Hash,
+	Size,
+	SizeContent,
 	Compression,
 	Content,
-	CreationTime,
 	CreateTimestamp)
 VALUES (
 	@Id,
 	@Hash,
 	@Size,
-	@SizeStored,
+	@SizeContent,
 	@Compression,
 	@Content,
-	@CreationTime,
 	@CreateTimestamp);
 {DbUtil.SelectInsertedRowId}
 ";
-		var dbContent = ToDbVFileContent(info, content).Stamp();
-		using var connection = new SqliteConnection(ConnectionString);
-
-		var cmd = new SqliteCommand(sql, connection)
+		var dbContent = ToDbFileContent(info, content).Stamp();
+		cmd = new SqliteCommand(sql, connection)
 			.AddEntityParameters(dbContent)
 			.AddParameter("@Hash", SqliteType.Text, dbContent.Hash)
 			.AddParameter("@Size", SqliteType.Integer, dbContent.Size)
-			.AddParameter("@SizeStored", SqliteType.Integer, dbContent.SizeStored)
+			.AddParameter("@SizeContent", SqliteType.Integer, dbContent.SizeContent)
 			.AddParameter("@Compression", SqliteType.Integer, dbContent.Compression)
-			.AddParameter("@Content", SqliteType.Blob, dbContent.Content ?? Util.EmptyBytes())
-			.AddParameter("@CreationTime", SqliteType.Text, dbContent.CreationTime.ToDefaultString());
-		connection.Open();
-		var reader = cmd.ExecuteReader();
+			.AddParameter("@Content", SqliteType.Blob, dbContent.Content ?? Util.EmptyBytes());
+
+		reader = cmd.ExecuteReader();
 		return dbContent.ReadRowId(reader);
 	}
 
@@ -362,20 +417,21 @@ VALUES (
 		//	NewVFileInfos
 		var result = new Db.StoreVFilesResult();
 		int idx = 0;
+
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		using var transaction = connection.BeginTransaction();
 		var cmd = new SqliteCommand(string.Empty, connection, transaction);
 
-		// DeleteVFileInfos
-		cmd.BuildDeleteByRowId(new("VFileInfo"), [.. state.DeleteVFileInfos.Select(x => x.RowId)]);
+		// build DeleteVFileInfos
+		cmd.BuildDeleteByRowId("VFile", "RowId", [.. state.DeleteVFiles.Select(x => x.RowId)]);
 
-		// UpdateVFileInfos
-		foreach (var update in state.UpdateVFileInfos)
+		// build UpdateVFileInfos
+		foreach (var update in state.UpdateVFiles)
 		{
 			// only update-able fields are Versioned and DeleteAt
 			cmd.CommandText += $@"
-UPDATE VFileInfo
+UPDATE VFile
 SET 
 	Versioned = {DbUtil.ParameterName("Versioned", idx)},
 	DeleteAt = {DbUtil.ParameterName("DeleteAt", idx)}
@@ -386,56 +442,72 @@ WHERE
 			cmd.AddParameter("DeleteAt", idx, SqliteType.Text, (update.DeleteAt?.ToDefaultString()).NullCoalesce());
 			cmd.AddParameter("RowId", idx, SqliteType.Integer, update.RowId);
 			idx++;
-			result.UpdatedVFileInfos.Add(update);
 		}
 
-		// NewVFileInfos
-		foreach (var info in state.NewVFileInfos)
+		// build NewVFileInfos
+		foreach (var info in state.NewVFiles)
 		{
 			cmd.CommandText += $@"
-INSERT INTO VFileInfo (
+INSERT INTO Directory (
 	Id,
-	VFileContentRowId,
-	FilePath,
-	Directory,
+	Path,
+	CreateTimestamp)
+SELECT
+	{DbUtil.ParameterName("Id", idx)},
+	{DbUtil.ParameterName("Path", idx)},
+	{DbUtil.ParameterName("CreateTimestamp", idx)}
+WHERE NOT EXISTS (
+	SELECT 
+		1
+	FROM 
+		Directory 
+	WHERE 
+		Path = {DbUtil.ParameterName("Path", idx)});
+";
+			var dbDirectory = new Db.Directory { Path = info.VFilePath.Directory }.Stamp();
+			cmd.AddEntityParameters(dbDirectory, idx)
+				.AddParameter("Path", idx, SqliteType.Text, dbDirectory.Path);
+			idx++;
+
+			cmd.CommandText += $@"
+INSERT INTO VFile (
+	Id,
+	DirectoryRowId,
+	FileContentRowId,
 	FileName,
 	FileExtension,
 	Versioned,
 	DeleteAt,
-	CreationTime,
 	CreateTimestamp)
 VALUES (
 	{DbUtil.ParameterName("Id", idx)},
-	(SELECT RowId FROM VFileContent WHERE Hash = {DbUtil.ParameterName("Hash", idx)}),
-	{DbUtil.ParameterName("FilePath", idx)},
-	{DbUtil.ParameterName("Directory", idx)},
+	(SELECT RowId FROM Directory WHERE Path = {DbUtil.ParameterName("Path", idx)}),
+	(SELECT RowId FROM FileContent WHERE Hash = {DbUtil.ParameterName("Hash", idx)}),
 	{DbUtil.ParameterName("FileName", idx)},
 	{DbUtil.ParameterName("FileExtension", idx)},
 	{DbUtil.ParameterName("Versioned", idx)},
 	{DbUtil.ParameterName("DeleteAt", idx)},
-	{DbUtil.ParameterName("CreationTime", idx)},
 	{DbUtil.ParameterName("CreateTimestamp", idx)});
 {DbUtil.SelectInsertedRowId}
 ";
-			var dbInfo = ToDbVFileInfo(info).Stamp();
-			cmd.AddEntityParameters(dbInfo, idx)
+			var dbVFile = ToDbVFile(info).Stamp();
+			cmd.AddEntityParameters(dbVFile, idx)
+				.AddParameter("Path", idx, SqliteType.Text, dbDirectory.Path)
 				.AddParameter("Hash", idx, SqliteType.Text, info.Hash)
-				.AddParameter("FilePath", idx, SqliteType.Text, dbInfo.FilePath)
-				.AddParameter("Directory", idx, SqliteType.Text, dbInfo.Directory)
-				.AddParameter("FileName", idx, SqliteType.Text, dbInfo.FileName)
-				.AddParameter("FileExtension", idx, SqliteType.Text, dbInfo.FileExtension)
-				.AddParameter("Versioned", idx, SqliteType.Text, (dbInfo.Versioned?.ToDefaultString()).NullCoalesce())
-				.AddParameter("DeleteAt", idx, SqliteType.Text, (dbInfo.DeleteAt?.ToDefaultString()).NullCoalesce())
-				.AddParameter("CreationTime", idx, SqliteType.Text, dbInfo.CreationTime.ToDefaultString());
+				.AddParameter("FileName", idx, SqliteType.Text, dbVFile.FileName)
+				.AddParameter("FileExtension", idx, SqliteType.Text, dbVFile.FileExtension)
+				.AddParameter("Versioned", idx, SqliteType.Text, (dbVFile.Versioned?.ToDefaultString()).NullCoalesce())
+				.AddParameter("DeleteAt", idx, SqliteType.Text, (dbVFile.DeleteAt?.ToDefaultString()).NullCoalesce());
 			idx++;
-			result.NewVFileInfos.Add(dbInfo);
+			result.NewVFiles.Add(dbVFile);
 		}
 
 		try
 		{
+			Hooks.DebugLog(nameof(SaveStoreVFilesState));
+			Hooks.DebugLog(cmd.DebugString());
 			var reader = cmd.ExecuteReader();
-			result.NewVFileContents.ReadInsertedRowIds(reader);
-			result.NewVFileInfos.ReadInsertedRowIds(reader);
+			result.NewVFiles.ReadInsertedRowIds(reader);
 			transaction.Commit();
 		}
 		catch (SqliteException e)
@@ -443,7 +515,7 @@ VALUES (
 			Hooks.ErrorHandler(new(
 				VFileErrorCodes.DatabaseException,
 				e.ToString(),
-				nameof(SaveVFileContent)));
+				nameof(SaveStoreVFilesState)));
 			transaction.Rollback();
 			return null; // null indicates error
 		}
@@ -451,32 +523,71 @@ VALUES (
 		return result;
 	}
 
-	private static Db.VFileInfo ToDbVFileInfo(VFileInfo info)
+	private static Db.VFile GetVFile(SqliteDataReader reader)
 	{
-		return new Db.VFileInfo
+		return new Db.VFile
 		{
-			Id = info.Id,
-			FilePath = info.VFilePath.FilePath,
-			Directory = info.VFilePath.Directory ?? string.Empty,
-			FileName = info.VFilePath.FileName,
-			FileExtension = info.VFilePath.FileExtension,
-			Versioned = info.Versioned,
-			DeleteAt = info.DeleteAt,
-			CreationTime = info.CreationTime
+			DirectoryRowId = reader.GetInt64("DirectoryRowId"),
+			FileContentRowId = reader.GetInt64("FileContentRowId"),
+			FileName = reader.GetString("FileName"),
+			FileExtension = reader.GetString("FileExtension"),
+			Versioned = reader.GetDateTimeOffsetNullable("Versioned"),
+			DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt")
+		}.GetEntityValues(reader);
+	}
+
+	private static Db.FileContent GetFileContent(SqliteDataReader reader)
+	{
+		return new Db.FileContent
+		{
+			Hash = reader.GetString("Hash"),
+			Size = reader.GetInt64("Size"),
+			SizeContent = reader.GetInt64("SizeContent"),
+			Compression = reader.GetByte("Compression")
+		}.GetEntityValues(reader);
+	}
+
+	private static Db.Directory GetDirectory(SqliteDataReader reader)
+	{
+		return new Db.Directory
+		{
+			Path = reader.GetString("Path")
+		}.GetEntityValues(reader);
+	}
+
+	private static string GetVersionedSql(VFileInfoVersionQuery versionQuery)
+	{
+		return versionQuery switch
+		{
+			VFileInfoVersionQuery.Latest => "VFile.Versioned IS NULL",
+			VFileInfoVersionQuery.Versions => "VFile.Versioned IS NOT NULL",
+			VFileInfoVersionQuery.Both => "1=1",
+			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
 		};
 	}
 
-	private static Db.VFileContent ToDbVFileContent(VFileInfo info, byte[] content)
+	private static Db.VFile ToDbVFile(VFileInfo info)
 	{
-		return new Db.VFileContent
+		return new Db.VFile
+		{
+			Id = info.Id,
+			FileName = info.VFilePath.FileName,
+			FileExtension = info.VFilePath.FileExtension,
+			Versioned = info.Versioned,
+			DeleteAt = info.DeleteAt
+		};
+	}
+
+	private static Db.FileContent ToDbFileContent(VFileInfo info, byte[] content)
+	{
+		return new Db.FileContent
 		{
 			Id = info.ContentId,
 			Hash = info.Hash,
 			Size = info.Size,
-			SizeStored = info.SizeStored,
+			SizeContent = info.SizeStored,
 			Compression = (byte)info.Compression,
-			Content = content,
-			CreationTime = info.ContentCreationTime
+			Content = content
 		};
 	}
 }

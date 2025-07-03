@@ -7,7 +7,7 @@ public class TestHooks : IVFileHooks
 		Console.WriteLine(err.ToString());
 	}
 
-	public void Log(string msg)
+	public void DebugLog(string msg)
 	{
 		Console.WriteLine(msg);
 	}

@@ -113,10 +113,11 @@ internal static class Util
 		throw new Exception("unable to get VFileContent bytes.");
 	}
 
-	public static string FileExtension(string fileName)
+	public static string FileExtension(string? fileName)
 	{
-		var fi = new FileInfo(fileName);
-		return fi.Extension;
+		return fileName.IsEmpty()
+			? string.Empty
+			: new FileInfo(fileName).Extension;
 	}
 
 	public static (string Name, string Ext) FileNameAndExtension(string fileName)

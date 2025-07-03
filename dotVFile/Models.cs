@@ -6,17 +6,17 @@ namespace dotVFile;
 public interface IVFileHooks
 {
 	void ErrorHandler(VFileError error);
-	void Log(string msg);
+	void DebugLog(string msg);
 }
 
-public class NotImplementedHooks : IVFileHooks
+public class NotImplementedVFileHooks : IVFileHooks
 {
 	public void ErrorHandler(VFileError error)
 	{
 		// no impl
 	}
 
-	public void Log(string msg)
+	public void DebugLog(string msg)
 	{
 		// no impl
 	}
@@ -50,13 +50,13 @@ public record VFSOptions(
 	string? Name,
 	string VFileDirectory,
 	IVFileHooks? Hooks = null,
-	VFileStoreOptions? DefaultStoreOptions = null);
+	VFileStoreOptions? DefaultStoreOptions = null,
+	bool Debug = false);
 
 public record VFileInfo
 {
 	public Guid Id;
 	public VFilePath VFilePath = VFilePath.Default();
-	public VFilePath UserVFilePath = VFilePath.Default();
 	public DateTimeOffset? Versioned;
 	public bool IsVersion => Versioned.HasValue;
 	public DateTimeOffset? DeleteAt;
@@ -89,22 +89,26 @@ public record VFilePath
 
 	public VFilePath(FileInfo fi) : this(fi.DirectoryName, fi.Name, fi.FullName) { }
 
+	// Base constructor is for internal usage only so that
+	// we can properly standardize all the fields for the
+	// internal version of a VFilePath.
+	// The users of the library will use one of the above, more specific, ctors.
 	internal VFilePath(
 		string? directory,
 		string fileName,
 		string filePath)
 	{
-		Directory = directory;
+		Directory = directory ?? string.Empty;
 		DirectoryParts = VFS.DirectoryParts(Directory);
 		FileName = fileName;
-		FileExtension = fileName.HasValue() ? Util.FileExtension(fileName) : string.Empty;
+		FileExtension = Util.FileExtension(fileName);
 		FilePath = filePath;
 	}
 
-	internal static VFilePath Default() => new(string.Empty, string.Empty);
+	internal static VFilePath Default() => new(null, string.Empty);
 
-	public string? Directory { get; }
-	public List<string> DirectoryParts = [];
+	public string Directory { get; }
+	public List<string> DirectoryParts { get; }
 	public string FileName { get; }
 	public string FileExtension { get; }
 	public string FilePath { get; }
@@ -220,7 +224,7 @@ public enum VFileInfoVersionQuery
 
 internal record StoreVFilesState
 {
-	public List<VFileInfo> NewVFileInfos = [];
-	public List<Db.VFileInfo> UpdateVFileInfos = [];
-	public List<Db.VFileInfo> DeleteVFileInfos = [];
+	public List<VFileInfo> NewVFiles = [];
+	public List<Db.VFile> UpdateVFiles = [];
+	public List<Db.VFile> DeleteVFiles = [];
 }

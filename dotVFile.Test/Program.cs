@@ -3,8 +3,10 @@ using dotVFile.Test;
 
 ConsoleUtil.InitializeConsole(height: 1000);
 
+var debug = false; // for local dev
+
 var path = Path.Combine(Environment.CurrentDirectory, "vfs");
-var opts = new VFSOptions("dotVFile.Test", path, new TestHooks());
+var opts = new VFSOptions("dotVFile.Test", path, new TestHooks(), null, debug);
 VFS vfs = new(opts);
 
 // wipe data from test vfs at the start of each run
@@ -21,9 +23,9 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 		new VFilePath("stream_directory", file.FileName),
 		new VFileContent(fs));
 
+	vfs.Hooks.DebugLog(info!.ToJson(true)!);
 	var vfile = vfs.GetVFile(info!);
-
-	Console.WriteLine(vfile!.VFileInfo.ToJson(true));
+	vfs.Hooks.DebugLog(vfile!.VFileInfo.ToJson(true)!);
 }
 TestUtil.AssertFileContent(vfs, file, info);
 
