@@ -141,6 +141,32 @@ WHERE
 		return result;
 	}
 
+	public List<Db.VFile> GetExpiredVFile(DateTimeOffset cutoff)
+	{
+		var results = new List<Db.VFile>();
+
+		const string sql = @"
+SELECT
+	*
+FROM
+	VFile
+WHERE
+	DeleteAt < @Cutoff
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("@Cutoff", SqliteType.Text, cutoff.ToDefaultString());
+
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			results.Add(GetVFile(reader));
+		}
+
+		return results;
+	}
+
 	public HashSet<string> GetDirectories()
 	{
 		var results = new HashSet<string>();
@@ -225,8 +251,6 @@ FROM
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(parameters);
-		Hooks.DebugLog(nameof(ExecuteVFiles));
-		Hooks.DebugLog(cmd.DebugString());
 		connection.Open();
 		var reader = cmd.ExecuteReader();
 		return GetVFileModels(reader);
@@ -306,6 +330,11 @@ WHERE
 		return results;
 	}
 
+	public void DeleteVFiles(List<long> rowIds)
+	{
+		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFile", rowIds);
+	}
+
 	public void DeleteFileContent(List<long> rowIds)
 	{
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "FileContent", rowIds);
@@ -314,6 +343,23 @@ WHERE
 	public void DeleteDirectory(List<long> rowIds)
 	{
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "Directory", rowIds);
+	}
+
+	public Db.UnreferencedEntities DeleteUnreferencedEntities()
+	{
+		var result = GetUnreferencedEntities();
+		DeleteFileContent(result.FileContentRowIds);
+		DeleteDirectory(result.DirectoryRowIds);
+		return result;
+	}
+
+	public List<Db.VFile> DeleteExpiredVFiles()
+	{
+		var vfiles = GetExpiredVFile(DateTimeOffset.Now);
+
+		DeleteVFiles([.. vfiles.Select(x => x.RowId)]);
+
+		return vfiles;
 	}
 
 	public List<Db.FileContent> FetchContent(List<Db.FileContent> contents)
@@ -335,8 +381,6 @@ WHERE
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(clause.Parameters);
 		connection.Open();
-		Hooks.DebugLog(nameof(FetchContent));
-		Hooks.DebugLog(cmd.DebugString());
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
@@ -504,8 +548,6 @@ VALUES (
 
 		try
 		{
-			Hooks.DebugLog(nameof(SaveStoreVFilesState));
-			Hooks.DebugLog(cmd.DebugString());
 			var reader = cmd.ExecuteReader();
 			result.NewVFiles.ReadInsertedRowIds(reader);
 			transaction.Commit();

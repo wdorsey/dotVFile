@@ -75,7 +75,7 @@ public record VFSOptions(
 	public VFileStoreOptions? DefaultStoreOptions = DefaultStoreOptions;
 
 	/// <summary>
-	/// Debug flag enables Hooks.DebugLog, it's _very_ verbose!
+	/// Debug flag enables Hooks.DebugLog.
 	/// </summary>
 	public bool Debug = Debug;
 }
@@ -287,4 +287,20 @@ internal record StoreVFilesState
 	public List<VFileInfo> NewVFiles = [];
 	public List<Db.VFile> UpdateVFiles = [];
 	public List<Db.VFile> DeleteVFiles = [];
+}
+
+public record VFileCleanResult
+{
+	internal VFileCleanResult(
+		Db.UnreferencedEntities unreferencedEntities,
+		List<Db.VFile> deletedVFiles)
+	{
+		DeletedVFileCount = deletedVFiles.Count;
+		DeletedFileContentCount = unreferencedEntities.FileContentRowIds.Count;
+		DeletedDirectoryCount = unreferencedEntities.DirectoryRowIds.Count;
+	}
+
+	public long DeletedVFileCount;
+	public long DeletedFileContentCount;
+	public long DeletedDirectoryCount;
 }

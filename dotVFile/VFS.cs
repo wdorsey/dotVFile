@@ -38,6 +38,8 @@ public class VFS
 		Database = new VFileDatabase(new(Name, VFileDirectory, Hooks));
 		DefaultStoreOptions = opts.DefaultStoreOptions ?? GetDefaultStoreOptions();
 		Debug = opts.Debug;
+
+		Clean();
 	}
 
 	internal VFileDatabase Database { get; }
@@ -49,7 +51,7 @@ public class VFS
 
 	/// <summary>
 	/// Gets the single database file path that _is_ the entire virtual file system.
-	/// This file could potentially be very large, so take care in how you retrieve it programmatically.
+	/// This file could potentially be very large, so take care in retrieving it programmatically.
 	/// </summary>
 	public string SingleFilePath => Database.DatabaseFilePath;
 
@@ -73,6 +75,25 @@ public class VFS
 	public void DANGER_Destroy()
 	{
 		Database.DeleteDatabase();
+	}
+
+	/// <summary>
+	/// Deletes VFiles that have passed their DeleteAt time.<br/>
+	/// Deletes any dangling, unreferenced Content.
+	/// </summary>
+	public VFileCleanResult Clean()
+	{
+		// Some of the unreferenced data should normally be deleted during StoreVFiles 
+		// but it is not for both performance reasons and because it has
+		// to be checked here anyways after the expired VFiles are deleted.
+
+		// delete expired VFiles first so that their content and directories 
+		// are freed to be cleaned up via DeleteUnreferencedEntities.
+		var expired = Database.DeleteExpiredVFiles();
+		var unreferenced = Database.DeleteUnreferencedEntities();
+		var result = new VFileCleanResult(unreferenced, expired);
+		Hooks.DebugLog($"{nameof(Clean)}() result: {result.ToJson(true)}");
+		return result;
 	}
 
 	public VFileInfo? GetVFileInfo(VFilePath path)
@@ -324,11 +345,6 @@ public class VFS
 		}
 
 		var dbResult = Database.SaveStoreVFilesState(state);
-
-		// @TODO: probably move this into the clean-up operation
-		var unreferenced = Database.GetUnreferencedEntities();
-		Database.DeleteDirectory(unreferenced.DirectoryRowIds);
-		Database.DeleteFileContent(unreferenced.FileContentRowIds);
 
 		return dbResult != null ? result : [];
 	}

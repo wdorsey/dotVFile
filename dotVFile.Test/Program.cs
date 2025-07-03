@@ -3,7 +3,7 @@ using dotVFile.Test;
 
 ConsoleUtil.InitializeConsole(height: 1000);
 
-var debug = false; // for local dev
+var debug = true; // for local dev
 
 var path = Path.Combine(Environment.CurrentDirectory, "vfs");
 
@@ -33,7 +33,7 @@ var opts = new VFSOptions(
 	path,            // Directory to store VFS's single-file
 	new TestHooks(), // IVFileHooks implementation, pass null to ignore
 	storeOpts,       // Default Store options, null will use VFS.GetDefaultStoreOptions()
-	debug);          // Debug flag enables Hooks.DebugLog, it's _very_ verbose!
+	debug);          // Debug flag enables Hooks.DebugLog
 
 VFS vfs = new(opts);
 

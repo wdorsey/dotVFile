@@ -113,6 +113,8 @@ public static class TestUtil
 			vfs.DANGER_WipeData();
 			RunTest(vfs, @case);
 		}
+
+		vfs.Clean();
 	}
 
 	public static void RunTest(VFS vfs, TestCase @case)
