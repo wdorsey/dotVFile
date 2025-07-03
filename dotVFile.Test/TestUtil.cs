@@ -161,7 +161,7 @@ public static class TestUtil
 			}
 		}
 
-		if (opts.VersionOpts.Behavior == VFileExistsBehavior.Overwrite)
+		if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Overwrite)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
@@ -169,14 +169,14 @@ public static class TestUtil
 			var versions = vfs.GetVFileInfoVersions(TestFileMetadataDir, false, VFileInfoVersionQuery.Versions);
 			Assert(versions.Count == 0, $"versions found w/ Overwrite behavior: versions.Count={versions.Count}");
 		}
-		else if (opts.VersionOpts.Behavior == VFileExistsBehavior.Error)
+		else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Error)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);
 			var result = vfs.StoreVFiles(requests);
 			Assert(result.IsEmpty(), "VFiles stored w/ Error behavior.");
 		}
-		else if (opts.VersionOpts.Behavior == VFileExistsBehavior.Version)
+		else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Version)
 		{
 			// store new files with different content
 			requests = GenerateMetadataRequests(opts, true);

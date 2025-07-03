@@ -51,7 +51,34 @@ public record VFSOptions(
 	string VFileDirectory,
 	IVFileHooks? Hooks = null,
 	VFileStoreOptions? DefaultStoreOptions = null,
-	bool Debug = false);
+	bool Debug = false)
+{
+	/// <summary>
+	/// Name of the VFS instance
+	/// </summary>
+	public string? Name = Name;
+
+	/// <summary>
+	/// Directory to store VFS's single-file
+	/// </summary>
+	public string VFileDirectory = VFileDirectory;
+
+	/// <summary>
+	/// User's IVFileHooks implementation (pass null to ignore).
+	/// Hooks allow you to handle errors and hook into debug logging.
+	/// </summary>
+	public IVFileHooks? Hooks = Hooks;
+
+	/// <summary>
+	/// Default Store options, null will use VFS.GetDefaultStoreOptions()
+	/// </summary>
+	public VFileStoreOptions? DefaultStoreOptions = DefaultStoreOptions;
+
+	/// <summary>
+	/// Debug flag enables Hooks.DebugLog, it's _very_ verbose!
+	/// </summary>
+	public bool Debug = Debug;
+}
 
 public record VFileInfo
 {
@@ -163,10 +190,12 @@ public enum VFileExistsBehavior
 	/// Old file deleted, no versioning.
 	/// </summary>
 	Overwrite,
+
 	/// <summary>
 	/// If file already exists, do not save new file and report error.
 	/// </summary>
 	Error,
+
 	/// <summary>
 	/// Version old file.
 	/// </summary>
@@ -177,6 +206,7 @@ public enum VFileExistsBehavior
 public enum VFileCompression
 {
 	None = 0,
+
 	/// <summary>
 	/// Uses Deflate compression algorithm.
 	/// </summary>
@@ -191,8 +221,23 @@ public record VFileVersionOptions(
 	int? MaxVersionsRetained,
 	TimeSpan? TTL)
 {
-	public VFileExistsBehavior Behavior = ExistsBehavior;
+	/// <summary>
+	/// Determines what happens when a vfile is requested to be Stored but already exists.
+	/// Options are Overwrite, Error, Version
+	/// Default is Overwrite.
+	/// </summary>
+	public VFileExistsBehavior ExistsBehavior = ExistsBehavior;
+
+	/// <summary>
+	/// Max number of versions to keep. 
+	/// Default is null (unlimited).
+	/// </summary>
 	public int? MaxVersionsRetained = MaxVersionsRetained;
+
+	/// <summary>
+	/// Time-to-live for versioned vfiles. 
+	/// Default is null (no TTL).
+	/// </summary>
 	public TimeSpan? TTL = TTL;
 }
 
@@ -204,8 +249,18 @@ public record VFileStoreOptions(
 	TimeSpan? TTL,
 	VFileVersionOptions VersionOpts)
 {
+	/// <summary>
+	/// Compress the file or not before storing.
+	/// No compression is much faster, but compressing saves disk space.
+	/// Default is None
+	/// </summary>
 	public VFileCompression Compression = Compression;
+
+	/// <summary>
+	/// Time-to-live for vfiles. default is null (no TTL)
+	/// </summary>
 	public TimeSpan? TTL = TTL;
+
 	/// <summary>
 	/// Default: VFS.GetDefaultVersionOptions()
 	/// </summary>

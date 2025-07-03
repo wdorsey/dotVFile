@@ -256,7 +256,7 @@ public class VFS
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
 				result.Add(contentDifference ? newInfo : DbVFileToVFileInfo(existingVFile));
-				switch (opts.VersionOpts.Behavior)
+				switch (opts.VersionOpts.ExistsBehavior)
 				{
 					case VFileExistsBehavior.Overwrite:
 					{
