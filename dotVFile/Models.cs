@@ -141,6 +141,7 @@ public record VFilePath
 	public string FilePath { get; }
 	/// <summary>
 	/// Converts FilePath to a path standardized for the current system via Path.Combine.
+	/// e.g. "/a/b/c/file.txt" converts to "a\b\c\file.txt" on Windows
 	/// </summary>
 	public string SystemFilePath => this.GetSystemFilePath();
 
