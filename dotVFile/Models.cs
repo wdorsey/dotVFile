@@ -48,55 +48,80 @@ public record VFileError(
 	}
 }
 
-public record VFileSystemOptions(
+public enum VFilePermission
+{
+	/// <summary>
+	/// Only a single application can access the VFile at once.
+	/// This is good for writes to prevent data corruption from
+	/// race-conditions or caching.
+	/// </summary>
+	SingleApplication,
+
+	/// <summary>
+	/// Any number of applications can simultaneously access the VFile instance.
+	/// </summary>
+	MultiApplication
+}
+
+public record VFilePermissions(
+	VFilePermission Read,
+	VFilePermission Write)
+{
+	public static VFilePermissions Default() =>
+		new(VFilePermission.MultiApplication,
+			VFilePermission.SingleApplication);
+}
+
+
+public record VFileOptions(
 	string? Name,
 	string Directory,
 	IVFileHooks? Hooks = null,
 	VFileStoreOptions? DefaultStoreOptions = null,
-	bool EnforceSingleInstance = true,
+	VFilePermissions? Permissions = null,
 	bool Debug = false)
 {
 	/// <summary>
-	/// Name of the VFS instance
+	/// Name of the VFile instance
 	/// </summary>
-	public string? Name = Name;
+	public string? Name { get; set; } = Name;
 
 	/// <summary>
-	/// Directory to store VFS's single-file
+	/// Directory to store VFile's single-file
 	/// </summary>
-	public string Directory = Directory;
+	public string Directory { get; set; } = Directory;
 
 	/// <summary>
 	/// User's IVFileHooks implementation (pass null to ignore).
 	/// Hooks allow you to handle errors and hook into debug logging.
 	/// </summary>
-	public IVFileHooks? Hooks = Hooks;
+	public IVFileHooks Hooks { get; set; } =
+		Hooks ?? new NotImplementedVFileHooks();
 
 	/// <summary>
 	/// Default Store options
 	/// null will use VFileSystem.GetDefaultStoreOptions()
 	/// </summary>
-	public VFileStoreOptions? DefaultStoreOptions = DefaultStoreOptions;
+	public VFileStoreOptions DefaultStoreOptions { get; set; } =
+		DefaultStoreOptions ?? VFileStoreOptions.Default();
 
 	/// <summary>
-	/// Enforces that only a single application instance can operate
-	/// on the virtual file system at any given time.
-	/// This prevents potential data corruption from race conditions
-	/// or from using in-memory caching.
+	/// Read/Write restrictions for multiple 
 	/// </summary>
-	public bool EnforceSingleInstance = EnforceSingleInstance;
+	public VFilePermissions Permissions { get; set; } =
+		Permissions ?? VFilePermissions.Default();
 
 	/// <summary>
 	/// Debug flag enables Hooks.DebugLog. This is _very_ verbose.
 	/// </summary>
-	public bool Debug = Debug;
+	public bool Debug { get; set; } = Debug;
 
-	public static VFileSystemOptions Default() =>
+	public static VFileOptions Default() =>
 		new(null,
 			Environment.CurrentDirectory,
 			new NotImplementedVFileHooks(),
 			VFileStoreOptions.Default(),
-			true,
+			VFilePermissions.Default(),
 			false);
 }
 

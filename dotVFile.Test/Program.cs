@@ -5,7 +5,7 @@ ConsoleUtil.InitializeConsole(height: 1000);
 
 var debug = false; // for local dev
 
-var path = Path.Combine(Environment.CurrentDirectory, "vfs");
+var path = Path.Combine(Environment.CurrentDirectory, "vfile");
 
 var versionOpts = new VFileVersionOptions(
 	// ExistsBehavior:
@@ -19,7 +19,7 @@ var versionOpts = new VFileVersionOptions(
 
 // VFileStoreOptions can be passed-in for each individual file that is Stored, if desired.
 // But usually the vast majority of Store operations can use the same standard set of options,
-// so a default set of options is given to the VFS instance at startup.
+// so a default set of options is given to the VFile instance at startup.
 var storeOpts = new VFileStoreOptions(
 	// Compression:
 	//   Compress the file or not before storing.
@@ -30,32 +30,32 @@ var storeOpts = new VFileStoreOptions(
 	versionOpts); // VFileVersionOptions
 
 
-var opts = new VFileSystemOptions(
-	"dotVFile.Test", // Name of the VFS instance
-	path,            // Directory to store VFS's single-file
+var opts = new VFileOptions(
+	"dotVFile.Test", // Name of the VFile instance
+	path,            // Directory to store VFile's single-file
 	new TestHooks(), // IVFileHooks implementation, pass null to ignore
-	storeOpts,       // Default Store options, null will use VFS.GetDefaultStoreOptions()
-	true,            // Enforces that only a single application instance can access the VFS at a time
+	storeOpts,       // Default Store options, null will use VFile.GetDefaultStoreOptions()
+					 // Read/Write permissions
+	new(VFilePermission.MultiApplication, VFilePermission.SingleApplication),
 	debug);          // Debug flag enables Hooks.DebugLog
 
 
-var vfs = new VFileSystem(opts);
+var vfile = new VFile(opts);
 
 /*
 EnforceSingleInstance example:
-  opts specifies the exact VFS file location.
-  So creating a different instance would cause vfs2
-  to now be the recognized instance that owns 
-  the VFS at the location specified by opts.
-VFS vfs2 = new(opts);
+  opts specifies the exact VFile file location.
+  So creating a different instance for that same file would cause 
+  vfile2 to now be the recognized instance that owns that VFile.
+var vfile2 = new VFile(opts);
 	
-  Trying to access the VFS via the first vfs instance,
+  Trying to write to the VFile via the first VFile instance,
   which no longer is the owner, would cause an exception.
-vfs.GetVFiles(); // error
+vfile.StoreVFiles(); // error
 */
 
-// wipe data from test vfs at the start of each run
-vfs.DANGER_WipeData();
+// wipe data from test VFile at the start of each run
+vfile.DANGER_WipeData();
 
 TestUtil.LoadTestFiles();
 var file = TestUtil.TestFiles.First();
@@ -64,13 +64,13 @@ var file = TestUtil.TestFiles.First();
 VFileInfo? info = null;
 using (FileStream fs = File.OpenRead(file.FilePath))
 {
-	info = vfs.StoreVFile(
+	info = vfile.StoreVFile(
 		new VFilePath("stream_directory", file.FileName),
 		new VFileContent(fs));
 
-	vfs.Hooks.DebugLog(info!.ToJson(true)!);
-	vfs.GetBytes(info!);
+	vfile.Hooks.DebugLog(info!.ToJson(true)!);
+	vfile.GetBytes(info!);
 }
-TestUtil.AssertFileContent(vfs, file, info);
+TestUtil.AssertFileContent(vfile, file, info);
 
-TestUtil.RunTests(vfs);
+TestUtil.RunTests(vfile);

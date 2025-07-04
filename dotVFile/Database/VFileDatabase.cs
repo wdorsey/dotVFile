@@ -6,24 +6,23 @@ namespace dotVFile;
 
 internal class VFileDatabase
 {
-	private Guid? ApplicationId;
-
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
+		ApplicationId = Guid.NewGuid();
 		Directory = opts.Directory;
 		Version = opts.Version;
 		Hooks = opts.Hooks;
-		EnforceSingleInstance = opts.EnforceSingleInstance;
+		Permissions = opts.Permissions;
 		DatabaseFilePath = new(Path.Combine(Directory, $"{opts.Name}.vfile.db"));
 		ConnectionString = $"Data Source={DatabaseFilePath};";
-		CreateDatabase();
-		GetOrSetSystemInfo();
+		CreateDatabase(); // also calls SetSystemInfo()
 	}
 
+	public Guid ApplicationId { get; }
 	public string Directory { get; }
 	public string Version { get; }
 	public IVFileHooks Hooks { get; }
-	public bool EnforceSingleInstance { get; }
+	public VFilePermissions Permissions { get; }
 	public string DatabaseFilePath { get; }
 	public string ConnectionString { get; }
 
@@ -83,6 +82,7 @@ CREATE TABLE IF NOT EXISTS SystemInfo (
 );";
 
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
+		SetSystemInfo();
 	}
 
 	public void DropDatabase()
@@ -117,38 +117,10 @@ DROP TABLE IF EXISTS SystemInfo;
 		Util.DeleteFile(DatabaseFilePath);
 	}
 
-	/// <summary>
-	/// Logically named public function for getting the SystemInfo.
-	/// Hides the bit more complicated internal implementation.
-	/// </summary>
-	public Db.SystemInfo GetSystemInfo() => GetOrSetSystemInfo();
-
-	/// <summary>
-	/// Creates new SystemInfo if it does not already exist in the database.
-	/// </summary>
-	private Db.SystemInfo GetOrSetSystemInfo()
+	public Db.SystemInfo GetSystemInfo()
 	{
-		// if ApplicationId has yet to be set,
-		// then we need to update the SystemInfo.
-		if (ApplicationId != null)
-		{
-			var existing = GetSystemInfoFromDatabase();
-			if (existing != null)
-				return existing;
-		}
+		// this always assumes the row in SystemInfo exists.
 
-		ApplicationId = Guid.NewGuid();
-
-		return UpdateSystemInfo(new(
-			ApplicationId.Value,
-			Version,
-			null,
-			DateTimeOffset.Now));
-	}
-
-	private Db.SystemInfo? GetSystemInfoFromDatabase()
-	{
-		Db.SystemInfo? result = null;
 		// SystemInfo only ever has 1 row
 		const string sql = @"SELECT * FROM SystemInfo";
 
@@ -157,16 +129,21 @@ DROP TABLE IF EXISTS SystemInfo;
 
 		connection.Open();
 		var reader = cmd.ExecuteReader();
-		if (reader.Read())
-		{
-			result = new(
-				reader.GetGuid("ApplicationId"),
-				reader.GetString("Version"),
-				reader.GetDateTimeOffsetNullable("LastClean"),
-				reader.GetDateTimeOffset("LastUpdate"));
-		}
+		reader.Read();
+		return new(
+			reader.GetGuid("ApplicationId"),
+			reader.GetString("Version"),
+			reader.GetDateTimeOffsetNullable("LastClean"),
+			reader.GetDateTimeOffset("LastUpdate"));
+	}
 
-		return result;
+	private Db.SystemInfo SetSystemInfo()
+	{
+		return UpdateSystemInfo(new(
+			ApplicationId,
+			Version,
+			null,
+			DateTimeOffset.Now));
 	}
 
 	public Db.SystemInfo UpdateSystemInfo(Db.SystemInfo info)
@@ -208,33 +185,32 @@ SET
 		return db;
 	}
 
-	/// <summary>
-	/// This function enforces that only a single application instance
-	/// is using this VFS instance at any given time.
-	/// This prevents data corruption due to race conditions and when in-memory caching is used.
-	/// This is configurable via EnforceSingleInstance.
-	/// </summary>
-	public void VerifySingleInstance()
+	public bool VerifyPermission(VFilePermission permission)
 	{
-		if (!EnforceSingleInstance) return;
+		// Multi means access is always allowed
+		if (permission == VFilePermission.MultiApplication)
+			return true;
 
-		var info = GetOrSetSystemInfo();
+		var info = GetSystemInfo();
 
 		if (ApplicationId != info.ApplicationId)
 		{
 			Hooks.ErrorHandler(new(
 				VFileErrorCodes.MultipleApplicationInstances,
-				"Multiple applications using same VFS instance simultaneously detected.",
+				"Multiple applications using same VFile instance simultaneously detected." +
+				"VFilePermission is set to VFilePermission.SingleApplication.",
 				null));
 			throw new Exception(VFileErrorCodes.MultipleApplicationInstances);
 		}
+
+		return true;
 	}
 
 	public Db.UnreferencedEntities GetUnreferencedEntities()
 	{
 		var t = LogTimerStart(nameof(GetUnreferencedEntities));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var result = new Db.UnreferencedEntities();
 
@@ -279,7 +255,7 @@ WHERE
 	{
 		var t = LogTimerStart(nameof(GetExpiredVFile));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var results = new List<Db.VFile>();
 
@@ -311,7 +287,7 @@ WHERE
 	{
 		var t = LogTimerStart(nameof(GetDirectories));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var results = new HashSet<string>();
 
@@ -342,7 +318,7 @@ FROM
 
 		var t = LogTimerStart(nameof(GetVFilesById));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var inClause = DbUtil.BuildInClause(ids.Select(x => x.ToString()), "Id", "VFile", SqliteType.Text);
 		var sql = GetVFilesSql(inClause.Sql);
@@ -362,7 +338,7 @@ FROM
 
 		var t = LogTimerStart(nameof(GetVFilesByDirectory));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var inClause = DbUtil.BuildInClause(directories, "Path", "Directory", SqliteType.Text);
 		var version = GetVersionedSql(versionQuery);
@@ -384,7 +360,7 @@ FROM
 
 		var t = LogTimerStart(nameof(GetVFilesByFilePath));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		var results = new List<Db.VFileModel>();
 		var idx = 0;
@@ -501,7 +477,7 @@ WHERE
 	public void DeleteVFiles(List<long> rowIds)
 	{
 		var t = LogTimerStart(nameof(DeleteVFiles));
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "VFile", rowIds);
 		Hooks.LogTimerEnd(t);
 	}
@@ -509,7 +485,7 @@ WHERE
 	public void DeleteFileContent(List<long> rowIds)
 	{
 		var t = LogTimerStart(nameof(DeleteFileContent));
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "FileContent", rowIds);
 		Hooks.LogTimerEnd(t);
 	}
@@ -517,7 +493,7 @@ WHERE
 	public void DeleteDirectory(List<long> rowIds)
 	{
 		var t = LogTimerStart(nameof(DeleteDirectory));
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 		DbUtil.ExecuteDeleteByRowId(ConnectionString, "Directory", rowIds);
 		Hooks.LogTimerEnd(t);
 	}
@@ -525,7 +501,7 @@ WHERE
 	public Db.UnreferencedEntities DeleteUnreferencedEntities()
 	{
 		var t = LogTimerStart(nameof(DeleteUnreferencedEntities));
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 		var result = GetUnreferencedEntities();
 		DeleteFileContent(result.FileContentRowIds);
 		DeleteDirectory(result.DirectoryRowIds);
@@ -537,7 +513,7 @@ WHERE
 	{
 		var t = LogTimerStart(nameof(DeleteExpiredVFiles));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 
 		var vfiles = GetExpiredVFile(DateTimeOffset.Now);
 		DeleteVFiles([.. vfiles.Select(x => x.RowId)]);
@@ -551,7 +527,7 @@ WHERE
 	{
 		var t = LogTimerStart(nameof(GetContentBytes));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Read);
 
 		const string sql = $@"
 SELECT
@@ -578,7 +554,7 @@ WHERE
 	{
 		var t = LogTimerStart(nameof(SaveFileContent));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 
 		// first check if content already exists
 		var sql = @"
@@ -648,7 +624,7 @@ VALUES (
 	{
 		var t = LogTimerStart(nameof(SaveStoreVFilesState));
 
-		VerifySingleInstance();
+		VerifyPermission(Permissions.Write);
 
 		// All VFileInfo changes written transactionally.
 		// order:

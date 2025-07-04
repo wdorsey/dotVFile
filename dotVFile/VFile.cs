@@ -1,8 +1,8 @@
 ﻿namespace dotVFile;
 
-internal class HooksWrapper(VFileSystem vfs, IVFileHooks? hooks) : IVFileHooks
+internal class HooksWrapper(VFile vfile, IVFileHooks? hooks) : IVFileHooks
 {
-	private readonly VFileSystem VFS = vfs;
+	private readonly VFile VFile = vfile;
 	private readonly IVFileHooks Hooks = hooks ?? new NotImplementedVFileHooks();
 
 	public void ErrorHandler(VFileError error)
@@ -12,28 +12,28 @@ internal class HooksWrapper(VFileSystem vfs, IVFileHooks? hooks) : IVFileHooks
 
 	public void DebugLog(string msg)
 	{
-		if (VFS.Debug)
+		if (VFile.Debug)
 			Hooks.DebugLog(msg);
 	}
 }
 
-public class VFileSystem
+public class VFile
 {
 	public const string Version = "1.0.0";
 
-	public VFileSystem(VFileSystemOptions opts) : this(x => x = opts) { }
-	public VFileSystem(Action<VFileSystemOptions> configure)
+	public VFile(VFileOptions opts) : this(x => opts) { }
+	public VFile(Func<VFileOptions, VFileOptions> configure)
 	{
-		var opts = VFileSystemOptions.Default();
-		configure(opts);
+		var opts = VFileOptions.Default();
+		opts = configure(opts);
 
 		if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
-			throw new Exception($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid directory where this VFS instance will store its file, such as: \"C:\\dotVFile\".");
+			throw new Exception($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
 		Hooks = new HooksWrapper(this, opts.Hooks);
-		Database = new VFileDatabase(new(Name, Directory, Version, Hooks, opts.EnforceSingleInstance));
+		Database = new VFileDatabase(new(Name, Directory, Version, Hooks, opts.Permissions));
 		DefaultStoreOptions = opts.DefaultStoreOptions ?? VFileStoreOptions.Default();
 		Debug = opts.Debug;
 
@@ -58,7 +58,7 @@ public class VFileSystem
 	/// !!! DANGER !!!
 	/// This will delete EVERYTHING.
 	/// It will then recreate the Database.
-	/// This VFS instance will still work, but have no data.
+	/// This VFile instance will still work, but have no data.
 	/// </summary>
 	public void DANGER_WipeData()
 	{
@@ -69,7 +69,7 @@ public class VFileSystem
 	/// <summary>
 	/// !!! DANGER !!!
 	/// This will delete EVERYTHING.
-	/// This VFS instance will no longer work.
+	/// This VFile instance will no longer work.
 	/// </summary>
 	public void DANGER_Destroy()
 	{

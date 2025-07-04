@@ -7,7 +7,7 @@ internal record VFileDatabaseOptions(
 	string Directory,
 	string Version,
 	IVFileHooks Hooks,
-	bool EnforceSingleInstance);
+	VFilePermissions Permissions);
 
 internal static class Db
 {
