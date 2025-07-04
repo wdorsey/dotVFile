@@ -4,7 +4,7 @@ namespace dotVFile;
 
 internal record VFileDatabaseOptions(
 	string Name,
-	string VFileDirectory,
+	string Directory,
 	string Version,
 	IVFileHooks Hooks,
 	bool EnforceSingleInstance);

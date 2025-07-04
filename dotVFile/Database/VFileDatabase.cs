@@ -10,17 +10,17 @@ internal class VFileDatabase
 
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
-		VFileDirectory = opts.VFileDirectory;
+		Directory = opts.Directory;
 		Version = opts.Version;
 		Hooks = opts.Hooks;
 		EnforceSingleInstance = opts.EnforceSingleInstance;
-		DatabaseFilePath = new(Path.Combine(VFileDirectory, $"{opts.Name}.vfile.db"));
+		DatabaseFilePath = new(Path.Combine(Directory, $"{opts.Name}.vfile.db"));
 		ConnectionString = $"Data Source={DatabaseFilePath};";
 		CreateDatabase();
 		GetOrSetSystemInfo();
 	}
 
-	public string VFileDirectory { get; }
+	public string Directory { get; }
 	public string Version { get; }
 	public IVFileHooks Hooks { get; }
 	public bool EnforceSingleInstance { get; }
@@ -398,7 +398,7 @@ FROM
 				var pathParam = DbUtil.ParameterName("Path", idx);
 				var fileNameParam = DbUtil.ParameterName("FileName", idx);
 				filePathClauses.Add($"(Directory.Path = {pathParam} AND VFile.FileName = {fileNameParam} AND {versionSql})");
-				parameters.Add(DbUtil.NewParameter(pathParam, SqliteType.Text, path.Directory));
+				parameters.Add(DbUtil.NewParameter(pathParam, SqliteType.Text, path.Directory.Path));
 				parameters.Add(DbUtil.NewParameter(fileNameParam, SqliteType.Text, path.FileName));
 				idx++;
 			}
@@ -547,39 +547,31 @@ WHERE
 		return vfiles;
 	}
 
-	public List<Db.FileContent> FetchContent(List<Db.FileContent> contents)
+	public byte[] GetContentBytes(Db.FileContent content)
 	{
-		if (contents.IsEmpty()) return contents;
-
-		var t = LogTimerStart(nameof(FetchContent));
+		var t = LogTimerStart(nameof(GetContentBytes));
 
 		VerifySingleInstance();
 
-		var rowIdMap = contents.ToDictionary(x => x.RowId);
-		var clause = DbUtil.BuildInClause(contents.Select(x => x.RowId), "RowId", null, SqliteType.Integer);
-		var sql = $@"
+		const string sql = $@"
 SELECT
-	RowId,
 	Content
 FROM
 	FileContent
 WHERE
-	{clause.Sql};
+	RowId = @RowId;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.Parameters.AddRange(clause.Parameters);
+		cmd.AddParameter("@RowId", SqliteType.Integer, content.RowId);
 		connection.Open();
 		var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			var rowId = reader.GetInt64("RowId");
-			rowIdMap[rowId].Content = reader.GetBytes("Content");
-		}
+		reader.Read();
+		var result = reader.GetBytes("Content");
 
 		Hooks.LogTimerEnd(t);
 
-		return contents;
+		return result;
 	}
 
 	public Db.FileContent SaveFileContent(VFileInfo info, byte[] content)
@@ -712,7 +704,7 @@ WHERE NOT EXISTS (
 	WHERE 
 		Path = {DbUtil.ParameterName("Path", idx)});
 ";
-			var dbDirectory = new Db.Directory { Path = info.VFilePath.Directory }.Stamp();
+			var dbDirectory = new Db.Directory { Path = info.VFilePath.Directory.Path }.Stamp();
 			cmd.AddEntityParameters(dbDirectory, idx)
 				.AddParameter("Path", idx, SqliteType.Text, dbDirectory.Path);
 			idx++;

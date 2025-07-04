@@ -1,8 +1,8 @@
 ﻿namespace dotVFile;
 
-internal class HooksWrapper(VFS vfs, IVFileHooks? hooks) : IVFileHooks
+internal class HooksWrapper(VFileSystem vfs, IVFileHooks? hooks) : IVFileHooks
 {
-	private readonly VFS VFS = vfs;
+	private readonly VFileSystem VFS = vfs;
 	private readonly IVFileHooks Hooks = hooks ?? new NotImplementedVFileHooks();
 
 	public void ErrorHandler(VFileError error)
@@ -17,37 +17,34 @@ internal class HooksWrapper(VFS vfs, IVFileHooks? hooks) : IVFileHooks
 	}
 }
 
-public class VFS
+public class VFileSystem
 {
 	public const string Version = "1.0.0";
-	public const char DirectorySeparator = '/';
 
-	public static VFileStoreOptions GetDefaultStoreOptions() =>
-		new(VFileCompression.None, null, GetDefaultVersionOptions());
-
-	public static VFileVersionOptions GetDefaultVersionOptions() =>
-		new(VFileExistsBehavior.Overwrite, null, null);
-
-	public VFS(VFSOptions opts)
+	public VFileSystem(VFileSystemOptions opts) : this(x => x = opts) { }
+	public VFileSystem(Action<VFileSystemOptions> configure)
 	{
-		if (opts.VFileDirectory.IsEmpty() || !Path.IsPathFullyQualified(opts.VFileDirectory))
-			throw new Exception($"Invalid VFileDirectory: \"{opts.VFileDirectory}\". VFileDirectory must be a valid directory where this VFS instance will store its file, such as: \"C:\\dotVFile\".");
+		var opts = VFileSystemOptions.Default();
+		configure(opts);
+
+		if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
+			throw new Exception($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid directory where this VFS instance will store its file, such as: \"C:\\dotVFile\".");
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
-		VFileDirectory = Util.CreateDir(opts.VFileDirectory);
+		Directory = Util.CreateDir(opts.Directory);
 		Hooks = new HooksWrapper(this, opts.Hooks);
-		Database = new VFileDatabase(new(Name, VFileDirectory, Version, Hooks, opts.EnforceSingleInstance));
-		DefaultStoreOptions = opts.DefaultStoreOptions ?? GetDefaultStoreOptions();
+		Database = new VFileDatabase(new(Name, Directory, Version, Hooks, opts.EnforceSingleInstance));
+		DefaultStoreOptions = opts.DefaultStoreOptions ?? VFileStoreOptions.Default();
 		Debug = opts.Debug;
 
 		Clean();
 	}
 
-	internal VFileDatabase Database { get; }
-	public string Name { get; }
-	public string VFileDirectory { get; }
-	public IVFileHooks Hooks { get; }
-	public VFileStoreOptions DefaultStoreOptions { get; }
+	internal VFileDatabase Database { get; private set; }
+	public string Name { get; private set; }
+	public string Directory { get; private set; }
+	public IVFileHooks Hooks { get; private set; }
+	public VFileStoreOptions DefaultStoreOptions { get; private set; }
 	public bool Debug { get; set; }
 	public SystemInfo SystemInfo => ConvertDbSystemInfo(Database.GetSystemInfo());
 
@@ -107,95 +104,61 @@ public class VFS
 
 	public VFileInfo? GetVFileInfo(VFilePath path)
 	{
-		return GetVFileInfoVersions(
-			StandardizePath(path),
-			VFileInfoVersionQuery.Latest)
-			.SingleOrDefault();
-	}
-
-	public List<VFileInfo> GetVFileInfos(string directory, bool recursive)
-	{
-		return GetVFileInfoVersions(directory, recursive, VFileInfoVersionQuery.Latest);
+		return GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		var vfiles = Database.GetVFilesByFilePath(paths.Select(StandardizePath), VFileInfoVersionQuery.Latest);
+		return GetVFileInfoVersions(paths, VFileInfoVersionQuery.Latest);
+	}
 
-		return ConvertDbVFile(vfiles);
+	public List<VFileInfo> GetVFileInfos(VDirectory directory)
+	{
+		return GetVFileInfoVersions(directory, VFileInfoVersionQuery.Latest);
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
 	{
-		var vfiles = Database.GetVFilesByFilePath(StandardizePath(path).AsList(), versionQuery);
+		return GetVFileInfoVersions(path.AsList(), versionQuery);
+	}
+
+	public List<VFileInfo> GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)
+	{
+		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
 
 		return ConvertDbVFile(vfiles);
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(string directory, bool recursive, VFileInfoVersionQuery versionQuery)
+	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery)
 	{
-		var directories = recursive
-			? GetDirectoriesRecursive(directory)
-			: StandardizeDirectory(directory).AsList();
-
-		var vfiles = Database.GetVFilesByDirectory(directories, versionQuery);
+		var vfiles = Database.GetVFilesByDirectory([directory.Path], versionQuery);
 
 		return ConvertDbVFile(vfiles);
 	}
 
-	public VFile? GetVFile(VFilePath path)
+	public byte[]? GetBytes(VFilePath path)
 	{
-		var vfile = Database.GetVFilesByFilePath(
-			StandardizePath(path).AsList(),
-			VFileInfoVersionQuery.Latest)
-			.SingleOrDefault();
+		var vfile = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
 
-		if (vfile == null)
-			return null;
-
-		return GetVFiles(vfile.AsList()).SingleOrDefault();
+		return GetBytes(vfile);
 	}
 
-	public VFile? GetVFile(VFileInfo info)
+	public byte[]? GetBytes(VFileInfo info)
 	{
-		return GetVFiles(info.AsList()).SingleOrDefault();
+		var vfile = Database.GetVFilesById(info.Id.AsList()).SingleOrDefault();
+
+		return GetBytes(vfile);
 	}
 
-	public List<VFile> GetVFiles(List<VFilePath> paths)
+	private byte[]? GetBytes(Db.VFileModel? vfile)
 	{
-		return GetVFiles(GetVFileInfos(paths));
-	}
+		if (vfile == null) return null;
 
-	public List<VFile> GetVFiles(List<VFileInfo> infos)
-	{
-		var vfiles = Database.GetVFilesById(infos.Select(x => x.Id));
+		var bytes = Database.GetContentBytes(vfile.FileContent);
 
-		return GetVFiles(vfiles);
-	}
-
-	public List<VFile> GetVFiles(string directory, bool recursive)
-	{
-		return GetVFiles(GetVFileInfos(directory, recursive));
-	}
-
-	public byte[]? GetVFileBytes(VFilePath path)
-	{
-		return GetVFile(path)?.Content;
-	}
-
-	private List<VFile> GetVFiles(List<Db.VFileModel> dbVFiles)
-	{
-		Database.FetchContent([.. dbVFiles.Select(x => x.FileContent)]);
-
-		return [.. dbVFiles.Select(x =>
-		{
-			// @note: Content should never be null here, only null coalescing here to make the compiler happy.
-			var content = x.FileContent.Compression == (byte)VFileCompression.None
-				? x.FileContent.Content ?? Util.EmptyBytes()
-				: Util.Decompress(x.FileContent.Content ?? Util.EmptyBytes());
-
-			return new VFile(ConvertDbVFile(x), content);
-		})];
+		return vfile.FileContent.Compression == (byte)VFileCompression.None
+			? bytes
+			: Util.Decompress(bytes);
 	}
 
 	public VFileInfo? StoreVFile(
@@ -227,7 +190,7 @@ public class VFS
 
 		foreach (var request in requests)
 		{
-			var path = StandardizePath(request.Path);
+			var path = request.Path;
 
 			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
 				return [];
@@ -236,7 +199,7 @@ public class VFS
 			{
 				Hooks.ErrorHandler(new(
 					VFileErrorCodes.DuplicateStoreVFileRequest,
-					$"Duplicate StoreVFileRequest detected: {request.Path.FilePath}",
+					$"Duplicate StoreVFileRequest detected: {path.FilePath}",
 					request));
 				return [];
 			}
@@ -287,7 +250,7 @@ public class VFS
 			{
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-				result.Add(contentDifference ? newInfo : ConvertDbVFile(existingVFile));
+				result.Add(contentDifference ? newInfo : new VFileInfo(existingVFile));
 				switch (opts.VersionOpts.ExistsBehavior)
 				{
 					case VFileExistsBehavior.Overwrite:
@@ -306,7 +269,7 @@ public class VFS
 						{
 							Hooks.ErrorHandler(new(
 								VFileErrorCodes.OverwriteNotAllowed,
-								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {request.Path.FilePath}",
+								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
 								request));
 							return [];
 						}
@@ -362,76 +325,9 @@ public class VFS
 		return dbResult != null ? result : [];
 	}
 
-	/// <summary>
-	/// Standardizes all directories to use DirectorySeparator '/'
-	/// and the full path always starts and ends with '/'.
-	/// e.g. /x/y/z/ 
-	/// </summary>
-	private static string StandardizeDirectory(string? directory)
-	{
-		char[] dividers = ['/', '\\'];
-		var parts = directory?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
-		var result = DirectorySeparator.ToString();
-		if (parts.AnySafe())
-		{
-			result += string.Join(DirectorySeparator, parts);
-			result += DirectorySeparator;
-		}
-		return result;
-	}
-
-	private static VFilePath StandardizePath(VFilePath path)
-	{
-		var dir = StandardizeDirectory(path.Directory);
-		return new(dir, path.FileName, $"{dir}{path.FileName}");
-	}
-
-	internal static List<string> DirectoryParts(string? directory)
-	{
-		if (directory.IsEmpty()) return [];
-
-		char[] dividers = ['/', '\\'];
-		return [.. directory.Split(dividers, StringSplitOptions.RemoveEmptyEntries)];
-	}
-
-	/// <summary>
-	/// /x/y/z/ => [/x/, /x/y/, /x/y/z/]
-	/// </summary>
-	private static List<string> GetDirectoriesRecursive(string directory)
-	{
-		var result = new List<string>();
-		var parts = DirectoryParts(StandardizeDirectory(directory));
-		var prev = DirectorySeparator.ToString();
-		foreach (var dir in parts)
-		{
-			prev += dir + DirectorySeparator;
-			result.Add(prev);
-		}
-		return result;
-	}
-
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
 	{
-		return [.. vfiles.Select(ConvertDbVFile)];
-	}
-
-	private static VFileInfo ConvertDbVFile(Db.VFileModel vfile)
-	{
-		var filePath = $"{vfile.Directory.Path}{vfile.VFile.FileName}";
-		return new VFileInfo
-		{
-			Id = vfile.VFile.Id,
-			VFilePath = new(vfile.Directory.Path, vfile.VFile.FileName, filePath),
-			Versioned = vfile.VFile.Versioned,
-			DeleteAt = vfile.VFile.DeleteAt,
-			CreationTime = vfile.VFile.CreateTimestamp,
-			ContentId = vfile.FileContent.Id,
-			Hash = vfile.FileContent.Hash,
-			Size = vfile.FileContent.Size,
-			SizeStored = vfile.FileContent.SizeContent,
-			Compression = (VFileCompression)vfile.FileContent.Compression,
-			ContentCreationTime = vfile.FileContent.CreateTimestamp
-		};
+		return [.. vfiles.Select(x => new VFileInfo(x))];
 	}
 
 	private static SystemInfo ConvertDbSystemInfo(Db.SystemInfo info)

@@ -48,9 +48,9 @@ public record VFileError(
 	}
 }
 
-public record VFSOptions(
+public record VFileSystemOptions(
 	string? Name,
-	string VFileDirectory,
+	string Directory,
 	IVFileHooks? Hooks = null,
 	VFileStoreOptions? DefaultStoreOptions = null,
 	bool EnforceSingleInstance = true,
@@ -64,7 +64,7 @@ public record VFSOptions(
 	/// <summary>
 	/// Directory to store VFS's single-file
 	/// </summary>
-	public string VFileDirectory = VFileDirectory;
+	public string Directory = Directory;
 
 	/// <summary>
 	/// User's IVFileHooks implementation (pass null to ignore).
@@ -73,7 +73,8 @@ public record VFSOptions(
 	public IVFileHooks? Hooks = Hooks;
 
 	/// <summary>
-	/// Default Store options, null will use VFS.GetDefaultStoreOptions()
+	/// Default Store options
+	/// null will use VFileSystem.GetDefaultStoreOptions()
 	/// </summary>
 	public VFileStoreOptions? DefaultStoreOptions = DefaultStoreOptions;
 
@@ -89,77 +90,72 @@ public record VFSOptions(
 	/// Debug flag enables Hooks.DebugLog. This is _very_ verbose.
 	/// </summary>
 	public bool Debug = Debug;
+
+	public static VFileSystemOptions Default() =>
+		new(null,
+			Environment.CurrentDirectory,
+			new NotImplementedVFileHooks(),
+			VFileStoreOptions.Default(),
+			true,
+			false);
 }
 
 public record VFileInfo
 {
-	public Guid Id;
-	public VFilePath VFilePath = VFilePath.Default();
-	public DateTimeOffset? Versioned;
+	internal VFileInfo() { }
+	internal VFileInfo(Db.VFileModel vfile)
+	{
+		Id = vfile.VFile.Id;
+		VFilePath = new(vfile.Directory.Path, vfile.VFile.FileName);
+		Versioned = vfile.VFile.Versioned;
+		DeleteAt = vfile.VFile.DeleteAt;
+		CreationTime = vfile.VFile.CreateTimestamp;
+		ContentId = vfile.FileContent.Id;
+		Hash = vfile.FileContent.Hash;
+		Size = vfile.FileContent.Size;
+		SizeStored = vfile.FileContent.SizeContent;
+		Compression = (VFileCompression)vfile.FileContent.Compression;
+		ContentCreationTime = vfile.FileContent.CreateTimestamp;
+	}
+
+	public Guid Id { get; internal set; }
+	public VFilePath VFilePath { get; internal set; } = VFilePath.Default();
+	public DateTimeOffset? Versioned { get; internal set; }
 	public bool IsVersion => Versioned.HasValue;
-	public DateTimeOffset? DeleteAt;
-	public DateTimeOffset CreationTime;
+	public DateTimeOffset? DeleteAt { get; internal set; }
+	public DateTimeOffset CreationTime { get; internal set; }
 
 	// Content fields
-	public Guid ContentId;
-	public string Hash = string.Empty;
+	public Guid ContentId { get; internal set; }
+	public string Hash { get; internal set; } = string.Empty;
 	/// <summary>
 	/// Size of VFile content.
 	/// </summary>
-	public long Size;
+	public long Size { get; internal set; }
 	/// <summary>
 	/// Size of VFile content stored in database.
-	/// This can be different than Size because of compression.
+	/// This can be different than Size because of Compression.
 	/// </summary>
-	public long SizeStored;
-	public VFileCompression Compression;
-	public DateTimeOffset ContentCreationTime;
+	public long SizeStored { get; internal set; }
+	public VFileCompression Compression { get; internal set; }
+	public DateTimeOffset ContentCreationTime { get; internal set; }
 }
 
-public record VFile(VFileInfo VFileInfo, byte[] Content);
-
-public record VFilePath
+public record VDirectoryInfo
 {
-	public VFilePath(string? directory, string fileName)
-		: this(directory, fileName, Path.Combine(directory ?? string.Empty, fileName)) { }
-
-	public VFilePath(string filePath) : this(new FileInfo(filePath)) { }
-
-	public VFilePath(FileInfo fi) : this(fi.DirectoryName, fi.Name, fi.FullName) { }
-
-	// Base constructor is for internal usage only so that
-	// we can properly standardize all the fields for the
-	// internal version of a VFilePath.
-	// The users of the library will use one of the above, more specific, ctors.
-	internal VFilePath(
-		string? directory,
-		string fileName,
-		string filePath)
-	{
-		Directory = directory ?? string.Empty;
-		DirectoryParts = VFS.DirectoryParts(Directory);
-		FileName = fileName;
-		FileExtension = Util.FileExtension(fileName);
-		FilePath = filePath;
-	}
-
-	internal static VFilePath Default() => new(null, string.Empty);
-
-	public string Directory { get; }
-	public List<string> DirectoryParts { get; }
-	public string FileName { get; }
-	public string FileExtension { get; }
-	public string FilePath { get; }
+	public Guid Id;
 	/// <summary>
-	/// Converts FilePath to a path standardized for the current system via Path.Combine.
-	/// e.g. "/a/b/c/file.txt" converts to "a\b\c\file.txt" on Windows
+	/// Name of the directory.
 	/// </summary>
-	public string SystemFilePath => this.GetSystemFilePath();
-
-	public override string ToString()
-	{
-		return FilePath;
-	}
+	public string Name = string.Empty;
+	/// <summary>
+	/// Full path of the directory.
+	/// </summary>
+	public string Path = string.Empty;
+	public List<string> PathParts = [];
+	public VDirectoryInfo? Parent;
+	public VDirectoryInfo? Root;
+	public DateTimeOffset CreationTime;
 }
 
 public record VFileContent
@@ -225,9 +221,6 @@ public enum VFileCompression
 	Compress = 1
 }
 
-/// <summary>
-/// Default: VFS.GetDefaultVersionOptions()
-/// </summary>
 public record VFileVersionOptions(
 	VFileExistsBehavior ExistsBehavior,
 	int? MaxVersionsRetained,
@@ -251,11 +244,11 @@ public record VFileVersionOptions(
 	/// Default is null (no TTL).
 	/// </summary>
 	public TimeSpan? TTL = TTL;
+
+	public static VFileVersionOptions Default() =>
+		new(VFileExistsBehavior.Overwrite, null, null);
 }
 
-/// <summary>
-/// Default: VFS.GetDefaultStoreOptions()
-/// </summary>
 public record VFileStoreOptions(
 	VFileCompression Compression,
 	TimeSpan? TTL,
@@ -273,9 +266,6 @@ public record VFileStoreOptions(
 	/// </summary>
 	public TimeSpan? TTL = TTL;
 
-	/// <summary>
-	/// Default: VFS.GetDefaultVersionOptions()
-	/// </summary>
 	public VFileVersionOptions VersionOpts = VersionOpts;
 
 	public VFileStoreOptions SetVersionOpts(VFileVersionOptions opts)
@@ -283,6 +273,9 @@ public record VFileStoreOptions(
 		VersionOpts = opts;
 		return this;
 	}
+
+	public static VFileStoreOptions Default() =>
+		new(VFileCompression.None, null, VFileVersionOptions.Default());
 }
 
 [JsonConverter(typeof(StringEnumConverter))]
