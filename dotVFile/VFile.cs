@@ -184,9 +184,12 @@ public class VFile
 
 		var t = Hooks.LogTimerStart(nameof(StoreVFiles));
 
+		var timers = new Dictionary<string, List<Timer>>();
 		var result = new List<VFileInfo>();
 		var state = new StoreVFilesState();
-		var uniqueMap = new HashSet<string>();
+		var uniqueFilePaths = new HashSet<string>();
+		var contentHashes = new HashSet<string>();
+		var saveContentTasks = new List<Task<Db.FileContent>>();
 
 		foreach (var request in requests)
 		{
@@ -195,7 +198,7 @@ public class VFile
 			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
 				return [];
 
-			if (uniqueMap.Contains(path.FilePath))
+			if (uniqueFilePaths.Contains(path.FilePath))
 			{
 				Hooks.ErrorHandler(new(
 					VFileErrorCodes.DuplicateStoreVFileRequest,
@@ -203,21 +206,25 @@ public class VFile
 					request));
 				return [];
 			}
-			uniqueMap.Add(path.FilePath);
+			uniqueFilePaths.Add(path.FilePath);
 
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStoreOptions;
 
+			var dt = Util.TimerStart("get-content-bytes-hash");
 			var content = request.Content.GetContent();
 			var bytes = opts.Compression == VFileCompression.Compress
 				? Util.Compress(content)
 				: content;
 			var hash = Util.HashSHA256(bytes);
+			timers.AddSafe(dt.Name, dt.Stop());
 
+			dt = Util.TimerStart("GetVFilesByFilePath");
 			var existingVFile = Database.GetVFilesByFilePath(
 				path.AsList(),
 				VFileInfoVersionQuery.Latest)
 				.SingleOrDefault();
+			timers.AddSafe(dt.Name, dt.Stop());
 
 			var newInfo = new VFileInfo
 			{
@@ -233,13 +240,16 @@ public class VFile
 				ContentCreationTime = now
 			};
 
-			if (existingVFile?.FileContent == null ||
-				existingVFile.FileContent.Hash != hash)
+			dt = Util.TimerStart("save-content-hash");
+			if (!contentHashes.Contains(hash) &&
+				(existingVFile?.FileContent == null ||
+				existingVFile.FileContent.Hash != hash))
 			{
-				// save new content immediately, GC can free bytes
-				// Database.SaveFileContent internally does an existence check against the Hash.
-				Database.SaveFileContent(newInfo, bytes);
+				// save new content async
+				saveContentTasks.Add(Task.Run(() => Database.SaveFileContent(newInfo, bytes)));
 			}
+			contentHashes.Add(hash);
+			timers.AddSafe(dt.Name, dt.Stop());
 
 			if (existingVFile == null)
 			{
@@ -255,11 +265,13 @@ public class VFile
 				{
 					case VFileExistsBehavior.Overwrite:
 					{
+						dt = Util.TimerStart("VFileExistsBehavior.Overwrite");
 						if (contentDifference)
 						{
 							state.DeleteVFiles.Add(existingVFile.VFile);
 							state.NewVFiles.Add(newInfo);
 						}
+						timers.AddSafe(dt.Name, dt.Stop());
 						break;
 					}
 
@@ -278,6 +290,7 @@ public class VFile
 
 					case VFileExistsBehavior.Version:
 					{
+						dt = Util.TimerStart("VFileExistsBehavior.Version");
 						var versions = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Versions);
 
 						if (contentDifference)
@@ -312,15 +325,42 @@ public class VFile
 								.Skip(maxVersions.Value);
 							state.DeleteVFiles.AddRange(delete);
 						}
+						timers.AddSafe(dt.Name, dt.Stop());
 						break;
 					}
 				}
 			}
 		}
 
+		// wait for all content to finish saving
+		var ct = Util.TimerStart("wait-for-content");
+		Task.WaitAll(saveContentTasks);
+		ct.Stop();
+
+		var st = Util.TimerStart("SaveStoreVFilesState");
 		var dbResult = Database.SaveStoreVFilesState(state);
+		st.Stop();
+
+		Console.WriteLine("= StoreVFiles metrics =");
+		var total = new TimeSpan();
+		foreach (var (name, timer) in timers)
+		{
+			var nameTotal = new TimeSpan();
+			foreach (var x in timer)
+			{
+				nameTotal += x.Stopwatch.Elapsed;
+				total += x.Stopwatch.Elapsed;
+			}
+			Console.WriteLine($"\t{name}: {nameTotal.TimeString()}");
+		}
+		total += ct.Stopwatch.Elapsed;
+		total += st.Stopwatch.Elapsed;
+		Console.WriteLine(ct.EndString());
+		Console.WriteLine(st.EndString());
+		Console.WriteLine($"\tTotal: {total.TimeString()}");
 
 		Hooks.LogTimerEnd(t);
+		Console.WriteLine(t.EndString());
 
 		return dbResult != null ? result : [];
 	}

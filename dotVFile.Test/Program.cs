@@ -43,15 +43,17 @@ var opts = new VFileOptions(
 var vfile = new VFile(opts);
 
 /*
-EnforceSingleInstance example:
-  opts specifies the exact VFile file location.
-  So creating a different instance for that same file would cause 
-  vfile2 to now be the recognized instance that owns that VFile.
+// VFilePermissions example, assuming Multi Read, Single Write:
+// opts specifies the exact VFile file location.
+// So creating a different instance for that same file would cause 
+// vfile2 to now be the recognized instance that owns that VFile.
 var vfile2 = new VFile(opts);
+
+// Reading through the first vfile is fine.
+vfile.GetVFile(new VFilePath("file.txt"));
 	
-  Trying to write to the VFile via the first VFile instance,
-  which no longer is the owner, would cause an exception.
-vfile.StoreVFiles(); // error
+// But trying to write would cause an exception.
+vfile.StoreVFiles(new VFilePath("file.txt"), new VFileContent([])); // error
 */
 
 // wipe data from test VFile at the start of each run

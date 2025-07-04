@@ -312,6 +312,53 @@ FROM
 		return results;
 	}
 
+	public List<Db.FileContent> GetFileContent(List<long> rowIds)
+	{
+		var t = LogTimerStart(nameof(GetFileContent));
+
+		VerifyPermission(Permissions.Read);
+
+		var results = DbUtil.ExecuteGetById(
+			ConnectionString,
+			rowIds,
+			"FileContent",
+			"RowId",
+			@"
+RowId,
+Id,
+Hash,
+Size,
+SizeContent,
+Compression,
+CreateTimestamp",
+			SqliteType.Integer,
+			reader => ReadEntities(reader, "", GetFileContent));
+
+		Hooks.LogTimerEnd(t);
+
+		return results;
+	}
+
+	public List<Db.Directory> GetDirectories(List<long> rowIds)
+	{
+		var t = LogTimerStart(nameof(GetDirectories));
+
+		VerifyPermission(Permissions.Read);
+
+		var results = DbUtil.ExecuteGetById(
+			ConnectionString,
+			rowIds,
+			"Directory",
+			"RowId",
+			"*",
+			SqliteType.Integer,
+			reader => ReadEntities(reader, "", GetDirectory));
+
+		Hooks.LogTimerEnd(t);
+
+		return results;
+	}
+
 	public List<Db.VFileModel> GetVFilesById(IEnumerable<Guid> ids)
 	{
 		if (ids.IsEmpty()) return [];
@@ -392,86 +439,55 @@ FROM
 
 	private List<Db.VFileModel> ExecuteVFiles(string sql, List<SqliteParameter> parameters)
 	{
+		var results = new List<Db.VFileModel>();
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(parameters);
 		connection.Open();
 		var reader = cmd.ExecuteReader();
-		return GetVFileModels(reader);
-	}
-
-	private static string GetVFilesSql(string where)
-	{
-		// sql returns 4 result sets:
-		// select VFile
-		// select FileContent
-		// select Directory
-
-		var join = @"
-	VFile
-	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
-	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId";
-
-		return $@"
-SELECT
-	VFile.*
-FROM {join}
-WHERE 
-	{where};
-
-SELECT DISTINCT
-	FileContent.RowId,
-	FileContent.Id,
-	FileContent.Hash,
-	FileContent.Size,
-	FileContent.SizeContent,
-	FileContent.Compression,
-	FileContent.CreateTimestamp
-FROM {join}
-WHERE 
-	{where};
-
-SELECT DISTINCT
-	Directory.*
-FROM {join}
-WHERE 
-	{where};
-";
-	}
-
-	private static List<Db.VFileModel> GetVFileModels(SqliteDataReader reader)
-	{
-		var results = new List<Db.VFileModel>();
 		var vfiles = new List<Db.VFile>();
-		var fcMap = new Dictionary<long, Db.FileContent>();
-		var dirMap = new Dictionary<long, Db.Directory>();
-
 		while (reader.Read())
 		{
 			vfiles.Add(GetVFile(reader));
 		}
-		reader.NextResult();
-		while (reader.Read())
-		{
-			var result = GetFileContent(reader);
-			fcMap.Add(result.RowId, result);
-		}
-		reader.NextResult();
-		while (reader.Read())
-		{
-			var result = GetDirectory(reader);
-			dirMap.Add(result.RowId, result);
-		}
+
+		var contentMap = GetFileContent([.. vfiles.Select(x => x.FileContentRowId)])
+			.ToDictionary(x => x.RowId);
+
+		var directoryMap = GetDirectories([.. vfiles.Select(x => x.DirectoryRowId)])
+			.ToDictionary(x => x.RowId);
 
 		foreach (var vfile in vfiles)
 		{
 			results.Add(new(
 				vfile,
-				fcMap[vfile.FileContentRowId],
-				dirMap[vfile.DirectoryRowId]));
+				contentMap[vfile.FileContentRowId],
+				directoryMap[vfile.DirectoryRowId]));
 		}
 
 		return results;
+	}
+
+	private static string GetVFilesSql(string where)
+	{
+		return $@"
+SELECT
+	VFile.RowId,
+	VFile.Id,
+	VFile.DirectoryRowId,
+	VFile.FileContentRowId,
+	VFile.FileName,
+	VFile.FileExtension,
+	VFile.Versioned,
+	VFile.DeleteAt,
+	VFile.CreateTimestamp
+FROM
+	VFile
+	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
+	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId
+WHERE 
+	{where};
+";
 	}
 
 	public void DeleteVFiles(List<long> rowIds)
@@ -550,14 +566,32 @@ WHERE
 		return result;
 	}
 
-	public Db.FileContent SaveFileContent(VFileInfo info, byte[] content)
+	public Db.FileContent SaveFileContent(VFileInfo info, byte[] bytes)
 	{
 		var t = LogTimerStart(nameof(SaveFileContent));
 
 		VerifyPermission(Permissions.Write);
 
-		// first check if content already exists
-		var sql = @"
+		// does not exist, insert
+		var sql = $@"
+INSERT INTO FileContent (
+	Id,
+	Hash,
+	Size,
+	SizeContent,
+	Compression,
+	Content,
+	CreateTimestamp)
+SELECT
+	@Id,
+	@Hash,
+	@Size,
+	@SizeContent,
+	@Compression,
+	@Content,
+	@CreateTimestamp
+WHERE NOT EXISTS(SELECT 1 FROM FileContent WHERE Hash = @Hash);
+
 SELECT
 	RowId,
 	Id,
@@ -571,49 +605,21 @@ FROM
 WHERE
 	Hash = @Hash
 ";
+		var dbContent = ToDbFileContent(info).Stamp();
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("@Hash", SqliteType.Text, info.Hash);
-		connection.Open();
-		var reader = cmd.ExecuteReader();
-		if (reader.Read())
-		{
-			Hooks.LogTimerEnd(t);
-			// return existing
-			return GetFileContent(reader);
-		}
-
-		// does not exist, insert
-		sql = $@"
-INSERT INTO FileContent (
-	Id,
-	Hash,
-	Size,
-	SizeContent,
-	Compression,
-	Content,
-	CreateTimestamp)
-VALUES (
-	@Id,
-	@Hash,
-	@Size,
-	@SizeContent,
-	@Compression,
-	@Content,
-	@CreateTimestamp);
-{DbUtil.SelectInsertedRowId}
-";
-		var dbContent = ToDbFileContent(info, content).Stamp();
-		cmd = new SqliteCommand(sql, connection)
+		var cmd = new SqliteCommand(sql, connection)
 			.AddEntityParameters(dbContent)
 			.AddParameter("@Hash", SqliteType.Text, dbContent.Hash)
 			.AddParameter("@Size", SqliteType.Integer, dbContent.Size)
 			.AddParameter("@SizeContent", SqliteType.Integer, dbContent.SizeContent)
 			.AddParameter("@Compression", SqliteType.Integer, dbContent.Compression)
-			.AddParameter("@Content", SqliteType.Blob, dbContent.Content ?? Util.EmptyBytes());
+			.AddParameter("@Content", SqliteType.Blob, bytes);
 
-		reader = cmd.ExecuteReader();
-		var result = dbContent.ReadRowId(reader);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		reader.Read();
+		var result = GetFileContent(reader);
+		result.Content = bytes;
 
 		Hooks.LogTimerEnd(t);
 
@@ -739,36 +745,49 @@ VALUES (
 		return result;
 	}
 
-	private static Db.VFile GetVFile(SqliteDataReader reader)
+	private static List<T> ReadEntities<T>(
+		SqliteDataReader reader,
+		string prefix,
+		Func<SqliteDataReader, string, T> read)
+	{
+		var results = new List<T>();
+		while (reader.Read())
+		{
+			results.Add(read(reader, prefix));
+		}
+		return results;
+	}
+
+	private static Db.VFile GetVFile(SqliteDataReader reader, string prefix = "")
 	{
 		return new Db.VFile
 		{
-			DirectoryRowId = reader.GetInt64("DirectoryRowId"),
-			FileContentRowId = reader.GetInt64("FileContentRowId"),
-			FileName = reader.GetString("FileName"),
-			FileExtension = reader.GetString("FileExtension"),
-			Versioned = reader.GetDateTimeOffsetNullable("Versioned"),
-			DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt")
-		}.GetEntityValues(reader);
+			DirectoryRowId = reader.GetInt64(prefix + "DirectoryRowId"),
+			FileContentRowId = reader.GetInt64(prefix + "FileContentRowId"),
+			FileName = reader.GetString(prefix + "FileName"),
+			FileExtension = reader.GetString(prefix + "FileExtension"),
+			Versioned = reader.GetDateTimeOffsetNullable(prefix + "Versioned"),
+			DeleteAt = reader.GetDateTimeOffsetNullable(prefix + "DeleteAt")
+		}.GetEntityValues(reader, prefix);
 	}
 
-	private static Db.FileContent GetFileContent(SqliteDataReader reader)
+	private static Db.FileContent GetFileContent(SqliteDataReader reader, string prefix = "")
 	{
 		return new Db.FileContent
 		{
-			Hash = reader.GetString("Hash"),
-			Size = reader.GetInt64("Size"),
-			SizeContent = reader.GetInt64("SizeContent"),
-			Compression = reader.GetByte("Compression")
-		}.GetEntityValues(reader);
+			Hash = reader.GetString(prefix + "Hash"),
+			Size = reader.GetInt64(prefix + "Size"),
+			SizeContent = reader.GetInt64(prefix + "SizeContent"),
+			Compression = reader.GetByte(prefix + "Compression")
+		}.GetEntityValues(reader, prefix);
 	}
 
-	private static Db.Directory GetDirectory(SqliteDataReader reader)
+	private static Db.Directory GetDirectory(SqliteDataReader reader, string prefix = "")
 	{
 		return new Db.Directory
 		{
-			Path = reader.GetString("Path")
-		}.GetEntityValues(reader);
+			Path = reader.GetString(prefix + "Path")
+		}.GetEntityValues(reader, prefix);
 	}
 
 	private static string GetVersionedSql(VFileInfoVersionQuery versionQuery)
@@ -794,7 +813,7 @@ VALUES (
 		};
 	}
 
-	private static Db.FileContent ToDbFileContent(VFileInfo info, byte[] content)
+	private static Db.FileContent ToDbFileContent(VFileInfo info)
 	{
 		return new Db.FileContent
 		{
@@ -802,8 +821,7 @@ VALUES (
 			Hash = info.Hash,
 			Size = info.Size,
 			SizeContent = info.SizeStored,
-			Compression = (byte)info.Compression,
-			Content = content
+			Compression = (byte)info.Compression
 		};
 	}
 

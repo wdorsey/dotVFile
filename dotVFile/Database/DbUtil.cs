@@ -174,12 +174,12 @@ internal static class DbUtil
 		return new(sql, parameters);
 	}
 
-	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader)
+	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader, string prefix = "")
 		where T : Db.Entity
 	{
-		entity.RowId = reader.GetInt64("RowId");
-		entity.Id = reader.GetGuid("Id");
-		entity.CreateTimestamp = reader.GetDateTimeOffset("CreateTimestamp");
+		entity.RowId = reader.GetInt64(prefix + "RowId");
+		entity.Id = reader.GetGuid(prefix + "Id");
+		entity.CreateTimestamp = reader.GetDateTimeOffset(prefix + "CreateTimestamp");
 		return entity;
 	}
 
@@ -225,6 +225,35 @@ internal static class DbUtil
 		cmd.BuildDeleteByRowId(tableName, "RowId", rowIds);
 		connection.Open();
 		cmd.ExecuteNonQuery();
+	}
+
+	public static List<TEntity> ExecuteGetById<TId, TEntity>(
+		string connectionString,
+		List<TId> ids,
+		string tableName,
+		string columnName,
+		string select,
+		SqliteType type,
+		Func<SqliteDataReader, List<TEntity>> read)
+	{
+		if (ids.IsEmpty()) return [];
+
+		var inClause = BuildInClause(ids, columnName, tableName, type);
+
+		var sql = $@"
+SELECT
+	{select}
+FROM
+	{tableName}
+WHERE
+	{inClause.Sql}
+";
+		using var connection = new SqliteConnection(connectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.AddRange(inClause.Parameters);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		return read(reader);
 	}
 
 	public static string DebugString(this SqliteCommand cmd)

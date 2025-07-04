@@ -39,6 +39,20 @@ internal static class Util
 		return list;
 	}
 
+	public static Dictionary<TKey, List<TValue>> AddSafe<TKey, TValue>(
+		this Dictionary<TKey, List<TValue>> dict,
+		TKey key,
+		TValue value)
+		where TKey : notnull
+	{
+		if (dict.TryGetValue(key, out var found))
+			found.Add(value);
+		else
+			dict.Add(key, [value]);
+
+		return dict;
+	}
+
 	public static bool HasValue([NotNullWhen(true)] this string? value)
 	{
 		return !string.IsNullOrEmpty(value);
