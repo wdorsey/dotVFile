@@ -142,7 +142,7 @@ internal static class DbUtil
 		if (_BuildInClauseIndex >= 1000)
 			_BuildInClauseIndex = 0;
 
-		// use a faster method using json_each that only requires one paramter
+		// use json_each that only requires one paramter
 		// rather than building a parameter for each value, which is much
 		// more complicated programatically, and slower.
 		var key = $"@IN_{columnName}_{_BuildInClauseIndex}";

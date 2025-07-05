@@ -304,9 +304,9 @@ public record VFileStoreOptions(
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileInfoVersionQuery
 {
-	Latest,
-	Versions,
-	Both
+	Latest = 0,
+	Versions = 1,
+	Both = 2
 }
 
 internal record StoreVFilesState

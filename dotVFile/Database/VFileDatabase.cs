@@ -376,47 +376,74 @@ FROM
 		IEnumerable<VFilePath> paths,
 		VFileInfoVersionQuery versionQuery)
 	{
-		// @TODO: this probably can be optimized
 		if (paths.IsEmpty()) return [];
 
 		VerifyPermission(Permissions.Read);
 
-		var results = new List<Db.VFileModel>();
-		var idx = 0;
-		var versionSql = GetVersionedSql(versionQuery);
-		foreach (var pathList in paths.Partition(50))
-		{
-			var parameters = new List<SqliteParameter>();
-			var filePathClauses = new List<string>();
-			foreach (var path in pathList)
+		const string sql = @"
+WITH q AS (
+SELECT 
+	value ->> 'Path' AS Path, 
+	value ->> 'FileName' AS FileName,
+	value ->> 'VersionQuery' AS VersionQuery
+FROM 
+	json_each(@Paths)
+)
+SELECT
+	VFile.RowId,
+	VFile.Id,
+	VFile.DirectoryRowId,
+	VFile.FileContentRowId,
+	VFile.FileName,
+	VFile.FileExtension,
+	VFile.Versioned,
+	VFile.DeleteAt,
+	VFile.CreateTimestamp
+FROM
+	VFile
+	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
+	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId
+	INNER JOIN q ON q.FileName = VFile.FileName AND q.Path = Directory.Path AND
+	(
+		SELECT CASE 
+			WHEN q.VersionQuery = 0 THEN VFile.Versioned IS NULL 
+			WHEN q.VersionQuery = 1 THEN VFile.Versioned IS NOT NULL 
+			ELSE 1=1 END
+	);
+";
+		var parameter = DbUtil.NewParameter(
+			"@Paths",
+			SqliteType.Text,
+			paths.Select(x => new
 			{
-				var pathParam = DbUtil.ParameterName("Path", idx);
-				var fileNameParam = DbUtil.ParameterName("FileName", idx);
-				filePathClauses.Add($"(Directory.Path = {pathParam} AND VFile.FileName = {fileNameParam} AND {versionSql})");
-				parameters.Add(DbUtil.NewParameter(pathParam, SqliteType.Text, path.Directory.Path));
-				parameters.Add(DbUtil.NewParameter(fileNameParam, SqliteType.Text, path.FileName));
-				idx++;
-			}
+				x.Directory.Path,
+				x.FileName,
+				VersionQuery = (byte)versionQuery
+			}).ToJson());
 
-			var where = string.Join(" OR ", filePathClauses);
-			var sql = GetVFilesSql(where);
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.Parameters.Add(parameter);
 
-			results.AddRange(ExecuteVFiles(sql, parameters));
-		}
-
-		return results;
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		return GetVFileModels(reader);
 	}
 
 	private List<Db.VFileModel> ExecuteVFiles(string sql, List<SqliteParameter> parameters)
 	{
-		var results = new List<Db.VFileModel>();
-
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(parameters);
 
 		connection.Open();
 		var reader = cmd.ExecuteReader();
+		return GetVFileModels(reader);
+	}
+
+	private List<Db.VFileModel> GetVFileModels(SqliteDataReader reader)
+	{
+		var results = new List<Db.VFileModel>();
 		var vfiles = new List<Db.VFile>();
 		while (reader.Read())
 		{
@@ -467,9 +494,9 @@ WHERE
 		VerifyPermission(Permissions.Write);
 
 		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
 		var cmd = new SqliteCommand(string.Empty, connection);
 		cmd.BuildDeleteByRowId("VFile", "RowId", rowIds);
+		connection.Open();
 		cmd.ExecuteNonQuery();
 	}
 
@@ -500,9 +527,9 @@ WHERE
 		VerifyPermission(Permissions.Write);
 
 		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
 		var cmd = new SqliteCommand(string.Empty, connection);
 		cmd.BuildDeleteByRowId("Directory", "RowId", rowIds);
+		connection.Open();
 		cmd.ExecuteNonQuery();
 	}
 
