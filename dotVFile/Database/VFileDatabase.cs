@@ -620,12 +620,12 @@ FROM
 				cmd.AddParameter("@FileContent", SqliteType.Text,
 					newContent.Select(x => new
 					{
-						x.Item1.Id,
+						Id = x.Item1.Id.ToString(),
 						x.Item1.Hash,
 						x.Item1.Size,
 						x.Item1.SizeContent,
 						x.Item1.Compression,
-						x.Item1.CreateTimestamp
+						CreateTimestamp = x.Item1.CreateTimestamp.ToDefaultString()
 					}).ToJson()!);
 
 				// can't use json stuff when storing the blob bytes
