@@ -380,36 +380,24 @@ FROM
 
 		VerifyPermission(Permissions.Read);
 
-		const string sql = @"
+		var versionedSql = GetVersionedSql(versionQuery);
+		var sql = $@"
 WITH q AS (
 SELECT 
 	value ->> 'Path' AS Path, 
-	value ->> 'FileName' AS FileName,
-	value ->> 'VersionQuery' AS VersionQuery
+	value ->> 'FileName' AS FileName
 FROM 
 	json_each(@Paths)
 )
 SELECT
-	VFile.RowId,
-	VFile.Id,
-	VFile.DirectoryRowId,
-	VFile.FileContentRowId,
-	VFile.FileName,
-	VFile.FileExtension,
-	VFile.Versioned,
-	VFile.DeleteAt,
-	VFile.CreateTimestamp
+	VFile.*
 FROM
 	VFile
 	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
 	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId
-	INNER JOIN q ON q.FileName = VFile.FileName AND q.Path = Directory.Path AND
-	(
-		SELECT CASE 
-			WHEN q.VersionQuery = 0 THEN VFile.Versioned IS NULL 
-			WHEN q.VersionQuery = 1 THEN VFile.Versioned IS NOT NULL 
-			ELSE 1=1 END
-	);
+	INNER JOIN q ON q.FileName = VFile.FileName AND q.Path = Directory.Path
+WHERE
+	{versionedSql}
 ";
 		var parameter = DbUtil.NewParameter(
 			"@Paths",
@@ -417,8 +405,7 @@ FROM
 			paths.Select(x => new
 			{
 				x.Directory.Path,
-				x.FileName,
-				VersionQuery = (byte)versionQuery
+				x.FileName
 			}).ToJson());
 
 		using var connection = new SqliteConnection(ConnectionString);
@@ -471,15 +458,7 @@ FROM
 	{
 		return $@"
 SELECT
-	VFile.RowId,
-	VFile.Id,
-	VFile.DirectoryRowId,
-	VFile.FileContentRowId,
-	VFile.FileName,
-	VFile.FileExtension,
-	VFile.Versioned,
-	VFile.DeleteAt,
-	VFile.CreateTimestamp
+	VFile.*
 FROM
 	VFile
 	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
@@ -613,17 +592,13 @@ WHERE
 				existingHashes.Add(existing.Hash);
 			}
 
-			var idx = 0;
-			cmd = new SqliteCommand(string.Empty, connection, transaction);
-			var newContent = new List<Db.FileContent>();
-			foreach (var (info, bytes) in contents)
+			var newContent = contents.Where(x => !existingHashes.Contains(x.Info.Hash))
+				.Select(x => (ToDbFileContent(x.Info).Stamp(), x.Bytes))
+				.ToList();
+
+			if (newContent.Count > 0)
 			{
-				if (existingHashes.Contains(info.Hash))
-					continue;
-
-				var content = ToDbFileContent(info).Stamp();
-
-				cmd.CommandText += $@"
+				sql = @"
 INSERT INTO FileContent (
 	Id,
 	Hash,
@@ -631,40 +606,60 @@ INSERT INTO FileContent (
 	SizeContent,
 	Compression,
 	CreateTimestamp)
-VALUES (
-	{DbUtil.ParameterName("Id", idx)},
-	{DbUtil.ParameterName("Hash", idx)},
-	{DbUtil.ParameterName("Size", idx)},
-	{DbUtil.ParameterName("SizeContent", idx)},
-	{DbUtil.ParameterName("Compression", idx)},
-	{DbUtil.ParameterName("CreateTimestamp", idx)});
+SELECT
+	value ->> 'Id',
+	value ->> 'Hash',
+	value ->> 'Size',
+	value ->> 'SizeContent',
+	value ->> 'Compression',
+	value ->> 'CreateTimestamp'
+FROM
+	json_each(@FileContent);
+";
+				cmd = new SqliteCommand(sql, connection, transaction);
+				cmd.AddParameter("@FileContent", SqliteType.Text,
+					newContent.Select(x => new
+					{
+						x.Item1.Id,
+						x.Item1.Hash,
+						x.Item1.Size,
+						x.Item1.SizeContent,
+						x.Item1.Compression,
+						x.Item1.CreateTimestamp
+					}).ToJson()!);
 
-{DbUtil.SelectInsertedRowId}
-
+				// can't use json stuff when storing the blob bytes
+				var idx = 0;
+				foreach (var item in newContent)
+				{
+					cmd.CommandText += $@"
 INSERT INTO FileContentBlob (
 	FileContentRowId,
 	Content)
 VALUES (
-	(last_insert_rowid()),
+	(SELECT RowId FROM FileContent WHERE Hash = {DbUtil.ParameterName("Hash", idx)}),
 	{DbUtil.ParameterName("Content", idx)});
 ";
-				cmd.AddEntityParameters(content, idx)
-					.AddParameter("@Hash", idx, SqliteType.Text, content.Hash)
-					.AddParameter("@Size", idx, SqliteType.Integer, content.Size)
-					.AddParameter("@SizeContent", idx, SqliteType.Integer, content.SizeContent)
-					.AddParameter("@Compression", idx, SqliteType.Integer, content.Compression)
-					.AddParameter("@Content", idx, SqliteType.Blob, bytes);
-				newContent.Add(content);
-				idx++;
-			}
+					cmd.AddParameter("Hash", idx, SqliteType.Text, item.Item1.Hash)
+						.AddParameter("Content", idx, SqliteType.Blob, item.Bytes);
+					idx++;
+				}
 
-			if (newContent.Count > 0)
-			{
+				cmd.CommandText += @"
+SELECT 
+	*
+FROM 
+	FileContent
+WHERE
+	Hash IN (SELECT value FROM json_each(@Hashes));
+";
+				cmd.AddParameter("@Hashes", SqliteType.Text,
+					newContent.Select(x => x.Item1.Hash).ToJson()!);
+
 				reader = cmd.ExecuteReader();
-				foreach (var content in newContent)
+				while (reader.Read())
 				{
-					results.Add(content.ReadRowId(reader));
-					reader.NextResult();
+					results.Add(GetFileContent(reader));
 				}
 			}
 
