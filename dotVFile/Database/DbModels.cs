@@ -6,8 +6,8 @@ internal record VFileDatabaseOptions(
 	string Name,
 	string Directory,
 	string Version,
-	IVFileHooks Hooks,
-	VFilePermissions Permissions);
+	VFilePermissions Permissions,
+	VFileTools Tools);
 
 internal static class Db
 {
@@ -28,14 +28,20 @@ internal static class Db
 		public DateTimeOffset? DeleteAt;
 	}
 
-	// By rule, the Content is never selected in any GetVFile function.
-	// Content can only be retrieved via the FetchContent function.
 	public record FileContent : Entity
 	{
 		public string Hash = string.Empty;
 		public long Size;
 		public long SizeContent;
 		public byte Compression;
+	}
+
+	// Content bytes are split into a seperate table.
+	// FileContentRowId is PK.
+	// not of type Entity as it just an extension of FileContent
+	public record FileContentBlob
+	{
+		public long FileContentRowId;
 		public byte[]? Content;
 	}
 

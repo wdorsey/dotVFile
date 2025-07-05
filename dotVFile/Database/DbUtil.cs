@@ -122,7 +122,7 @@ internal static class DbUtil
 	{
 		if (rowIds.IsEmpty()) return cmd;
 
-		var clause = BuildInClause(rowIds, columnName, null, SqliteType.Integer);
+		var clause = BuildInClause(rowIds, columnName, null);
 
 		cmd.CommandText += $"DELETE FROM {tableName} WHERE {clause.Sql};";
 		cmd.Parameters.AddRange(clause.Parameters);
@@ -132,46 +132,23 @@ internal static class DbUtil
 
 	// global index to prevent any parameter name collisions.
 	private static int _BuildInClauseIndex = 0;
-	/// <summary>
-	/// Partitions values in groups of 50 and 
-	/// returns IN statements OR'ed together and wrapped in parenthesis.
-	/// </summary>
 	public static Db.SqlExpr BuildInClause<T>(
 		IEnumerable<T> values,
 		string columnName,
-		string? tableAlias,
-		SqliteType type)
+		string? tableAlias)
 	{
+		if (values.IsEmpty()) return new("1=1", []);
+
 		if (_BuildInClauseIndex >= 1000)
 			_BuildInClauseIndex = 0;
 
-		var ins = new List<string>();
-		var parameters = new List<SqliteParameter>();
-		foreach (var value in values.Partition(50))
-		{
-			if (value.Count > 0)
-			{
-				var paramKeys = new List<string>();
-				var itemIdx = 0;
-				foreach (var item in value)
-				{
-					var key = $"@IN_{columnName}_{_BuildInClauseIndex}_{itemIdx}";
-					paramKeys.Add(key);
-					parameters.Add(NewParameter(key, type, item));
-					itemIdx++;
-				}
-
-				ins.Add($"{AliasColumn(tableAlias, columnName)} IN ({string.Join(',', paramKeys)})");
-			}
-
-			_BuildInClauseIndex++;
-		}
-
-		var sql = ins.Count > 0
-			? $"({string.Join(" OR ", ins)})"
-			: string.Empty;
-
-		return new(sql, parameters);
+		// use a faster method using json_each that only requires one paramter
+		// rather than building a parameter for each value, which is much
+		// more complicated programatically, and slower.
+		var key = $"@IN_{columnName}_{_BuildInClauseIndex}";
+		var @in = $"{AliasColumn(tableAlias, columnName)} IN (SELECT e.value FROM json_each({key}) e)";
+		var parameter = NewParameter(key, SqliteType.Text, values.ToJson());
+		return new(@in, [parameter]);
 	}
 
 	public static T GetEntityValues<T>(this T entity, SqliteDataReader reader, string prefix = "")
@@ -213,32 +190,17 @@ internal static class DbUtil
 		cmd.ExecuteNonQuery();
 	}
 
-	public static void ExecuteDeleteByRowId(
-		string connectionString,
-		string tableName,
-		List<long> rowIds)
-	{
-		if (rowIds.IsEmpty()) return;
-
-		using var connection = new SqliteConnection(connectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildDeleteByRowId(tableName, "RowId", rowIds);
-		connection.Open();
-		cmd.ExecuteNonQuery();
-	}
-
 	public static List<TEntity> ExecuteGetById<TId, TEntity>(
 		string connectionString,
 		List<TId> ids,
 		string tableName,
 		string columnName,
 		string select,
-		SqliteType type,
 		Func<SqliteDataReader, List<TEntity>> read)
 	{
 		if (ids.IsEmpty()) return [];
 
-		var inClause = BuildInClause(ids, columnName, tableName, type);
+		var inClause = BuildInClause(ids, columnName, tableName);
 
 		var sql = $@"
 SELECT

@@ -2,6 +2,13 @@
 
 public class TestHooks : IVFileHooks
 {
+	private static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "test-log.txt");
+
+	public TestHooks()
+	{
+		Util.DeleteFile(LogFilePath);
+	}
+
 	public void ErrorHandler(VFileError err)
 	{
 		Console.WriteLine(Prefix() + err.ToString());
@@ -9,7 +16,9 @@ public class TestHooks : IVFileHooks
 
 	public void DebugLog(string msg)
 	{
-		Console.WriteLine(Prefix() + msg);
+		var text = Prefix() + msg;
+		Console.WriteLine(text);
+		File.AppendAllText(LogFilePath, text + Environment.NewLine);
 	}
 
 	private static string Prefix()
@@ -120,16 +129,19 @@ public static class TestUtil
 			RunTest(vfile, @case);
 			vfile.Clean();
 		}
+
+		vfile.Tools.LogMetrics();
 	}
 
 	public static void RunTest(VFile vfile, TestCase @case)
 	{
 		var opts = @case.Opts;
-		Console.WriteLine($"=== {@case.Name} Test ===");
-		var t = Util.TimerStart(@case.Name);
+		var name = $"Test - {@case.Name}";
+		Console.WriteLine($"=== {name} ===");
+		var t = vfile.Tools.TimerStart(name);
 
-		// test file's actual content
-		// not much here, just verifying Store => Get => Assert bytes match
+		// test actual content
+		// not much here, just verifying Store => Get => Assert bytes match.
 		// run 2 times to make sure nothing is wrong with saving the same files.
 		var requests = TestFiles.Select(x => new StoreVFileRequest(x.VFilePath, new(x.FilePath), opts)).ToList();
 		for (var i = 0; i < 2; i++)
@@ -222,7 +234,7 @@ public static class TestUtil
 
 		// @TODO: test Get functions
 
-		Console.WriteLine(t.Stop().EndString());
+		vfile.Tools.TimerEnd(t);
 	}
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFile vfile, int expectedCount)

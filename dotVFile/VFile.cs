@@ -1,25 +1,12 @@
 ﻿namespace dotVFile;
 
-internal class HooksWrapper(VFile vfile, IVFileHooks? hooks) : IVFileHooks
-{
-	private readonly VFile VFile = vfile;
-	private readonly IVFileHooks Hooks = hooks ?? new NotImplementedVFileHooks();
-
-	public void ErrorHandler(VFileError error)
-	{
-		Hooks.ErrorHandler(error);
-	}
-
-	public void DebugLog(string msg)
-	{
-		if (VFile.Debug)
-			Hooks.DebugLog(msg);
-	}
-}
-
 public class VFile
 {
 	public const string Version = "1.0.0";
+
+	private static string Context(string ctx) => $"{nameof(VFile)}.{ctx}";
+	private static string FunctionContext(string fnName) => Context($"{fnName}()");
+	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}(): {ctx}");
 
 	public VFile(VFileOptions opts) : this(x => opts) { }
 	public VFile(Func<VFileOptions, VFileOptions> configure)
@@ -32,9 +19,9 @@ public class VFile
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
-		Hooks = new HooksWrapper(this, opts.Hooks);
-		Database = new VFileDatabase(new(Name, Directory, Version, Hooks, opts.Permissions));
-		DefaultStoreOptions = opts.DefaultStoreOptions ?? VFileStoreOptions.Default();
+		Tools = new VFileTools(this, opts.Hooks);
+		Database = new VFileDatabase(new(Name, Directory, Version, opts.Permissions, Tools));
+		DefaultStoreOptions = opts.DefaultStoreOptions;
 		Debug = opts.Debug;
 
 		Clean();
@@ -43,7 +30,8 @@ public class VFile
 	internal VFileDatabase Database { get; private set; }
 	public string Name { get; private set; }
 	public string Directory { get; private set; }
-	public IVFileHooks Hooks { get; private set; }
+	internal VFileTools Tools { get; private set; }
+	public IVFileHooks Hooks => Tools.Hooks;
 	public VFileStoreOptions DefaultStoreOptions { get; private set; }
 	public bool Debug { get; set; }
 	public SystemInfo SystemInfo => ConvertDbSystemInfo(Database.GetSystemInfo());
@@ -83,10 +71,10 @@ public class VFile
 	public VFileCleanResult Clean()
 	{
 		// Some of the unreferenced data should normally be deleted during StoreVFiles 
-		// but it is not for both performance reasons and because it has
-		// to be checked here anyways after the expired VFiles are deleted.
+		// but it isn't for both performance reasons and because it has
+		// to be checked here anyways because expired VFiles are deleted.
 
-		var t = Hooks.LogTimerStart(nameof(Clean));
+		var t = Tools.TimerStart(FunctionContext(nameof(Clean)));
 
 		// delete expired VFiles first so that their content and directories 
 		// are freed to be cleaned up via DeleteUnreferencedEntities.
@@ -97,68 +85,119 @@ public class VFile
 		Database.UpdateSystemInfo(sysInfo);
 
 		var result = new VFileCleanResult(unreferenced, expired);
-		Hooks.DebugLog($"{nameof(Clean)}() result: {result.ToJson(true)}");
-		Hooks.LogTimerEnd(t);
+
+		Tools.DebugLog($"{t.Name} => {result.ToJson(true)}");
+		Tools.TimerEnd(t);
+
 		return result;
 	}
 
 	public VFileInfo? GetVFileInfo(VFilePath path)
 	{
-		return GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
+		var t = Tools.TimerStart(Context("GetVFileInfo(VFilePath path)"));
+
+		var result = GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
+
+		Tools.TimerEnd(t);
+
+		return result;
 	}
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		return GetVFileInfoVersions(paths, VFileInfoVersionQuery.Latest);
+		var t = Tools.TimerStart(Context("GetVFileInfos(List<VFilePath> paths)"));
+
+		var results = GetVFileInfoVersions(paths, VFileInfoVersionQuery.Latest);
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	public List<VFileInfo> GetVFileInfos(VDirectory directory)
 	{
-		return GetVFileInfoVersions(directory, VFileInfoVersionQuery.Latest);
+		var t = Tools.TimerStart(Context("GetVFileInfos(VDirectory directory)"));
+
+		var results = GetVFileInfoVersions(directory, VFileInfoVersionQuery.Latest);
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
 	{
-		return GetVFileInfoVersions(path.AsList(), versionQuery);
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)"));
+
+		var results = GetVFileInfoVersions(path.AsList(), versionQuery);
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)
 	{
-		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)"));
 
-		return ConvertDbVFile(vfiles);
+		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
+		var results = ConvertDbVFile(vfiles);
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery)
 	{
-		var vfiles = Database.GetVFilesByDirectory([directory.Path], versionQuery);
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery)"));
 
-		return ConvertDbVFile(vfiles);
+		var vfiles = Database.GetVFilesByDirectory([directory.Path], versionQuery);
+		var results = ConvertDbVFile(vfiles);
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	public byte[]? GetBytes(VFilePath path)
 	{
-		var vfile = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
+		var t = Tools.TimerStart(Context("GetBytes(VFilePath path)"));
 
-		return GetBytes(vfile);
+		var vfile = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
+		var result = GetBytes(vfile);
+
+		Tools.TimerEnd(t);
+
+		return result;
 	}
 
 	public byte[]? GetBytes(VFileInfo info)
 	{
-		var vfile = Database.GetVFilesById(info.Id.AsList()).SingleOrDefault();
+		var t = Tools.TimerStart(Context("GetBytes(VFileInfo info)"));
 
-		return GetBytes(vfile);
+		var vfile = Database.GetVFilesById(info.Id.AsList()).SingleOrDefault();
+		var result = GetBytes(vfile);
+
+		Tools.TimerEnd(t);
+
+		return result;
 	}
 
 	private byte[]? GetBytes(Db.VFileModel? vfile)
 	{
 		if (vfile == null) return null;
 
-		var bytes = Database.GetContentBytes(vfile.FileContent);
+		var t = Tools.TimerStart(Context("GetBytes(Db.VFileModel? vfile)"));
 
-		return vfile.FileContent.Compression == (byte)VFileCompression.None
+		var bytes = Database.GetContentBytes(vfile.FileContent);
+		var result = vfile.FileContent.Compression == (byte)VFileCompression.None
 			? bytes
 			: Util.Decompress(bytes);
+
+		Tools.TimerEnd(t);
+
+		return result;
 	}
 
 	public VFileInfo? StoreVFile(
@@ -182,21 +221,28 @@ public class VFile
 		// are not kept around in memory. This is not harmful should
 		// the state fail to save, any orphaned content can be cleaned up later.
 
-		var t = Hooks.LogTimerStart(nameof(StoreVFiles));
+		var t = Tools.TimerStart(FunctionContext(nameof(StoreVFiles)));
+		var timer = Timer.Default(); // re-usable timer
+		var metrics = new StoreVFilesMetrics();
 
-		var timers = new Dictionary<string, List<Timer>>();
 		var result = new List<VFileInfo>();
 		var state = new StoreVFilesState();
 		var uniqueFilePaths = new HashSet<string>();
 		var contentHashes = new HashSet<string>();
-		var saveContentTasks = new List<Task<Db.FileContent>>();
+		var saveContent = new List<(VFileInfo Info, byte[] Bytes)>();
 
 		foreach (var request in requests)
 		{
+			var rqt = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Process request"));
+
 			var path = request.Path;
 
 			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
+			{
+				Tools.TimerEnd(rqt);
+				Tools.TimerEnd(t);
 				return [];
+			}
 
 			if (uniqueFilePaths.Contains(path.FilePath))
 			{
@@ -204,6 +250,8 @@ public class VFile
 					VFileErrorCodes.DuplicateStoreVFileRequest,
 					$"Duplicate StoreVFileRequest detected: {path.FilePath}",
 					request));
+				Tools.TimerEnd(rqt);
+				Tools.TimerEnd(t);
 				return [];
 			}
 			uniqueFilePaths.Add(path.FilePath);
@@ -211,20 +259,24 @@ public class VFile
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStoreOptions;
 
-			var dt = Util.TimerStart("get-content-bytes-hash");
+			timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Process Content"));
+
 			var content = request.Content.GetContent();
 			var bytes = opts.Compression == VFileCompression.Compress
 				? Util.Compress(content)
 				: content;
 			var hash = Util.HashSHA256(bytes);
-			timers.AddSafe(dt.Name, dt.Stop());
+			metrics.ContentSizes.Add(bytes.Length);
 
-			dt = Util.TimerStart("GetVFilesByFilePath");
+			Tools.TimerEnd(timer);
+			timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.GetVFilesByFilePath"));
+
 			var existingVFile = Database.GetVFilesByFilePath(
-				path.AsList(),
-				VFileInfoVersionQuery.Latest)
+					path.AsList(),
+					VFileInfoVersionQuery.Latest)
 				.SingleOrDefault();
-			timers.AddSafe(dt.Name, dt.Stop());
+
+			Tools.TimerEnd(timer);
 
 			var newInfo = new VFileInfo
 			{
@@ -240,16 +292,15 @@ public class VFile
 				ContentCreationTime = now
 			};
 
-			dt = Util.TimerStart("save-content-hash");
+			// save and check hashes to prevent saving the same content more than once.
 			if (!contentHashes.Contains(hash) &&
 				(existingVFile?.FileContent == null ||
 				existingVFile.FileContent.Hash != hash))
 			{
-				// save new content async
-				saveContentTasks.Add(Task.Run(() => Database.SaveFileContent(newInfo, bytes)));
+				// bulk saving these at the end is the fastest method I've found.
+				saveContent.Add((newInfo, bytes));
 			}
 			contentHashes.Add(hash);
-			timers.AddSafe(dt.Name, dt.Stop());
 
 			if (existingVFile == null)
 			{
@@ -261,17 +312,16 @@ public class VFile
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
 				result.Add(contentDifference ? newInfo : new VFileInfo(existingVFile));
+
 				switch (opts.VersionOpts.ExistsBehavior)
 				{
 					case VFileExistsBehavior.Overwrite:
 					{
-						dt = Util.TimerStart("VFileExistsBehavior.Overwrite");
 						if (contentDifference)
 						{
 							state.DeleteVFiles.Add(existingVFile.VFile);
 							state.NewVFiles.Add(newInfo);
 						}
-						timers.AddSafe(dt.Name, dt.Stop());
 						break;
 					}
 
@@ -283,6 +333,8 @@ public class VFile
 								VFileErrorCodes.OverwriteNotAllowed,
 								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
 								request));
+							Tools.TimerEnd(rqt);
+							Tools.TimerEnd(t);
 							return [];
 						}
 						break;
@@ -290,7 +342,8 @@ public class VFile
 
 					case VFileExistsBehavior.Version:
 					{
-						dt = Util.TimerStart("VFileExistsBehavior.Version");
+						timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "VFileExistsBehavior.Version"));
+
 						var versions = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Versions);
 
 						if (contentDifference)
@@ -301,7 +354,7 @@ public class VFile
 							state.NewVFiles.Add(newInfo);
 						}
 
-						// always check for TTL and MaxVersions changes
+						// always check for TTL and MaxVersionsRetained changes
 						foreach (var v in versions)
 						{
 							// always updates version's DeleteAt to the current opts.VersionOpts.TTL.
@@ -309,6 +362,7 @@ public class VFile
 							var expected = opts.VersionOpts.TTL.HasValue
 								? v.VFile.Versioned + opts.VersionOpts.TTL
 								: null;
+
 							if (v.VFile.DeleteAt != expected)
 							{
 								v.VFile.DeleteAt = expected;
@@ -323,44 +377,33 @@ public class VFile
 							var delete = versions.Select(x => x.VFile)
 								.OrderByDescending(x => x.Versioned)
 								.Skip(maxVersions.Value);
+
 							state.DeleteVFiles.AddRange(delete);
 						}
-						timers.AddSafe(dt.Name, dt.Stop());
+
+						Tools.TimerEnd(timer);
+
 						break;
 					}
 				}
 			}
+
+			Tools.TimerEnd(rqt);
 		}
+
+		timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.SaveFileContent"));
 
 		// wait for all content to finish saving
-		var ct = Util.TimerStart("wait-for-content");
-		Task.WaitAll(saveContentTasks);
-		ct.Stop();
+		Database.SaveFileContent(saveContent);
 
-		var st = Util.TimerStart("SaveStoreVFilesState");
+		Tools.TimerEnd(timer);
+		timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.SaveStoreVFilesState"));
+
 		var dbResult = Database.SaveStoreVFilesState(state);
-		st.Stop();
 
-		Console.WriteLine("= StoreVFiles metrics =");
-		var total = new TimeSpan();
-		foreach (var (name, timer) in timers)
-		{
-			var nameTotal = new TimeSpan();
-			foreach (var x in timer)
-			{
-				nameTotal += x.Stopwatch.Elapsed;
-				total += x.Stopwatch.Elapsed;
-			}
-			Console.WriteLine($"\t{name}: {nameTotal.TimeString()}");
-		}
-		total += ct.Stopwatch.Elapsed;
-		total += st.Stopwatch.Elapsed;
-		Console.WriteLine(ct.EndString());
-		Console.WriteLine(st.EndString());
-		Console.WriteLine($"\tTotal: {total.TimeString()}");
-
-		Hooks.LogTimerEnd(t);
-		Console.WriteLine(t.EndString());
+		Tools.TimerEnd(timer);
+		Tools.TimerEnd(t); // overall SaveVFiles timer
+		Tools.Metrics.StoreVFilesMetrics.Add(metrics);
 
 		return dbResult != null ? result : [];
 	}

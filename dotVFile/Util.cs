@@ -1,5 +1,4 @@
 ﻿using System.Data;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -406,36 +405,7 @@ internal static class Util
 		return settings;
 	}
 
-	/* Timer utils */
-	public static Timer TimerStart(string name)
-	{
-		return new Timer(name, Stopwatch.StartNew());
-	}
-
-	public static Timer Stop(this Timer timer)
-	{
-		timer.Stopwatch.Stop();
-		return timer;
-	}
-
-	public static string EndString(this Timer timer)
-	{
-		return $"{timer.Name} end -- {timer.Stopwatch.Elapsed.TimeString()}";
-	}
-
-	public static Timer LogTimerStart(this IVFileHooks hooks, string name)
-	{
-		var timer = TimerStart(name);
-		hooks.DebugLog($"{name} start");
-		return timer;
-	}
-
-	public static void LogTimerEnd(this IVFileHooks hooks, Timer timer)
-	{
-		timer.Stop();
-		hooks.DebugLog(timer.EndString());
-	}
-
+	/* Timespan string utils */
 	public static string ToStringNumber(this short value) => value.ToString("N0");
 	public static string ToStringNumber(this int value) => value.ToString("N0");
 	public static string ToStringNumber(this long value) => value.ToString("N0");
@@ -444,17 +414,17 @@ internal static class Util
 
 	public static string NanosecondsString(this TimeSpan ts)
 	{
-		return $"0.{((int)ts.TotalNanoseconds).ToString().PadLeft(6, '0')}ms";
+		return $"0.{((int)ts.TotalNanoseconds).ToString().PadLeft(6, '0')} milliseconds";
 	}
 
 	public static string MillisecondsString(this TimeSpan ts)
 	{
-		return $"{((int)ts.TotalMilliseconds).ToStringNumber()}ms";
+		return $"{((int)ts.TotalMilliseconds).ToStringNumber()} milliseconds";
 	}
 
 	public static string SecondsString(this TimeSpan ts)
 	{
-		return $"{ts.Seconds.ToStringNumber()}.{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')}s";
+		return $"{ts.Seconds.ToStringNumber()}.{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')} seconds";
 	}
 
 	public static string TimeString(this TimeSpan ts)
@@ -465,5 +435,62 @@ internal static class Util
 			: ts.TotalMilliseconds >= 1
 			? ts.MillisecondsString()
 			: ts.NanosecondsString();
+	}
+
+	/* SizeString */
+	public static string SizeString(long sizeBytes)
+	{
+		var (size, units) = SizeStringParts(sizeBytes);
+
+		return $"{size} {units}";
+	}
+
+	public static (string Size, string Units) SizeStringParts(long sizeBytes)
+	{
+		static string GetSizeString(decimal size, int decimalPlaces) =>
+			string.Format("{0:n" + decimalPlaces + "}", size);
+
+		(string, int)[] sizeSuffixesDecimalPlaces =
+		{
+				("bytes", 0),
+				("KB", 2),
+				("MB", 2),
+				("GB", 2),
+				("TB", 2),
+				("PB", 3),
+				("EB", 3),
+				("ZB", 3),
+				("YB", 3)
+			};
+
+		if (sizeBytes == 0)
+			return (GetSizeString(0, 0), "bytes");
+
+		if (sizeBytes < 0)
+		{
+			var (size, units) = SizeStringParts(-sizeBytes);
+			return ("-" + size, units);
+		}
+
+		// mag is 0 for bytes, 1 for KB, 2 for MB, etc.
+		// 1024 = 1 KB
+		var mag = (int)Math.Log(sizeBytes, 1024);
+
+		// shift size according to the magnitude
+		// 1L << (mag * 10) == 2 ^ (mag * 10) 
+		// the number of bytes in the unit corresponding to mag
+		var adjustedSize = (decimal)sizeBytes / (1L << mag * 10);
+
+		// make adjustment when the value is large enough that
+		// it would round up to 1000 or more
+		if (Math.Round(adjustedSize, 1) >= 1000)
+		{
+			mag += 1;
+			adjustedSize /= 1024;
+		}
+
+		var (sizeSuffix, decimalPlaces) = sizeSuffixesDecimalPlaces[mag];
+
+		return (GetSizeString(adjustedSize, decimalPlaces), sizeSuffix);
 	}
 }

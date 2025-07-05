@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
@@ -26,7 +25,6 @@ public class NotImplementedVFileHooks : IVFileHooks
 public static class VFileErrorCodes
 {
 	public const string DuplicateStoreVFileRequest = "DUPLICATE_STORE_VFILE_REQUEST";
-	public const string DatabaseException = "DATABASE_EXCEPTION";
 	public const string InvalidParameter = "INVALID_PARAMETER";
 	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
 	public const string MultipleApplicationInstances = "MULTIPLE_APPLICATION_INSTANCES";
@@ -72,7 +70,6 @@ public record VFilePermissions(
 			VFilePermission.SingleApplication);
 }
 
-
 public record VFileOptions(
 	string? Name,
 	string Directory,
@@ -112,7 +109,8 @@ public record VFileOptions(
 		Permissions ?? VFilePermissions.Default();
 
 	/// <summary>
-	/// Debug flag enables Hooks.DebugLog. This is _very_ verbose.
+	/// Debug flag enables Hooks.DebugLog. 
+	/// This makes Hooks.DebugLog _very_ verbose.
 	/// </summary>
 	public bool Debug { get; set; } = Debug;
 
@@ -339,5 +337,3 @@ public record SystemInfo(
 	string Version,
 	DateTimeOffset? LastClean,
 	DateTimeOffset LastUpdate);
-
-internal record Timer(string Name, Stopwatch Stopwatch);
