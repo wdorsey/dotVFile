@@ -49,14 +49,14 @@ public record VFileError(
 public enum VFilePermission
 {
 	/// <summary>
-	/// Only a single application can access the VFile at once.
-	/// This is good for writes to prevent data corruption from
-	/// race-conditions or caching.
+	/// Only a single application instance can 
+	/// access the VFile system at once.
+	/// VFile is not thread-safe.
 	/// </summary>
 	SingleApplication,
 
 	/// <summary>
-	/// Any number of applications can simultaneously access the VFile instance.
+	/// No restrictions.
 	/// </summary>
 	All
 }
