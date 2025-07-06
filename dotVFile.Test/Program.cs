@@ -76,3 +76,5 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 TestUtil.AssertFileContent(vfile, file, info);
 
 TestUtil.RunTests(vfile);
+
+Console.WriteLine(vfile.Database.GetDirectoriesRecursive("/a/").ToJson(true));

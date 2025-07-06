@@ -99,6 +99,7 @@ VACUUM;
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
 
 		// seed root directory
+		// this is the only row where ParentDirectoryRowId is null
 		var dir = new Db.Directory
 		{
 			Name = "",
@@ -311,16 +312,16 @@ WHERE
 		return results;
 	}
 
-	public HashSet<string> GetDirectories()
+	public List<Db.Directory> GetDirectories()
 	{
 		VerifyPermission(Permissions.Read);
 
-		var results = new HashSet<string>();
+		var results = new List<Db.Directory>();
 
 		// Path is a Unique column
 		const string sql = @"
 SELECT
-	Path
+	*
 FROM
 	Directory;
 ";
@@ -330,7 +331,47 @@ FROM
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
-			results.Add(reader.GetString("Path"));
+			results.Add(GetDirectory(reader));
+		}
+
+		return results;
+	}
+
+	/// <summary>
+	/// Gets Directory at rootPath and all subdirectories.
+	/// </summary>
+	public List<Db.Directory> GetDirectoriesRecursive(string rootPath)
+	{
+		VerifyPermission(Permissions.Read);
+
+		var results = new List<Db.Directory>();
+
+		const string sql = @"
+;WITH RECURSIVE dirs AS (
+	SELECT 
+		* 
+	FROM 
+		Directory 
+	WHERE 
+		Path = @Path
+	UNION ALL
+	SELECT 
+		Directory.* 
+	FROM 
+		dirs 
+		INNER JOIN Directory ON Directory.ParentDirectoryRowId = dirs.RowId
+)
+SELECT * FROM dirs;
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("Path", SqliteType.Text, rootPath);
+
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			results.Add(GetDirectory(reader));
 		}
 
 		return results;
@@ -346,7 +387,7 @@ FROM
 			"FileContent",
 			"RowId",
 			"*",
-			reader => ReadEntities(reader, "", GetFileContent));
+			reader => ReadEntities(reader, GetFileContent));
 
 		return results;
 	}
@@ -361,7 +402,7 @@ FROM
 			"Directory",
 			"RowId",
 			"*",
-			reader => ReadEntities(reader, "", GetDirectory));
+			reader => ReadEntities(reader, GetDirectory));
 
 		return results;
 	}
@@ -853,47 +894,48 @@ FROM
 
 	private static List<T> ReadEntities<T>(
 		SqliteDataReader reader,
-		string prefix,
-		Func<SqliteDataReader, string, T> read)
+		Func<SqliteDataReader, T> read)
 	{
 		var results = new List<T>();
 		while (reader.Read())
 		{
-			results.Add(read(reader, prefix));
+			results.Add(read(reader));
 		}
 		return results;
 	}
 
-	private static Db.VFile GetVFile(SqliteDataReader reader, string prefix = "")
+	private static Db.VFile GetVFile(SqliteDataReader reader)
 	{
 		return new Db.VFile
 		{
-			DirectoryRowId = reader.GetInt64(prefix + "DirectoryRowId"),
-			FileContentRowId = reader.GetInt64(prefix + "FileContentRowId"),
-			FileName = reader.GetString(prefix + "FileName"),
-			FileExtension = reader.GetString(prefix + "FileExtension"),
-			Versioned = reader.GetDateTimeOffsetNullable(prefix + "Versioned"),
-			DeleteAt = reader.GetDateTimeOffsetNullable(prefix + "DeleteAt")
-		}.GetEntityValues(reader, prefix);
+			DirectoryRowId = reader.GetInt64("DirectoryRowId"),
+			FileContentRowId = reader.GetInt64("FileContentRowId"),
+			FileName = reader.GetString("FileName"),
+			FileExtension = reader.GetString("FileExtension"),
+			Versioned = reader.GetDateTimeOffsetNullable("Versioned"),
+			DeleteAt = reader.GetDateTimeOffsetNullable("DeleteAt")
+		}.GetEntityValues(reader);
 	}
 
-	private static Db.FileContent GetFileContent(SqliteDataReader reader, string prefix = "")
+	private static Db.FileContent GetFileContent(SqliteDataReader reader)
 	{
 		return new Db.FileContent
 		{
-			Hash = reader.GetString(prefix + "Hash"),
-			Size = reader.GetInt64(prefix + "Size"),
-			SizeContent = reader.GetInt64(prefix + "SizeContent"),
-			Compression = reader.GetByte(prefix + "Compression")
-		}.GetEntityValues(reader, prefix);
+			Hash = reader.GetString("Hash"),
+			Size = reader.GetInt64("Size"),
+			SizeContent = reader.GetInt64("SizeContent"),
+			Compression = reader.GetByte("Compression")
+		}.GetEntityValues(reader);
 	}
 
-	private static Db.Directory GetDirectory(SqliteDataReader reader, string prefix = "")
+	private static Db.Directory GetDirectory(SqliteDataReader reader)
 	{
 		return new Db.Directory
 		{
-			Path = reader.GetString(prefix + "Path")
-		}.GetEntityValues(reader, prefix);
+			ParentDirectoryRowId = reader.GetInt64Nullable("ParentDirectoryRowId"),
+			Name = reader.GetString("Name"),
+			Path = reader.GetString("Path")
+		}.GetEntityValues(reader);
 	}
 
 	private static string GetVersionedSql(VFileInfoVersionQuery versionQuery)

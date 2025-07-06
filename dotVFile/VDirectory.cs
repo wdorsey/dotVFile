@@ -23,7 +23,7 @@ public class VDirectory
 	public VDirectory ParentDirectory()
 	{
 		return DirectoryNames.Count > 1
-			? new(string.Join(DirectorySeparator, DirectoryNames[..^1])) // second-to-last
+			? new(string.Join(DirectorySeparator, DirectoryNames[..^1])) // cut off last element
 			: new(DirectorySeparator.ToString());
 	}
 

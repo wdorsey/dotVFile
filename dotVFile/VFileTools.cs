@@ -4,8 +4,8 @@ namespace dotVFile;
 
 /// <summary>
 /// Tools/Utilities for internal usage.
-/// It also implements IVFileHooks so that it can wrap the VFile.Debug.
-/// Most things only do work if Debug = true, for performance reasons.
+/// It also implements IVFileHooks so that it can wrap VFile.Debug.
+/// Most things in here only do work if VFile.Debug = true, for performance reasons.
 /// </summary>
 internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 {
@@ -41,6 +41,12 @@ internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 		if (!VFile.Debug) return;
 
 		timer.Stop();
+	}
+
+	public void LogTimerEnd(Timer timer)
+	{
+		TimerEnd(timer);
+		DebugLog(timer.ToString());
 	}
 
 	public void LogMetrics()
