@@ -20,11 +20,26 @@ public class VDirectory
 	/// </summary>
 	public List<string> DirectoryNames { get; }
 
-	public VDirectory? ParentDirectory()
+	public VDirectory ParentDirectory()
 	{
 		return DirectoryNames.Count > 1
 			? new(string.Join(DirectorySeparator, DirectoryNames[..^1])) // second-to-last
-			: null;
+			: new(DirectorySeparator.ToString());
+	}
+
+	public List<VDirectory> AllDirectoriesInPath()
+	{
+		var results = new List<VDirectory>();
+
+		var prev = string.Empty;
+		foreach (var name in DirectoryNames)
+		{
+			var dir = prev + DirectorySeparator + name;
+			results.Add(new(dir));
+			prev = dir;
+		}
+
+		return results;
 	}
 
 	public override string ToString()

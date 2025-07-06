@@ -79,7 +79,7 @@ public class VFile
 		// delete expired VFiles first so that their content and directories 
 		// are freed to be cleaned up via DeleteUnreferencedEntities.
 		var expired = Database.DeleteExpiredVFiles();
-		var unreferenced = Database.DeleteUnreferencedEntities();
+		var unreferenced = Database.DeleteUnreferencedFileContent();
 
 		var sysInfo = Database.GetSystemInfo() with { LastClean = DateTimeOffset.Now };
 		Database.UpdateSystemInfo(sysInfo);

@@ -72,13 +72,17 @@ CREATE TABLE IF NOT EXISTS FileContentBlob (
 CREATE UNIQUE INDEX IF NOT EXISTS FileContentBlob_FileContentRowId ON FileContentBlob(FileContentRowId);
 
 CREATE TABLE IF NOT EXISTS Directory (
-	RowId			INTEGER NOT NULL UNIQUE,
-	Id				TEXT NOT NULL,
-	Path			TEXT NOT NULL,
-	CreateTimestamp	TEXT NOT NULL,
-	PRIMARY KEY(RowId AUTOINCREMENT)
+	RowId					INTEGER NOT NULL UNIQUE,
+	Id						TEXT NOT NULL,
+	ParentDirectoryRowId	INTEGER NULL,
+	Name					TEXT NOT NULL,
+	Path					TEXT NOT NULL,
+	CreateTimestamp			TEXT NOT NULL,
+	PRIMARY KEY(RowId AUTOINCREMENT),
+	FOREIGN KEY(ParentDirectoryRowId) REFERENCES Directory(RowId)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Id ON Directory(Id);
+CREATE INDEX IF NOT EXISTS		  Directory_ParentDirectoryRowId ON Directory(ParentDirectoryRowId);
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
 
 CREATE TABLE IF NOT EXISTS SystemInfo (
@@ -93,6 +97,35 @@ VACUUM;
 ";
 
 		DbUtil.ExecuteNonQuery(ConnectionString, sql);
+
+		// seed root directory
+		var dir = new Db.Directory
+		{
+			Name = "",
+			Path = "/"
+		}.Stamp();
+		sql = @"
+INSERT INTO Directory (
+	Id,
+	Name,
+	Path,
+	CreateTimestamp)
+SELECT
+	@Id,
+	@Name,
+	@Path,
+	@CreateTimestamp
+WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = @Path);
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("Id", SqliteType.Text, dir.Id.ToString())
+			.AddParameter("Name", SqliteType.Text, dir.Name)
+			.AddParameter("Path", SqliteType.Text, dir.Path)
+			.AddParameter("CreateTimestamp", SqliteType.Text, dir.CreateTimestamp.ToDefaultString());
+		connection.Open();
+		cmd.ExecuteNonQuery();
+
 		SetSystemInfo();
 	}
 
@@ -113,6 +146,7 @@ DROP INDEX IF EXISTS FileContent_Hash;
 DROP INDEX IF EXISTS FileContentBlob_FileContentRowId;
 
 DROP INDEX IF EXISTS Directory_Id;
+DROP INDEX IF EXISTS Directory_ParentDirectoryRowId;
 DROP INDEX IF EXISTS Directory_Path;
 
 -- tables
@@ -220,39 +254,27 @@ SET
 		return true;
 	}
 
-	public Db.UnreferencedEntities GetUnreferencedEntities()
+	public Db.UnreferencedFileContent GetUnreferencedFileContent()
 	{
 		VerifyPermission(Permissions.Read);
 
-		var result = new Db.UnreferencedEntities();
-
-		List<(string tableName, string columnName)> vfileReferences = [
-			("Directory", "DirectoryRowId"),
-			("FileContent", "FileContentRowId")];
+		var result = new Db.UnreferencedFileContent();
 
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(string.Empty, connection);
 
-		foreach (var (tableName, columnName) in vfileReferences)
-		{
-			cmd.CommandText += $@"
+		cmd.CommandText += $@"
 SELECT
-	x.RowId
+	FileContent.RowId
 FROM
-	{tableName} x 
-	LEFT JOIN VFile f ON f.{columnName} = x.RowId
+	FileContent
+	LEFT JOIN VFile f ON f.FileContentRowId = FileContent.RowId
 WHERE
 	f.RowId IS NULL;
 ";
-		}
 
 		connection.Open();
 		var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			result.DirectoryRowIds.Add(reader.GetInt64("RowId"));
-		}
-		reader.NextResult();
 		while (reader.Read())
 		{
 			result.FileContentRowIds.Add(reader.GetInt64("RowId"));
@@ -382,7 +404,7 @@ FROM
 
 		var versionedSql = GetVersionedSql(versionQuery);
 		var sql = $@"
-WITH q AS (
+;WITH q AS (
 	SELECT 
 		value ->> 'Path' AS Path, 
 		value ->> 'FileName' AS FileName
@@ -512,12 +534,11 @@ WHERE
 		cmd.ExecuteNonQuery();
 	}
 
-	public Db.UnreferencedEntities DeleteUnreferencedEntities()
+	public Db.UnreferencedFileContent DeleteUnreferencedFileContent()
 	{
 		VerifyPermission(Permissions.Write);
-		var result = GetUnreferencedEntities();
+		var result = GetUnreferencedFileContent();
 		DeleteFileContent(result.FileContentRowIds);
-		DeleteDirectory(result.DirectoryRowIds);
 		return result;
 	}
 
@@ -681,7 +702,7 @@ VALUES (
 
 			// Update VFiles
 			cmd.CommandText += @"
-WITH q AS (
+;WITH q AS (
 	SELECT 
 		value ->> 'Versioned' AS Versioned, 
 		value ->> 'DeleteAt' AS DeleteAt,
@@ -708,9 +729,10 @@ WHERE
 
 			// Insert Directories
 			cmd.CommandText += @"
-WITH q AS (
+;WITH q AS (
 	SELECT 
 		value ->> 'Id' AS Id, 
+		value ->> 'Name' AS Name,
 		value ->> 'Path' AS Path,
 		value ->> 'CreateTimestamp' AS CreateTimestamp
 	FROM 
@@ -718,36 +740,55 @@ WITH q AS (
 )
 INSERT INTO Directory (
 	Id,
+	Name,
 	Path,
 	CreateTimestamp)
 SELECT
 	q.Id,
+	q.Name,
 	q.Path,
 	q.CreateTimestamp
 FROM
 	q
-	LEFT JOIN Directory ON Directory.Path = q.Path
+	LEFT JOIN Directory d ON d.Path = q.Path
 WHERE 
-	Directory.RowId IS NULL;
-";
+	d.RowId IS NULL;
 
+;WITH q AS (
+	SELECT 
+		value ->> 'Path' AS Path,
+		value ->> 'ParentPath' AS ParentPath
+	FROM 
+		json_each(@NewDirectories)
+)
+UPDATE Directory
+SET
+	ParentDirectoryRowId = p.RowId
+FROM
+	q
+	INNER JOIN Directory p ON p.Path = q.ParentPath
+WHERE
+	Directory.Path = q.Path;
+";
 			cmd.AddParameter("@NewDirectories", SqliteType.Text,
-				state.NewVFiles.Select(x => x.VFilePath.Directory.Path)
-					.Distinct()
-					.Select(path =>
+				state.NewVFiles.SelectMany(x => x.VFilePath.Directory.AllDirectoriesInPath())
+					.DistinctBy(x => x.Path)
+					.Select(dir =>
 					{
-						var dbDirectory = new Db.Directory { Path = path }.Stamp();
+						var dbDir = ToDbDirectory(dir).Stamp();
 						return new
 						{
-							Id = dbDirectory.Id.ToString(),
-							dbDirectory.Path,
-							CreateTimestamp = dbDirectory.CreateTimestamp.ToDefaultString()
+							Id = dbDir.Id.ToString(),
+							dbDir.Name,
+							dbDir.Path,
+							ParentPath = dir.ParentDirectory().Path,
+							CreateTimestamp = dbDir.CreateTimestamp.ToDefaultString()
 						};
 					}).ToJson()!);
 
 			// Insert VFiles
 			cmd.CommandText += @"
-WITH q AS (
+;WITH q AS (
 	SELECT 
 		value ->> 'Id' AS Id, 
 		value ->> 'Path' AS Path,
@@ -781,7 +822,6 @@ SELECT
 FROM
 	q;
 ";
-
 			cmd.AddParameter("@NewVFiles", SqliteType.Text,
 				state.NewVFiles.Select(info =>
 				{
@@ -888,6 +928,16 @@ FROM
 			Size = info.Size,
 			SizeContent = info.SizeStored,
 			Compression = (byte)info.Compression
+		};
+	}
+
+	private static Db.Directory ToDbDirectory(VDirectory dir)
+	{
+		return new Db.Directory
+		{
+			Id = Guid.NewGuid(),
+			Name = dir.Name,
+			Path = dir.Path
 		};
 	}
 }

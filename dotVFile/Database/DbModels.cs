@@ -47,6 +47,8 @@ internal static class Db
 
 	public record Directory : Entity
 	{
+		public long? ParentDirectoryRowId;
+		public string Name = string.Empty;
 		public string Path = string.Empty;
 	}
 
@@ -66,9 +68,8 @@ internal static class Db
 		public List<VFile> NewVFiles = [];
 	}
 
-	public record UnreferencedEntities
+	public record UnreferencedFileContent
 	{
-		public List<long> DirectoryRowIds = [];
 		public List<long> FileContentRowIds = [];
 	}
 

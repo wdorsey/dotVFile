@@ -319,17 +319,15 @@ internal record StoreVFilesState
 public record VFileCleanResult
 {
 	internal VFileCleanResult(
-		Db.UnreferencedEntities unreferencedEntities,
+		Db.UnreferencedFileContent unreferencedFileContent,
 		List<Db.VFile> deletedVFiles)
 	{
 		DeletedVFileCount = deletedVFiles.Count;
-		DeletedFileContentCount = unreferencedEntities.FileContentRowIds.Count;
-		DeletedDirectoryCount = unreferencedEntities.DirectoryRowIds.Count;
+		DeletedFileContentCount = unreferencedFileContent.FileContentRowIds.Count;
 	}
 
 	public long DeletedVFileCount;
 	public long DeletedFileContentCount;
-	public long DeletedDirectoryCount;
 }
 
 public record SystemInfo(
