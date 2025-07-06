@@ -5,7 +5,7 @@ ConsoleUtil.InitializeConsole(height: 1000);
 
 var debug = true; // for local dev
 
-var path = Path.Combine(Environment.CurrentDirectory, "vfile");
+var vfilePath = Path.Combine(Environment.CurrentDirectory, "vfile");
 
 var versionOpts = new VFileVersionOptions(
 	// ExistsBehavior:
@@ -32,7 +32,7 @@ var storeOpts = new VFileStoreOptions(
 
 var opts = new VFileOptions(
 	"dotVFile.Test", // Name of the VFile instance
-	path,            // Directory to store VFile's single-file
+	vfilePath,       // Directory to store VFile's single-file
 	new TestHooks(), // IVFileHooks implementation, pass null to ignore
 	storeOpts,       // Default Store options, null will use VFile.GetDefaultStoreOptions()
 					 // Read/Write permissions
@@ -63,18 +63,19 @@ TestUtil.LoadTestFiles();
 var file = TestUtil.TestFiles.First();
 
 // use a stream to store file
-VFileInfo? info = null;
 using (FileStream fs = File.OpenRead(file.FilePath))
 {
-	info = vfile.StoreVFile(
-		new VFilePath("stream_directory", file.FileName),
+	var path = new VFilePath("stream_directory", file.FileName);
+
+	var info = vfile.StoreVFile(
+		path,
 		new VFileContent(fs));
 
-	vfile.Hooks.DebugLog(info!.ToJson(true)!);
-	vfile.GetBytes(info!);
+	var bytes = vfile.GetBytes(path);
+	TestUtil.AssertFileContent(file, bytes);
+
+	bytes = vfile.GetBytes(info!);
+	TestUtil.AssertFileContent(file, bytes);
 }
-TestUtil.AssertFileContent(vfile, file, info);
 
 TestUtil.RunTests(vfile);
-
-Console.WriteLine(vfile.Database.GetDirectoriesRecursive("/a/").ToJson(true));
