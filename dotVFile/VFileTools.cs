@@ -41,7 +41,6 @@ internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 		if (!VFile.Debug) return;
 
 		timer.Stop();
-		Hooks.DebugLog(timer.ToString());
 	}
 
 	public void LogMetrics()

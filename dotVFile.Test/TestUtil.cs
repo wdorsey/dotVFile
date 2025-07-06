@@ -235,6 +235,7 @@ public static class TestUtil
 		// @TODO: test Get functions
 
 		vfile.Tools.TimerEnd(t);
+		vfile.Tools.DebugLog(t.ToString());
 	}
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFile vfile, int expectedCount)

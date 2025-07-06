@@ -58,7 +58,7 @@ public enum VFilePermission
 	/// <summary>
 	/// Any number of applications can simultaneously access the VFile instance.
 	/// </summary>
-	MultiApplication
+	All
 }
 
 public record VFilePermissions(
@@ -66,7 +66,7 @@ public record VFilePermissions(
 	VFilePermission Write)
 {
 	public static VFilePermissions Default() =>
-		new(VFilePermission.MultiApplication,
+		new(VFilePermission.All,
 			VFilePermission.SingleApplication);
 }
 

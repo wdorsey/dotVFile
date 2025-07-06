@@ -202,7 +202,7 @@ SET
 	public bool VerifyPermission(VFilePermission permission)
 	{
 		// Multi means access is always allowed
-		if (permission == VFilePermission.MultiApplication)
+		if (permission == VFilePermission.All)
 			return true;
 
 		var info = GetSystemInfo();
@@ -383,11 +383,11 @@ FROM
 		var versionedSql = GetVersionedSql(versionQuery);
 		var sql = $@"
 WITH q AS (
-SELECT 
-	value ->> 'Path' AS Path, 
-	value ->> 'FileName' AS FileName
-FROM 
-	json_each(@Paths)
+	SELECT 
+		value ->> 'Path' AS Path, 
+		value ->> 'FileName' AS FileName
+	FROM 
+		json_each(@Paths)
 )
 SELECT
 	VFile.*
@@ -553,18 +553,16 @@ WHERE
 		return result;
 	}
 
-	public Db.FileContent SaveFileContent(VFileInfo info, byte[] bytes)
+	public void SaveFileContent(List<(VFileInfo Info, byte[] Bytes)> contents)
 	{
-		return SaveFileContent([(info, bytes)]).Single();
-	}
+		// @note: this function does not return the Db.FileContents because
+		// the result was not being used at all and this function is coded
+		// in a very specific way for perfomance reasons that makes
+		// it non-trivial to get the inserted RowIds.
 
-	public List<Db.FileContent> SaveFileContent(List<(VFileInfo Info, byte[] Bytes)> contents)
-	{
-		if (contents.Count == 0) return [];
+		if (contents.Count == 0) return;
 
 		VerifyPermission(Permissions.Write);
-
-		var results = new List<Db.FileContent>();
 
 		// check for existing FileContent first.
 		// SaveVFiles blindly calls this function without checking.
@@ -588,7 +586,7 @@ WHERE
 			while (reader.Read())
 			{
 				var existing = GetFileContent(reader);
-				results.Add(existing);
+				// results.Add(existing);
 				existingHashes.Add(existing.Hash);
 			}
 
@@ -598,7 +596,7 @@ WHERE
 
 			if (newContent.Count > 0)
 			{
-				sql = @"
+				sql = $@"
 INSERT INTO FileContent (
 	Id,
 	Hash,
@@ -645,22 +643,7 @@ VALUES (
 					idx++;
 				}
 
-				cmd.CommandText += @"
-SELECT 
-	*
-FROM 
-	FileContent
-WHERE
-	Hash IN (SELECT value FROM json_each(@Hashes));
-";
-				cmd.AddParameter("@Hashes", SqliteType.Text,
-					newContent.Select(x => x.Item1.Hash).ToJson()!);
-
-				reader = cmd.ExecuteReader();
-				while (reader.Read())
-				{
-					results.Add(GetFileContent(reader));
-				}
+				cmd.ExecuteNonQuery();
 			}
 
 			transaction.Commit();
@@ -670,77 +653,113 @@ WHERE
 			transaction.Rollback();
 			throw;
 		}
-
-		return results;
 	}
 
-	public Db.StoreVFilesResult SaveStoreVFilesState(StoreVFilesState state)
+	public void SaveStoreVFilesState(StoreVFilesState state)
 	{
+		// @note: no returned value for performance reasons
+		// and because it was not used.
+
 		VerifyPermission(Permissions.Write);
 
-		// All VFileInfo changes written transactionally.
+		// All state changes written transactionally.
 		// order:
-		//	DeleteVFileInfos
-		//  UpdateVFileInfos
-		//	NewVFileInfos
-		var result = new Db.StoreVFilesResult();
-		int idx = 0;
+		//	Delete VFiles
+		//  Update VFiles
+		//  Insert new Directories
+		//	Insert new VFiles
 
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		using var transaction = connection.BeginTransaction();
-
 		try
 		{
 			var cmd = new SqliteCommand(string.Empty, connection, transaction);
 
-			// build DeleteVFileInfos
+			// Delete VFiles
 			cmd.BuildDeleteByRowId("VFile", "RowId", [.. state.DeleteVFiles.Select(x => x.RowId)]);
 
-			// build UpdateVFileInfos
-			foreach (var update in state.UpdateVFiles)
-			{
-				// only update-able fields are Versioned and DeleteAt
-				cmd.CommandText += $@"
+			// Update VFiles
+			cmd.CommandText += @"
+WITH q AS (
+	SELECT 
+		value ->> 'Versioned' AS Versioned, 
+		value ->> 'DeleteAt' AS DeleteAt,
+		value ->> 'RowId' AS RowId
+	FROM 
+		json_each(@Updates)
+)
 UPDATE VFile
-SET 
-	Versioned = {DbUtil.ParameterName("Versioned", idx)},
-	DeleteAt = {DbUtil.ParameterName("DeleteAt", idx)}
+SET
+	Versioned = q.Versioned,
+	DeleteAt = q.DeleteAt
+FROM
+	q
 WHERE
-	RowId = {DbUtil.ParameterName("RowId", idx)};
+	VFile.RowId = q.RowId;
 ";
-				cmd.AddParameter("Versioned", idx, SqliteType.Text, (update.Versioned?.ToDefaultString()).NullCoalesce());
-				cmd.AddParameter("DeleteAt", idx, SqliteType.Text, (update.DeleteAt?.ToDefaultString()).NullCoalesce());
-				cmd.AddParameter("RowId", idx, SqliteType.Integer, update.RowId);
-				idx++;
-			}
+			cmd.AddParameter("@Updates", SqliteType.Text,
+				state.UpdateVFiles.Select(vfile => new
+				{
+					Versioned = (vfile.Versioned?.ToDefaultString()).NullCoalesce(),
+					DeleteAt = (vfile.DeleteAt?.ToDefaultString()).NullCoalesce(),
+					vfile.RowId
+				}).ToJson()!);
 
-			// build NewVFileInfos
-			foreach (var info in state.NewVFiles)
-			{
-				cmd.CommandText += $@"
+			// Insert Directories
+			cmd.CommandText += @"
+WITH q AS (
+	SELECT 
+		value ->> 'Id' AS Id, 
+		value ->> 'Path' AS Path,
+		value ->> 'CreateTimestamp' AS CreateTimestamp
+	FROM 
+		json_each(@NewDirectories)
+)
 INSERT INTO Directory (
 	Id,
 	Path,
 	CreateTimestamp)
 SELECT
-	{DbUtil.ParameterName("Id", idx)},
-	{DbUtil.ParameterName("Path", idx)},
-	{DbUtil.ParameterName("CreateTimestamp", idx)}
-WHERE NOT EXISTS (
-	SELECT 
-		1
-	FROM 
-		Directory 
-	WHERE 
-		Path = {DbUtil.ParameterName("Path", idx)});
+	q.Id,
+	q.Path,
+	q.CreateTimestamp
+FROM
+	q
+	LEFT JOIN Directory ON Directory.Path = q.Path
+WHERE 
+	Directory.RowId IS NULL;
 ";
-				var dbDirectory = new Db.Directory { Path = info.VFilePath.Directory.Path }.Stamp();
-				cmd.AddEntityParameters(dbDirectory, idx)
-					.AddParameter("Path", idx, SqliteType.Text, dbDirectory.Path);
-				idx++;
 
-				cmd.CommandText += $@"
+			cmd.AddParameter("@NewDirectories", SqliteType.Text,
+				state.NewVFiles.Select(x => x.VFilePath.Directory.Path)
+					.Distinct()
+					.Select(path =>
+					{
+						var dbDirectory = new Db.Directory { Path = path }.Stamp();
+						return new
+						{
+							Id = dbDirectory.Id.ToString(),
+							dbDirectory.Path,
+							CreateTimestamp = dbDirectory.CreateTimestamp.ToDefaultString()
+						};
+					}).ToJson()!);
+
+			// Insert VFiles
+			cmd.CommandText += @"
+WITH q AS (
+	SELECT 
+		value ->> 'Id' AS Id, 
+		value ->> 'Path' AS Path,
+		value ->> 'Hash' AS Hash,
+		value ->> 'FileName' AS FileName,
+		value ->> 'FileExtension' AS FileExtension,
+		value ->> 'Versioned' AS Versioned,
+		value ->> 'DeleteAt' AS DeleteAt,
+		value ->> 'CreateTimestamp' AS CreateTimestamp
+	FROM 
+		json_each(@NewVFiles)
+)
 INSERT INTO VFile (
 	Id,
 	DirectoryRowId,
@@ -750,30 +769,39 @@ INSERT INTO VFile (
 	Versioned,
 	DeleteAt,
 	CreateTimestamp)
-VALUES (
-	{DbUtil.ParameterName("Id", idx)},
-	(SELECT RowId FROM Directory WHERE Path = {DbUtil.ParameterName("Path", idx)}),
-	(SELECT RowId FROM FileContent WHERE Hash = {DbUtil.ParameterName("Hash", idx)}),
-	{DbUtil.ParameterName("FileName", idx)},
-	{DbUtil.ParameterName("FileExtension", idx)},
-	{DbUtil.ParameterName("Versioned", idx)},
-	{DbUtil.ParameterName("DeleteAt", idx)},
-	{DbUtil.ParameterName("CreateTimestamp", idx)});
-{DbUtil.SelectInsertedRowId}
+SELECT
+	Id,	
+	(SELECT RowId FROM Directory WHERE Path = q.Path),
+	(SELECT RowId FROM FileContent WHERE Hash = q.Hash),
+	FileName,
+	FileExtension,
+	Versioned,
+	DeleteAt,
+	CreateTimestamp
+FROM
+	q;
 ";
-				var dbVFile = ToDbVFile(info).Stamp();
-				cmd.AddEntityParameters(dbVFile, idx)
-					.AddParameter("Path", idx, SqliteType.Text, dbDirectory.Path)
-					.AddParameter("Hash", idx, SqliteType.Text, info.Hash)
-					.AddParameter("FileName", idx, SqliteType.Text, dbVFile.FileName)
-					.AddParameter("FileExtension", idx, SqliteType.Text, dbVFile.FileExtension)
-					.AddParameter("Versioned", idx, SqliteType.Text, (dbVFile.Versioned?.ToDefaultString()).NullCoalesce())
-					.AddParameter("DeleteAt", idx, SqliteType.Text, (dbVFile.DeleteAt?.ToDefaultString()).NullCoalesce());
-				idx++;
-				result.NewVFiles.Add(dbVFile);
-			}
-			var reader = cmd.ExecuteReader();
-			result.NewVFiles.ReadInsertedRowIds(reader);
+
+			cmd.AddParameter("@NewVFiles", SqliteType.Text,
+				state.NewVFiles.Select(info =>
+				{
+					var dbVFile = ToDbVFile(info).Stamp();
+					return new
+					{
+						Id = dbVFile.Id.ToString(),
+						info.VFilePath.Directory.Path,
+						info.Hash,
+						dbVFile.FileName,
+						dbVFile.FileExtension,
+						Versioned = (dbVFile.Versioned?.ToDefaultString()).NullCoalesce(),
+						DeleteAt = (dbVFile.DeleteAt?.ToDefaultString()).NullCoalesce(),
+						CreateTimestamp = dbVFile.CreateTimestamp.ToDefaultString()
+					};
+				}).ToJson()!);
+
+
+			cmd.ExecuteNonQuery();
+
 			transaction.Commit();
 		}
 		catch (SqliteException)
@@ -781,8 +809,6 @@ VALUES (
 			transaction.Rollback();
 			throw;
 		}
-
-		return result;
 	}
 
 	private static List<T> ReadEntities<T>(

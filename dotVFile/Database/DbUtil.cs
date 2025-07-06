@@ -14,8 +14,6 @@ internal static class DbUtil
 		return entity;
 	}
 
-	public const string SelectInsertedRowId = "SELECT last_insert_rowid() AS RowId;";
-
 	public static string Alias(string? alias) => alias.HasValue() ? $"{alias}." : string.Empty;
 	public static string AliasColumn(string? alias, string column) => $"{Alias(alias)}{column}";
 
@@ -102,18 +100,6 @@ internal static class DbUtil
 		return cmd;
 	}
 
-	public static SqliteCommand AddEntityParameters<T>(
-		this SqliteCommand cmd,
-		T entity,
-		int? index = null)
-		where T : Db.Entity
-	{
-		cmd.AddParameter("Id", index, SqliteType.Text, entity.Id.ToString());
-		cmd.AddParameter("CreateTimestamp", index, SqliteType.Text, entity.CreateTimestamp.ToDefaultString());
-
-		return cmd;
-	}
-
 	public static SqliteCommand BuildDeleteByRowId(
 		this SqliteCommand cmd,
 		string tableName,
@@ -142,9 +128,9 @@ internal static class DbUtil
 		if (_BuildInClauseIndex >= 1000)
 			_BuildInClauseIndex = 0;
 
-		// use json_each that only requires one paramter
-		// rather than building a parameter for each value, which is much
-		// more complicated programatically, and slower.
+		// use json_each: only requires one paramter
+		// rather than building a parameter for each value,
+		// which is much more programatically complicated and slower.
 		var key = $"@IN_{columnName}_{_BuildInClauseIndex}";
 		var @in = $"{AliasColumn(tableAlias, columnName)} IN (SELECT e.value FROM json_each({key}) e)";
 		var parameter = NewParameter(key, SqliteType.Text, values.ToJson());
@@ -158,28 +144,6 @@ internal static class DbUtil
 		entity.Id = reader.GetGuid(prefix + "Id");
 		entity.CreateTimestamp = reader.GetDateTimeOffset(prefix + "CreateTimestamp");
 		return entity;
-	}
-
-	public static T ReadRowId<T>(this T entity, SqliteDataReader reader)
-		where T : Db.Entity
-	{
-		reader.Read();
-		entity.RowId = Convert.ToInt64(reader["RowId"]);
-		return entity;
-	}
-
-	/// <summary>
-	/// Expected to be used solely after inserts. Calls NextResult after each Read.
-	/// </summary>
-	public static List<T> ReadInsertedRowIds<T>(this List<T> entities, SqliteDataReader reader)
-		where T : Db.Entity
-	{
-		foreach (var entity in entities)
-		{
-			entity.ReadRowId(reader);
-			reader.NextResult();
-		}
-		return entities;
 	}
 
 	public static void ExecuteNonQuery(string connectionString, string sql)

@@ -399,13 +399,13 @@ public class VFile
 		Tools.TimerEnd(timer);
 		timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.SaveStoreVFilesState"));
 
-		var dbResult = Database.SaveStoreVFilesState(state);
+		Database.SaveStoreVFilesState(state);
 
 		Tools.TimerEnd(timer);
 		Tools.TimerEnd(t); // overall SaveVFiles timer
 		Tools.Metrics.StoreVFilesMetrics.Add(metrics);
 
-		return dbResult != null ? result : [];
+		return result;
 	}
 
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
