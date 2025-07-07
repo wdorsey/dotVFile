@@ -235,14 +235,10 @@ public class VFile
 			var vfiles = GetVersions(request.From, versionQuery);
 			foreach (var vfile in vfiles)
 			{
-				var bytes = GetBytes(vfile);
-				if (bytes == null)
+				storeRequests.Add(new StoreRequest(request.To, VFileContent.Default(), opts)
 				{
-					Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "Content not found.", vfile.FilePath));
-					continue;
-				}
-				var content = new VFileContent(bytes);
-				storeRequests.Add(new StoreRequest(request.To, content, opts));
+					CopyHash = vfile.Hash
+				});
 			}
 		}
 
@@ -441,12 +437,26 @@ public class VFile
 
 			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
 
-			var content = request.Content.GetContent();
-			var bytes = opts.Compression == VFileCompression.Compress
-				? Util.Compress(content)
-				: content;
-			var hash = Util.HashSHA256(bytes);
-			metrics.ContentSizes.Add(bytes.Length);
+			// process content
+			var hash = string.Empty;
+			long size = 0;
+			long sizeStored = 0;
+			var bytes = Util.EmptyBytes();
+			if (request.CopyHash.HasValue())
+			{
+				hash = request.CopyHash;
+			}
+			else
+			{
+				var content = request.Content.GetContent();
+				bytes = opts.Compression == VFileCompression.Compress
+					? Util.Compress(content)
+					: content;
+				hash = Util.HashSHA256(bytes);
+				size = content.LongLength;
+				sizeStored = bytes.LongLength;
+				metrics.ContentSizes.Add(bytes.Length);
+			}
 
 			Tools.TimerEnd(timer);
 			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.GetVFilesByFilePath"));
@@ -466,14 +476,15 @@ public class VFile
 				CreationTime = now,
 				ContentId = Guid.NewGuid(),
 				Hash = hash,
-				Size = content.Length,
-				SizeStored = bytes.Length,
+				Size = size,
+				SizeStored = sizeStored,
 				Compression = opts.Compression,
 				ContentCreationTime = now
 			};
 
-			// save and check hashes to prevent saving the same content more than once.
+			// check to see if we need to save the content
 			if (!contentHashes.Contains(hash) &&
+				request.CopyHash.IsEmpty() &&
 				(existingVFile?.FileContent == null ||
 				existingVFile.FileContent.Hash != hash))
 			{

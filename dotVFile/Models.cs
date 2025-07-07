@@ -206,6 +206,8 @@ public record VFileContent
 	public byte[]? Bytes;
 	public string? FilePath;
 	public Stream? Stream;
+
+	public static VFileContent Default() => new(Util.EmptyBytes());
 }
 
 public record StoreRequest(
@@ -213,10 +215,17 @@ public record StoreRequest(
 	VFileContent Content,
 	StoreOptions? Opts = null)
 {
-	public VFilePath Path = Path;
+	public VFilePath Path { get; set; } = Path;
 	[JsonIgnore]
-	public VFileContent Content = Content;
-	public StoreOptions? Opts = Opts;
+	public VFileContent Content { get; set; } = Content;
+	public StoreOptions? Opts { get; set; } = Opts;
+
+	/// <summary>
+	/// Used internally for Copy functionality.
+	/// Huge performance gain as it allows copying
+	/// to never have to touch the actual content.
+	/// </summary>
+	internal string? CopyHash { get; set; }
 }
 
 public record CopyRequest(
