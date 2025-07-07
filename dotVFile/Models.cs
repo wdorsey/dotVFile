@@ -75,7 +75,7 @@ public record VFileOptions(
 	string? Name,
 	string Directory,
 	IVFileHooks? Hooks = null,
-	VFileStoreOptions? DefaultStoreOptions = null,
+	StoreOptions? DefaultStoreOptions = null,
 	VFilePermissions? Permissions = null,
 	bool Debug = false)
 {
@@ -100,8 +100,8 @@ public record VFileOptions(
 	/// Default Store options
 	/// null will use VFileSystem.GetDefaultStoreOptions()
 	/// </summary>
-	public VFileStoreOptions DefaultStoreOptions { get; set; } =
-		DefaultStoreOptions ?? VFileStoreOptions.Default();
+	public StoreOptions DefaultStoreOptions { get; set; } =
+		DefaultStoreOptions ?? StoreOptions.Default();
 
 	/// <summary>
 	/// Read/Write restrictions for multiple 
@@ -119,7 +119,7 @@ public record VFileOptions(
 		new(null,
 			Environment.CurrentDirectory,
 			new NotImplementedVFileHooks(),
-			VFileStoreOptions.Default(),
+			StoreOptions.Default(),
 			VFilePermissions.Default(),
 			false);
 }
@@ -144,6 +144,10 @@ public record VFileInfo
 
 	public Guid Id { get; internal set; }
 	public VFilePath VFilePath { get; internal set; } = VFilePath.Default();
+	public string FileName => VFilePath.FileName;
+	public string FilePath => VFilePath.FilePath;
+	public VDirectory VDirectory => VFilePath.Directory;
+	public string DirectoryName => VDirectory.Name;
 	public DateTimeOffset? Versioned { get; internal set; }
 	public bool IsVersion => Versioned.HasValue;
 	public DateTimeOffset? DeleteAt { get; internal set; }
@@ -204,16 +208,32 @@ public record VFileContent
 	public Stream? Stream;
 }
 
-public record StoreVFileRequest(
+public record StoreRequest(
 	VFilePath Path,
 	VFileContent Content,
-	VFileStoreOptions? Opts = null)
+	StoreOptions? Opts = null)
 {
 	public VFilePath Path = Path;
 	[JsonIgnore]
 	public VFileContent Content = Content;
-	public VFileStoreOptions? Opts = Opts;
+	public StoreOptions? Opts = Opts;
 }
+
+public record CopyRequest(
+	VFilePath From,
+	VFilePath To,
+	StoreOptions? Opts = null)
+{
+	public CopyRequest(
+		VFileInfo from,
+		VFilePath to,
+		StoreOptions? opts = null)
+		: this(from.VFilePath, to, opts) { }
+}
+
+public record MoveResult(
+	List<VFileInfo> NewVFileInfos,
+	List<VFileInfo> DeletedVFileInfos);
 
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileExistsBehavior
@@ -245,7 +265,7 @@ public enum VFileCompression
 	Compress = 1
 }
 
-public record VFileVersionOptions(
+public record VersionOptions(
 	VFileExistsBehavior ExistsBehavior,
 	int? MaxVersionsRetained,
 	TimeSpan? TTL)
@@ -269,14 +289,14 @@ public record VFileVersionOptions(
 	/// </summary>
 	public TimeSpan? TTL = TTL;
 
-	public static VFileVersionOptions Default() =>
+	public static VersionOptions Default() =>
 		new(VFileExistsBehavior.Overwrite, null, null);
 }
 
-public record VFileStoreOptions(
+public record StoreOptions(
 	VFileCompression Compression,
 	TimeSpan? TTL,
-	VFileVersionOptions VersionOpts)
+	VersionOptions VersionOpts)
 {
 	/// <summary>
 	/// Compress the file or not before storing.
@@ -290,36 +310,36 @@ public record VFileStoreOptions(
 	/// </summary>
 	public TimeSpan? TTL = TTL;
 
-	public VFileVersionOptions VersionOpts = VersionOpts;
+	public VersionOptions VersionOpts = VersionOpts;
 
-	public VFileStoreOptions SetVersionOpts(VFileVersionOptions opts)
+	public StoreOptions SetVersionOpts(VersionOptions opts)
 	{
 		VersionOpts = opts;
 		return this;
 	}
 
-	public static VFileStoreOptions Default() =>
-		new(VFileCompression.None, null, VFileVersionOptions.Default());
+	public static StoreOptions Default() =>
+		new(VFileCompression.None, null, VersionOptions.Default());
 }
 
 [JsonConverter(typeof(StringEnumConverter))]
-public enum VFileInfoVersionQuery
+public enum VersionQuery
 {
 	Latest = 0,
 	Versions = 1,
 	Both = 2
 }
 
-internal record StoreVFilesState
+internal record StoreState
 {
 	public List<VFileInfo> NewVFiles = [];
 	public List<Db.VFile> UpdateVFiles = [];
 	public List<Db.VFile> DeleteVFiles = [];
 }
 
-public record VFileCleanResult
+public record CleanResult
 {
-	internal VFileCleanResult(
+	internal CleanResult(
 		Db.UnreferencedFileContent unreferencedFileContent,
 		List<Db.VFile> deletedVFiles)
 	{

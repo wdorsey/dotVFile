@@ -7,7 +7,7 @@ var debug = true; // for local dev
 
 var vfilePath = Path.Combine(Environment.CurrentDirectory, "vfile");
 
-var versionOpts = new VFileVersionOptions(
+var versionOpts = new VersionOptions(
 	// ExistsBehavior:
 	//   Determines what happens when a vfile is requested to be Stored but already exists.
 	//   Options are Overwrite, Error, Version
@@ -20,7 +20,7 @@ var versionOpts = new VFileVersionOptions(
 // VFileStoreOptions can be passed-in for each individual file that is Stored, if desired.
 // But usually the vast majority of Store operations can use the same standard set of options,
 // so a default set of options is given to the VFile instance at startup.
-var storeOpts = new VFileStoreOptions(
+var storeOpts = new StoreOptions(
 	// Compression:
 	//   Compress the file or not before storing.
 	//   No compression is much faster, but compressing saves disk space.
@@ -67,9 +67,7 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 {
 	var path = new VFilePath("stream_directory", file.FileName);
 
-	var info = vfile.StoreVFile(
-		path,
-		new VFileContent(fs));
+	var info = vfile.Store((StoreRequest)new(path, new VFileContent(fs)));
 
 	var bytes = vfile.GetBytes(path);
 	TestUtil.AssertFileContent(file, bytes);

@@ -32,7 +32,7 @@ public class VFile
 	public string Directory { get; private set; }
 	internal VFileTools Tools { get; private set; }
 	public IVFileHooks Hooks => Tools.Hooks;
-	public VFileStoreOptions DefaultStoreOptions { get; private set; }
+	public StoreOptions DefaultStoreOptions { get; private set; }
 	public bool Debug { get; set; }
 	public SystemInfo SystemInfo => ConvertDbSystemInfo(Database.GetSystemInfo());
 
@@ -68,7 +68,7 @@ public class VFile
 	/// Deletes VFiles that have passed their DeleteAt time.<br/>
 	/// Deletes any dangling, unreferenced Content.
 	/// </summary>
-	public VFileCleanResult Clean()
+	public CleanResult Clean()
 	{
 		// Some of the unreferenced data should normally be deleted during StoreVFiles 
 		// but it isn't for both performance reasons and because it has
@@ -84,7 +84,7 @@ public class VFile
 		var sysInfo = Database.GetSystemInfo() with { LastClean = DateTimeOffset.Now };
 		Database.UpdateSystemInfo(sysInfo);
 
-		var result = new VFileCleanResult(unreferenced, expired);
+		var result = new CleanResult(unreferenced, expired);
 
 		Tools.DebugLog($"{t.Name} => {result.ToJson(true)}");
 		Tools.TimerEnd(t);
@@ -92,55 +92,53 @@ public class VFile
 		return result;
 	}
 
-	public VFileInfo? GetVFileInfo(VFilePath path)
+	public VFileInfo? Get(VFilePath path)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfo(path)"));
+		var t = Tools.TimerStart(Context("Get(path)"));
 
-		var result = GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
+		var result = GetVersions(path, VersionQuery.Latest).SingleOrDefault();
 
 		Tools.TimerEnd(t);
 
 		return result;
 	}
 
-	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
+	public List<VFileInfo> Get(List<VFilePath> paths)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfos(paths)"));
+		var t = Tools.TimerStart(Context("Get(paths)"));
 
-		var results = GetVFileInfoVersions(paths, VFileInfoVersionQuery.Latest);
+		var results = GetVersions(paths, VersionQuery.Latest);
 
 		Tools.TimerEnd(t);
 
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfos(VDirectory directory) => GetVFileInfos(directory, false);
-
-	public List<VFileInfo> GetVFileInfos(VDirectory directory, bool recursive)
+	public List<VFileInfo> Get(VDirectory directory, bool recursive = false)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfos(directory)"));
+		var t = Tools.TimerStart(Context("Get(directory)"));
 
-		var results = GetVFileInfoVersions(directory, recursive, VFileInfoVersionQuery.Latest);
+		var results = GetVersions(directory, recursive, VersionQuery.Latest);
 
 		Tools.TimerEnd(t);
 
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
+	public List<VFileInfo> GetVersions(VFilePath path, VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(path, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(path, versionQuery)"));
 
-		var results = GetVFileInfoVersions(path.AsList(), versionQuery);
+		var results = GetVersions(path.AsList(), versionQuery);
 
 		Tools.TimerEnd(t);
 
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)
+	public List<VFileInfo> GetVersions(List<VFilePath> paths, VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(paths, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(paths, versionQuery)"));
 
 		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
 		var results = ConvertDbVFile(vfiles);
@@ -150,12 +148,12 @@ public class VFile
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery) =>
-		GetVFileInfoVersions(directory, false, versionQuery);
-
-	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, bool recursive, VFileInfoVersionQuery versionQuery)
+	public List<VFileInfo> GetVersions(
+		VDirectory directory,
+		bool recursive = false,
+		VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(directory, recursive, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(directory, recursive, versionQuery)"));
 
 		var paths = recursive
 			? Database.GetDirectoriesRecursive(directory.Path).Select(x => x.Path)
@@ -174,7 +172,7 @@ public class VFile
 	{
 		var t = Tools.TimerStart(Context("GetBytes(path)"));
 
-		var vfile = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
+		var vfile = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Latest).SingleOrDefault();
 		var result = GetBytes(vfile);
 
 		Tools.TimerEnd(t);
@@ -210,55 +208,136 @@ public class VFile
 		return result;
 	}
 
-	public VFileInfo? CopyVFile(
-		VFileInfo info,
-		VFilePath to,
-		VFileStoreOptions? opts = null)
+	/// <summary>
+	/// Returns copied VFileInfo. If null, VFile was not found at request.From.
+	/// </summary>
+	/// <param name="request"></param>
+	/// <returns></returns>
+	public VFileInfo? Copy(CopyRequest request) => Copy([request]).SingleOrDefault();
+
+	/// <summary>
+	/// Returns copied VFileInfos.
+	/// </summary>
+	public List<VFileInfo> Copy(List<CopyRequest> requests)
 	{
-		var bytes = GetBytes(info);
+		if (requests.IsEmpty()) return [];
 
-		if (bytes == null) return null;
+		var t = Tools.TimerStart(Context("Copy(requests)"));
 
-		return StoreVFile(to, new(bytes), opts);
-	}
+		var storeRequests = new List<StoreRequest>();
 
-	public List<VFileInfo> CopyVFiles(
-		List<VFileInfo> infos,
-		VDirectory to,
-		VFileStoreOptions? opts = null)
-	{
-		var requests = new List<StoreVFileRequest>();
-
-		foreach (var info in infos)
+		foreach (var request in requests)
 		{
-			var bytes = GetBytes(info);
+			var bytes = GetBytes(request.From);
 			if (bytes == null)
 			{
-				Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "VFileInfo not found.", info));
+				Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "VFileInfo not found.", request.From));
 				continue;
 			}
-			var path = new VFilePath(to, info.VFilePath.FileName);
 			var content = new VFileContent(bytes);
-			requests.Add(new StoreVFileRequest(path, content, opts));
+			storeRequests.Add(new StoreRequest(request.To, content, request.Opts));
 		}
 
-		return StoreVFiles(requests);
+		Tools.TimerEnd(t);
+
+		return Store(storeRequests);
 	}
 
-	public VFileInfo? StoreVFile(
-		VFilePath path,
-		VFileContent content,
-		VFileStoreOptions? opts = null)
+	/// <summary>
+	/// Returns copied VFileInfos.
+	/// </summary>
+	public List<VFileInfo> Copy(
+		VDirectory directory,
+		VDirectory to,
+		bool recursive = false,
+		StoreOptions? opts = null)
 	{
-		return StoreVFile(new StoreVFileRequest(path, content, opts));
+		var t = Tools.TimerStart(Context("Copy(directory, to, recursive, opts)"));
+
+		var requests = new List<CopyRequest>();
+
+		var directories = recursive
+			? Database.GetDirectoriesRecursive(directory.Path).Select(x => x.Path)
+			: [directory.Path];
+
+		foreach (var dirPath in directories)
+		{
+			var infos = Get(new VDirectory(dirPath), false);
+
+			var subdir = new VDirectory(dirPath.Replace(directory.Path, string.Empty));
+			var toDir = VDirectory.Join(to, subdir);
+
+			requests.AddRange(infos.Select(x => new CopyRequest(x, new(toDir, x.FileName), opts)));
+		}
+
+		return Copy(requests);
 	}
 
-	public VFileInfo? StoreVFile(StoreVFileRequest request)
+	/// <summary>
+	/// Copy then delete vfiles.
+	/// </summary>
+	/// <param name="requests">Copy requests</param>
+	/// <param name="versionQuery">Determines what versions to delete. Both by default.</param>
+	public MoveResult Move(
+		List<CopyRequest> requests,
+		VersionQuery versionQuery = VersionQuery.Both)
 	{
-		return StoreVFiles(request.AsList()).SingleOrDefault();
+		var copied = Copy(requests);
+		var deleted = Delete([.. requests.Select(x => x.From)], versionQuery);
+		return new(copied, deleted);
 	}
 
-	public List<VFileInfo> StoreVFiles(List<StoreVFileRequest> requests)
+	/// <summary>
+	/// Returns deleted VFileInfo. If null, VFile was not found at path.
+	/// </summary>
+	public VFileInfo? Delete(VFilePath path, VersionQuery versionQuery = VersionQuery.Both) =>
+		Delete([path], versionQuery).SingleOrDefault();
+
+	/// <summary>
+	/// Returns deleted VFileInfos.
+	/// </summary>
+	public List<VFileInfo> Delete(
+		List<VFilePath> paths,
+		VersionQuery versionQuery = VersionQuery.Both)
+	{
+		var t = Tools.TimerStart(Context("Delete(paths, versionQuery)"));
+
+		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
+
+		Database.DeleteVFiles([.. vfiles.Select(x => x.VFile.RowId)]);
+
+		Tools.TimerEnd(t);
+
+		return [.. vfiles.Select(x => new VFileInfo(x))];
+	}
+
+	/// <summary>
+	/// Returns deleted VFileInfo. If null, VFileInfo was not found.
+	/// </summary>
+	public VFileInfo? Delete(VFileInfo info) => Delete([info]).SingleOrDefault();
+
+	/// <summary>
+	/// Returns deleted VFileInfos.
+	/// </summary>
+	public List<VFileInfo> Delete(List<VFileInfo> infos)
+	{
+		var t = Tools.TimerStart(Context("Delete(infos)"));
+
+		var vfiles = Database.GetVFilesById([.. infos.Select(x => x.Id)]);
+
+		Database.DeleteVFiles([.. vfiles.Select(x => x.VFile.RowId)]);
+
+		Tools.TimerEnd(t);
+
+		return [.. vfiles.Select(x => new VFileInfo(x))];
+	}
+
+	public VFileInfo? Store(StoreRequest request)
+	{
+		return Store(request.AsList()).SingleOrDefault();
+	}
+
+	public List<VFileInfo> Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
 		// a StoreVFilesState object.
@@ -266,23 +345,23 @@ public class VFile
 		// are not kept around in memory. This is not harmful should
 		// the state fail to save, any orphaned content can be cleaned up later.
 
-		var t = Tools.TimerStart(FunctionContext(nameof(StoreVFiles)));
+		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default(); // re-usable timer
 		var metrics = new StoreVFilesMetrics();
 
 		var result = new List<VFileInfo>();
-		var state = new StoreVFilesState();
+		var state = new StoreState();
 		var uniqueFilePaths = new HashSet<string>();
 		var contentHashes = new HashSet<string>();
 		var saveContent = new List<(VFileInfo Info, byte[] Bytes)>();
 
 		foreach (var request in requests)
 		{
-			var rqt = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Process request"));
+			var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
 
 			var path = request.Path;
 
-			if (!Assert_ValidFileName(path.FileName, nameof(StoreVFiles)))
+			if (!Assert_ValidFileName(path.FileName, nameof(Store)))
 			{
 				Tools.TimerEnd(rqt);
 				Tools.TimerEnd(t);
@@ -304,7 +383,7 @@ public class VFile
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStoreOptions;
 
-			timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Process Content"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
 
 			var content = request.Content.GetContent();
 			var bytes = opts.Compression == VFileCompression.Compress
@@ -314,11 +393,11 @@ public class VFile
 			metrics.ContentSizes.Add(bytes.Length);
 
 			Tools.TimerEnd(timer);
-			timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.GetVFilesByFilePath"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.GetVFilesByFilePath"));
 
 			var existingVFile = Database.GetVFilesByFilePath(
 					path.AsList(),
-					VFileInfoVersionQuery.Latest)
+					VersionQuery.Latest)
 				.SingleOrDefault();
 
 			Tools.TimerEnd(timer);
@@ -387,9 +466,9 @@ public class VFile
 
 					case VFileExistsBehavior.Version:
 					{
-						timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "VFileExistsBehavior.Version"));
+						timer = Tools.TimerStart(FunctionContext(nameof(Store), "VFileExistsBehavior.Version"));
 
-						var versions = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Versions);
+						var versions = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Versions);
 
 						if (contentDifference)
 						{
@@ -436,13 +515,13 @@ public class VFile
 			Tools.TimerEnd(rqt);
 		}
 
-		timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.SaveFileContent"));
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
 
 		// wait for all content to finish saving
 		Database.SaveFileContent(saveContent);
 
 		Tools.TimerEnd(timer);
-		timer = Tools.TimerStart(FunctionContext(nameof(StoreVFiles), "Database.SaveStoreVFilesState"));
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreVFilesState"));
 
 		Database.SaveStoreVFilesState(state);
 

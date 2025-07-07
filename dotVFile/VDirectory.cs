@@ -47,6 +47,13 @@ public class VDirectory
 		return Path;
 	}
 
+	public static VDirectory Join(VDirectory dir1, VDirectory dir2)
+	{
+		return new(dir1.Path.TrimEnd(DirectorySeparator) +
+			DirectorySeparator +
+			dir2.Path.TrimStart(DirectorySeparator));
+	}
+
 	/// <summary>
 	/// Standardizes all directories to use DirectorySeparator '/'
 	/// and the full path always starts and ends with '/'.

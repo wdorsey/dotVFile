@@ -421,7 +421,7 @@ SELECT * FROM dirs;
 
 	public List<Db.VFileModel> GetVFilesByDirectory(
 		IEnumerable<string> directories,
-		VFileInfoVersionQuery versionQuery)
+		VersionQuery versionQuery)
 	{
 		if (directories.IsEmpty()) return [];
 
@@ -437,7 +437,7 @@ SELECT * FROM dirs;
 
 	public List<Db.VFileModel> GetVFilesByFilePath(
 		IEnumerable<VFilePath> paths,
-		VFileInfoVersionQuery versionQuery)
+		VersionQuery versionQuery)
 	{
 		if (paths.IsEmpty()) return [];
 
@@ -717,7 +717,7 @@ VALUES (
 		}
 	}
 
-	public void SaveStoreVFilesState(StoreVFilesState state)
+	public void SaveStoreVFilesState(StoreState state)
 	{
 		// @note: no returned value for performance reasons
 		// and because it was not used.
@@ -938,13 +938,13 @@ FROM
 		}.GetEntityValues(reader);
 	}
 
-	private static string GetVersionedSql(VFileInfoVersionQuery versionQuery)
+	private static string GetVersionedSql(VersionQuery versionQuery)
 	{
 		return versionQuery switch
 		{
-			VFileInfoVersionQuery.Latest => "VFile.Versioned IS NULL",
-			VFileInfoVersionQuery.Versions => "VFile.Versioned IS NOT NULL",
-			VFileInfoVersionQuery.Both => "1=1",
+			VersionQuery.Latest => "VFile.Versioned IS NULL",
+			VersionQuery.Versions => "VFile.Versioned IS NOT NULL",
+			VersionQuery.Both => "1=1",
 			_ => throw new ArgumentOutOfRangeException(nameof(versionQuery), $"{versionQuery}")
 		};
 	}
