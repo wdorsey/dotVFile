@@ -86,7 +86,7 @@ public class VFile
 
 		var result = new CleanResult(unreferenced, expired);
 
-		Tools.DebugLog($"{t.Name} => {result.ToJson(true)}");
+		Tools.DebugLog($"{t.Name} => {result.ToJson()}");
 		Tools.TimerEnd(t);
 
 		return result;
@@ -279,6 +279,8 @@ public class VFile
 			requests.AddRange(infos.Select(x => new CopyRequest(x, new(toDir, x.FileName))));
 		}
 
+		Tools.TimerEnd(t);
+
 		return Copy(requests, versionQuery, opts);
 	}
 
@@ -380,6 +382,8 @@ public class VFile
 
 		// delete file content, if possible
 		Database.DeleteUnreferencedFileContent();
+
+		Tools.TimerEnd(t);
 
 		return files;
 	}
@@ -588,9 +592,9 @@ public class VFile
 		Database.SaveFileContent(saveContent);
 
 		Tools.TimerEnd(timer);
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreVFilesState"));
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreState"));
 
-		Database.SaveStoreVFilesState(state);
+		Database.SaveStoreState(state);
 
 		Tools.TimerEnd(timer);
 		Tools.TimerEnd(t); // overall SaveVFiles timer

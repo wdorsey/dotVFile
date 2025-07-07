@@ -223,7 +223,7 @@ SET
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("@ApplicationId", SqliteType.Text, db.ApplicationId)
+		cmd.AddParameter("@ApplicationId", SqliteType.Text, db.ApplicationId.ToString())
 			.AddParameter("@Version", SqliteType.Text, db.Version)
 			.AddParameter("@LastClean", SqliteType.Text, (db.LastClean?.ToDefaultString()).NullCoalesce())
 			.AddParameter("@LastUpdate", SqliteType.Text, db.LastUpdate.ToDefaultString());
@@ -236,7 +236,7 @@ SET
 
 	public bool VerifyPermission(VFilePermission permission)
 	{
-		// Multi means access is always allowed
+		// All means access is always allowed
 		if (permission == VFilePermission.All)
 			return true;
 
@@ -284,7 +284,7 @@ WHERE
 		return result;
 	}
 
-	public List<Db.VFile> GetExpiredVFile(DateTimeOffset cutoff)
+	public List<Db.VFile> GetExpiredVFiles(DateTimeOffset cutoff)
 	{
 		VerifyPermission(Permissions.Read);
 
@@ -307,31 +307,6 @@ WHERE
 		while (reader.Read())
 		{
 			results.Add(GetVFile(reader));
-		}
-
-		return results;
-	}
-
-	public List<Db.Directory> GetDirectories()
-	{
-		VerifyPermission(Permissions.Read);
-
-		var results = new List<Db.Directory>();
-
-		// Path is a Unique column
-		const string sql = @"
-SELECT
-	*
-FROM
-	Directory;
-";
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		connection.Open();
-		var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			results.Add(GetDirectory(reader));
 		}
 
 		return results;
@@ -588,7 +563,7 @@ WHERE
 	{
 		VerifyPermission(Permissions.Write);
 
-		var vfiles = GetExpiredVFile(DateTimeOffset.Now);
+		var vfiles = GetExpiredVFiles(DateTimeOffset.Now);
 		DeleteVFiles([.. vfiles.Select(x => x.RowId)]);
 		return vfiles;
 	}
@@ -718,7 +693,7 @@ VALUES (
 		}
 	}
 
-	public void SaveStoreVFilesState(StoreState state)
+	public void SaveStoreState(StoreState state)
 	{
 		// @note: no returned value for performance reasons
 		// and because it was not used.
