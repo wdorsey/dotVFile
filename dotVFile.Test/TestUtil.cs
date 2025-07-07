@@ -363,14 +363,14 @@ public static class TestUtil
 			var rq = requests.ChooseOne();
 			var path = new VFilePath(to, rq.Path.FileName);
 			var info = vfile.Get(rq.Path)!;
-			var copy = vfile.Copy((CopyRequest)new(info, path, opts));
+			var copy = vfile.Copy(new CopyRequest(info, path), opts: opts);
 			AssertRequestFileInfo(rq with { Path = path }, copy, false, ctx, context);
 			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!)!, ctx, context);
 
 			// copy all requests
 			var infos = vfile.Get([.. requests.Select(x => x.Path)]);
-			var copyRequests = infos.Select(x => new CopyRequest(x, new VFilePath(to, x.FileName), opts));
-			var copies = vfile.Copy([.. copyRequests]);
+			var copyRequests = infos.Select(x => new CopyRequest(x, new VFilePath(to, x.FileName)));
+			var copies = vfile.Copy([.. copyRequests], opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
 				copies, false, ctx, context);
@@ -394,11 +394,13 @@ public static class TestUtil
 				requests.ChooseOne() with { Path = new(RecursivePath("a"), "file2.txt") },
 				requests.ChooseOne() with { Path = new(RecursivePath("a"), "file3.txt") },
 				requests.ChooseOne() with { Path = new(RecursivePath("a/b/c"), "file4.txt") },
-				requests.ChooseOne() with { Path = new(RecursivePath("a/b/c/d"), "file5.txt") }
+				requests.ChooseOne() with { Path = new(RecursivePath("a/b/c/d"), "file5.txt") },
+				requests.ChooseOne() with { Path = new(RecursivePath("a/c"), "file6.txt") },
+				requests.ChooseOne() with { Path = new(RecursivePath("a/c/d"), "file7.txt") }
 			};
 
 			vfile.Store(recursiveRequests);
-			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, true, opts);
+			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, true, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.Directory), x.Path.FileName) })],
 				copies, false, ctx, context);
@@ -445,6 +447,15 @@ public static class TestUtil
 				}
 				ctx.Assert(found, "found");
 			}
+
+			// delete directory, copy everything to a new directory for testing
+			var to = new VDirectory("delete-by-directory");
+			result = vfile.Copy(new VDirectory("/"), to, true, opts: opts);
+			ctx.Assert(result.Count > 0, $"{result.Count} > 0"); // sanity
+			var deleteResult = vfile.Delete(to);
+			ctx.Assert(result.Count == deleteResult.Count, $"{result.Count} == {deleteResult.Count}");
+			result = vfile.Get(to, true);
+			ctx.Assert(result.Count == 0, $"{result.Count} == 0");
 		});
 	}
 

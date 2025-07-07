@@ -213,12 +213,16 @@ public class VFile
 	/// </summary>
 	/// <param name="request"></param>
 	/// <returns></returns>
-	public VFileInfo? Copy(CopyRequest request) => Copy([request]).SingleOrDefault();
+	public VFileInfo? Copy(CopyRequest request, VersionQuery versionQuery = VersionQuery.Latest, StoreOptions? opts = null) =>
+		Copy([request], versionQuery, opts).SingleOrDefault();
 
 	/// <summary>
 	/// Returns copied VFileInfos.
 	/// </summary>
-	public List<VFileInfo> Copy(List<CopyRequest> requests)
+	public List<VFileInfo> Copy(
+		List<CopyRequest> requests,
+		VersionQuery versionQuery = VersionQuery.Latest,
+		StoreOptions? opts = null)
 	{
 		if (requests.IsEmpty()) return [];
 
@@ -228,14 +232,18 @@ public class VFile
 
 		foreach (var request in requests)
 		{
-			var bytes = GetBytes(request.From);
-			if (bytes == null)
+			var vfiles = GetVersions(request.From, versionQuery);
+			foreach (var vfile in vfiles)
 			{
-				Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "VFileInfo not found.", request.From));
-				continue;
+				var bytes = GetBytes(vfile);
+				if (bytes == null)
+				{
+					Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "Content not found.", vfile.FilePath));
+					continue;
+				}
+				var content = new VFileContent(bytes);
+				storeRequests.Add(new StoreRequest(request.To, content, opts));
 			}
-			var content = new VFileContent(bytes);
-			storeRequests.Add(new StoreRequest(request.To, content, request.Opts));
 		}
 
 		Tools.TimerEnd(t);
@@ -244,12 +252,15 @@ public class VFile
 	}
 
 	/// <summary>
+	/// Copy every vfile in a given Directory.<br/>
+	/// recursive will copy all vfiles in every subdirectory.<br/>
 	/// Returns copied VFileInfos.
 	/// </summary>
 	public List<VFileInfo> Copy(
 		VDirectory directory,
 		VDirectory to,
 		bool recursive = false,
+		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null)
 	{
 		var t = Tools.TimerStart(Context("Copy(directory, to, recursive, opts)"));
@@ -264,26 +275,48 @@ public class VFile
 		{
 			var infos = Get(new VDirectory(dirPath), false);
 
-			var subdir = new VDirectory(dirPath.Replace(directory.Path, string.Empty));
+			var subdir = directory.Path == VDirectory.DirectorySeparator.ToString()
+				? new VDirectory(dirPath)
+				: new VDirectory(dirPath.Replace(directory.Path, string.Empty));
 			var toDir = VDirectory.Join(to, subdir);
 
-			requests.AddRange(infos.Select(x => new CopyRequest(x, new(toDir, x.FileName), opts)));
+			requests.AddRange(infos.Select(x => new CopyRequest(x, new(toDir, x.FileName))));
 		}
 
-		return Copy(requests);
+		return Copy(requests, versionQuery, opts);
 	}
 
 	/// <summary>
-	/// Copy then delete vfiles.
+	/// Copies then deletes vfiles.
 	/// </summary>
-	/// <param name="requests">Copy requests</param>
-	/// <param name="versionQuery">Determines what versions to delete. Both by default.</param>
 	public MoveResult Move(
 		List<CopyRequest> requests,
-		VersionQuery versionQuery = VersionQuery.Both)
+		VersionQuery versionQuery = VersionQuery.Both,
+		StoreOptions? opts = null)
 	{
-		var copied = Copy(requests);
+		var t = Tools.TimerStart(Context("Move(requests, versionQuery)"));
+
+		var copied = Copy(requests, versionQuery, opts);
 		var deleted = Delete([.. requests.Select(x => x.From)], versionQuery);
+
+		Tools.TimerEnd(t);
+
+		return new(copied, deleted);
+	}
+
+	public MoveResult Move(
+		VDirectory directory,
+		VDirectory to,
+		bool recursive = false,
+		StoreOptions? opts = null)
+	{
+		var t = Tools.TimerStart(Context("Move(directory, to, recursive, opts)"));
+
+		var copied = Copy(directory, to, recursive, VersionQuery.Both, opts);
+		var deleted = Delete(directory);
+
+		Tools.TimerEnd(t);
+
 		return new(copied, deleted);
 	}
 
@@ -330,6 +363,29 @@ public class VFile
 		Tools.TimerEnd(t);
 
 		return [.. vfiles.Select(x => new VFileInfo(x))];
+	}
+
+	/// <summary>
+	/// Deletes given directory, all subdirectories, and all vfiles within them, including any versions.<br/>
+	/// Returns deleted vfiles.
+	/// </summary>
+	public List<VFileInfo> Delete(VDirectory directory)
+	{
+		var t = Tools.TimerStart(Context("Delete(directory)"));
+
+		// delete files
+		var files = GetVersions(directory, true, VersionQuery.Both);
+		Delete(files);
+
+		// delete directories
+		var directories = Database.GetDirectoriesRecursive(directory.Path);
+		directories.Reverse(); // reverse to delete child dirs before parent dirs.
+		Database.DeleteDirectory([.. directories.Select(x => x.RowId)]);
+
+		// delete file content, if possible
+		Database.DeleteUnreferencedFileContent();
+
+		return files;
 	}
 
 	public VFileInfo? Store(StoreRequest request)

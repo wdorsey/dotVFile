@@ -221,14 +221,12 @@ public record StoreRequest(
 
 public record CopyRequest(
 	VFilePath From,
-	VFilePath To,
-	StoreOptions? Opts = null)
+	VFilePath To)
 {
 	public CopyRequest(
 		VFileInfo from,
-		VFilePath to,
-		StoreOptions? opts = null)
-		: this(from.VFilePath, to, opts) { }
+		VFilePath to)
+		: this(from.VFilePath, to) { }
 }
 
 public record MoveResult(

@@ -339,6 +339,7 @@ FROM
 
 	/// <summary>
 	/// Gets Directory at rootPath and all subdirectories.
+	/// Returns in order from root down through subdirectories.
 	/// </summary>
 	public List<Db.Directory> GetDirectoriesRecursive(string rootPath)
 	{
@@ -361,7 +362,7 @@ FROM
 		dirs 
 		INNER JOIN Directory ON Directory.ParentDirectoryRowId = dirs.RowId
 )
-SELECT * FROM dirs;
+SELECT * FROM dirs ORDER BY Path;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
