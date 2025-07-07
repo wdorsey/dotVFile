@@ -26,6 +26,7 @@ public static class VFileErrorCodes
 {
 	public const string DuplicateStoreVFileRequest = "DUPLICATE_STORE_VFILE_REQUEST";
 	public const string InvalidParameter = "INVALID_PARAMETER";
+	public const string NotFound = "NOT_FOUND";
 	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
 	public const string MultipleApplicationInstances = "MULTIPLE_APPLICATION_INSTANCES";
 }

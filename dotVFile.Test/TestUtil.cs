@@ -330,7 +330,11 @@ public static class TestUtil
 				AssertRequestsVFileInfos([.. rq], infos, false, ctx, context);
 			}
 
-			var result = vfile.GetVFileInfos(new VDirectory(notFound));
+			// recursive test
+			var result = vfile.GetVFileInfos(new VDirectory(VDirectory.DirectorySeparator.ToString()), true);
+			AssertRequestsVFileInfos(requests, result, false, ctx, context);
+
+			result = vfile.GetVFileInfos(new VDirectory(notFound));
 			ctx.Assert(result.Count == 0, "result.Count == 0");
 
 			// get Versions by Directory is tested good enough by RunOptionsTests
@@ -348,6 +352,25 @@ public static class TestUtil
 			var info = vfile.GetVFileInfo(rq.Path);
 			bytes = vfile.GetBytes(info!);
 			AssertContent(expected, bytes, ctx, context);
+		});
+
+		context = "CopyVFiles";
+		RunTest(context, ctx =>
+		{
+			var to = new VDirectory("copy/to/here");
+
+			var rq = requests.ChooseOne();
+			var path = new VFilePath(to, rq.Path.FileName);
+			var info = vfile.GetVFileInfo(rq.Path)!;
+			var copy = vfile.CopyVFile(info, path, opts);
+			AssertRequestFileInfo(rq with { Path = path }, copy, false, ctx, context);
+			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!)!, ctx, context);
+
+			var infos = vfile.GetVFileInfos([.. requests.Select(x => x.Path)]);
+			var copies = vfile.CopyVFiles(infos, to, opts);
+			AssertRequestsVFileInfos(
+				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
+				copies, false, ctx, context);
 		});
 	}
 

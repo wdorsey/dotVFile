@@ -94,7 +94,7 @@ public class VFile
 
 	public VFileInfo? GetVFileInfo(VFilePath path)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfo(VFilePath path)"));
+		var t = Tools.TimerStart(Context("GetVFileInfo(path)"));
 
 		var result = GetVFileInfoVersions(path, VFileInfoVersionQuery.Latest).SingleOrDefault();
 
@@ -105,7 +105,7 @@ public class VFile
 
 	public List<VFileInfo> GetVFileInfos(List<VFilePath> paths)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfos(List<VFilePath> paths)"));
+		var t = Tools.TimerStart(Context("GetVFileInfos(paths)"));
 
 		var results = GetVFileInfoVersions(paths, VFileInfoVersionQuery.Latest);
 
@@ -114,11 +114,13 @@ public class VFile
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfos(VDirectory directory)
-	{
-		var t = Tools.TimerStart(Context("GetVFileInfos(VDirectory directory)"));
+	public List<VFileInfo> GetVFileInfos(VDirectory directory) => GetVFileInfos(directory, false);
 
-		var results = GetVFileInfoVersions(directory, VFileInfoVersionQuery.Latest);
+	public List<VFileInfo> GetVFileInfos(VDirectory directory, bool recursive)
+	{
+		var t = Tools.TimerStart(Context("GetVFileInfos(directory)"));
+
+		var results = GetVFileInfoVersions(directory, recursive, VFileInfoVersionQuery.Latest);
 
 		Tools.TimerEnd(t);
 
@@ -127,7 +129,7 @@ public class VFile
 
 	public List<VFileInfo> GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(VFilePath path, VFileInfoVersionQuery versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(path, versionQuery)"));
 
 		var results = GetVFileInfoVersions(path.AsList(), versionQuery);
 
@@ -138,7 +140,7 @@ public class VFile
 
 	public List<VFileInfo> GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)
 	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(List<VFilePath> paths, VFileInfoVersionQuery versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(paths, versionQuery)"));
 
 		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
 		var results = ConvertDbVFile(vfiles);
@@ -148,11 +150,19 @@ public class VFile
 		return results;
 	}
 
-	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery)
-	{
-		var t = Tools.TimerStart(Context("GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery)"));
+	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, VFileInfoVersionQuery versionQuery) =>
+		GetVFileInfoVersions(directory, false, versionQuery);
 
-		var vfiles = Database.GetVFilesByDirectory([directory.Path], versionQuery);
+	public List<VFileInfo> GetVFileInfoVersions(VDirectory directory, bool recursive, VFileInfoVersionQuery versionQuery)
+	{
+		var t = Tools.TimerStart(Context("GetVFileInfoVersions(directory, recursive, versionQuery)"));
+
+		var paths = recursive
+			? Database.GetDirectoriesRecursive(directory.Path).Select(x => x.Path)
+			: [directory.Path];
+
+		var vfiles = Database.GetVFilesByDirectory(paths, versionQuery);
+
 		var results = ConvertDbVFile(vfiles);
 
 		Tools.TimerEnd(t);
@@ -162,7 +172,7 @@ public class VFile
 
 	public byte[]? GetBytes(VFilePath path)
 	{
-		var t = Tools.TimerStart(Context("GetBytes(VFilePath path)"));
+		var t = Tools.TimerStart(Context("GetBytes(path)"));
 
 		var vfile = Database.GetVFilesByFilePath(path.AsList(), VFileInfoVersionQuery.Latest).SingleOrDefault();
 		var result = GetBytes(vfile);
@@ -174,7 +184,7 @@ public class VFile
 
 	public byte[]? GetBytes(VFileInfo info)
 	{
-		var t = Tools.TimerStart(Context("GetBytes(VFileInfo info)"));
+		var t = Tools.TimerStart(Context("GetBytes(info)"));
 
 		var vfile = Database.GetVFilesById(info.Id.AsList()).SingleOrDefault();
 		var result = GetBytes(vfile);
@@ -188,7 +198,7 @@ public class VFile
 	{
 		if (vfile == null) return null;
 
-		var t = Tools.TimerStart(Context("GetBytes(Db.VFileModel? vfile)"));
+		var t = Tools.TimerStart(Context("GetBytes(vfile)"));
 
 		var bytes = Database.GetContentBytes(vfile.FileContent);
 		var result = vfile.FileContent.Compression == (byte)VFileCompression.None
@@ -198,6 +208,41 @@ public class VFile
 		Tools.TimerEnd(t);
 
 		return result;
+	}
+
+	public VFileInfo? CopyVFile(
+		VFileInfo info,
+		VFilePath to,
+		VFileStoreOptions? opts = null)
+	{
+		var bytes = GetBytes(info);
+
+		if (bytes == null) return null;
+
+		return StoreVFile(to, new(bytes), opts);
+	}
+
+	public List<VFileInfo> CopyVFiles(
+		List<VFileInfo> infos,
+		VDirectory to,
+		VFileStoreOptions? opts = null)
+	{
+		var requests = new List<StoreVFileRequest>();
+
+		foreach (var info in infos)
+		{
+			var bytes = GetBytes(info);
+			if (bytes == null)
+			{
+				Tools.ErrorHandler(new(VFileErrorCodes.NotFound, "VFileInfo not found.", info));
+				continue;
+			}
+			var path = new VFilePath(to, info.VFilePath.FileName);
+			var content = new VFileContent(bytes);
+			requests.Add(new StoreVFileRequest(path, content, opts));
+		}
+
+		return StoreVFiles(requests);
 	}
 
 	public VFileInfo? StoreVFile(
