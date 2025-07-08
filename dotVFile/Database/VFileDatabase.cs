@@ -11,24 +11,27 @@ internal class VFileDatabase
 		ApplicationId = Guid.NewGuid();
 		Directory = opts.Directory;
 		Version = opts.Version;
-		Permissions = opts.Permissions;
 		Tools = opts.Tools;
 		DatabaseFilePath = new(Path.Combine(Directory, $"{opts.Name}.vfile.db"));
 		ConnectionString = $"Data Source={DatabaseFilePath};";
-		CreateDatabase(); // also calls SetSystemInfo()
+		CreateDatabase();
 	}
 
 	public Guid ApplicationId { get; }
 	public string Directory { get; }
 	public string Version { get; }
-	public VFilePermissions Permissions { get; }
 	public VFileTools Tools { get; }
 	public string DatabaseFilePath { get; }
 	public string ConnectionString { get; }
 
 	public void CreateDatabase()
 	{
-		var sql = @"
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		using var transaction = connection.BeginTransaction();
+		try
+		{
+			var sql = @"
 CREATE TABLE IF NOT EXISTS VFile (
 	RowId					INTEGER NOT NULL UNIQUE,
 	Id						TEXT NOT NULL,
@@ -88,12 +91,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
 CREATE TABLE IF NOT EXISTS SystemInfo (
 	ApplicationId	TEXT NOT NULL,
 	Version			TEXT NOT NULL,
-	LastClean		TEXT,
-	LastUpdate		TEXT NOT NULL
+	LastClean		TEXT
 );
 
--- defrag the database file.
-VACUUM;
+-- create SystemInfo row if not exists
+INSERT INTO SystemInfo (
+	ApplicationId,
+	Version,
+	LastClean)
+SELECT
+	'application-id',
+	'version',
+	NULL
+WHERE NOT EXISTS (SELECT 1 FROM SystemInfo);
+
+-- no where clause needed, only 1 row in the table
+UPDATE SystemInfo
+SET    ApplicationId = @ApplicationId,
+	   Version = @Version;
 
 -- seed root directory
 INSERT INTO Directory (
@@ -102,25 +117,38 @@ INSERT INTO Directory (
 	Path,
 	CreateTimestamp)
 SELECT
-	@Id,
+	@DirectoryId,
 	'',
 	'/',
 	@CreateTimestamp
 WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 ";
-		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("Id", SqliteType.Text, Guid.NewGuid().ToString())
-			.AddParameter("CreateTimestamp", SqliteType.Text, DateTimeOffset.Now.ToDefaultString());
-		connection.Open();
-		cmd.ExecuteNonQuery();
+			var cmd = new SqliteCommand(sql, connection, transaction);
+			cmd.AddParameter("ApplicationId", SqliteType.Text, ApplicationId.ToString())
+				.AddParameter("Version", SqliteType.Text, Version)
+				.AddParameter("DirectoryId", SqliteType.Text, Guid.NewGuid().ToString())
+				.AddParameter("CreateTimestamp", SqliteType.Text, DateTimeOffset.Now.ToDefaultString());
+			cmd.ExecuteNonQuery();
+			transaction.Commit();
 
-		SetSystemInfo();
+			cmd = new SqliteCommand("VACUUM;", connection);
+			cmd.ExecuteNonQuery();
+		}
+		catch (Exception)
+		{
+			transaction.Rollback();
+			throw;
+		}
 	}
 
 	public void DropDatabase()
 	{
-		const string sql = @"
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		using var transaction = connection.BeginTransaction();
+		try
+		{
+			const string sql = @"
 -- indexes
 DROP INDEX IF EXISTS VFile_Id;
 DROP INDEX IF EXISTS VFile_Versioned;
@@ -145,13 +173,15 @@ DROP TABLE IF EXISTS FileContent;
 DROP TABLE IF EXISTS Directory;
 DROP TABLE IF EXISTS SystemInfo;
 ";
-		DbUtil.ExecuteNonQuery(ConnectionString, sql);
-	}
-
-	public void DeleteDatabase()
-	{
-		SqliteConnection.ClearAllPools();
-		Util.DeleteFile(DatabaseFilePath);
+			var cmd = new SqliteCommand(sql, connection, transaction);
+			cmd.ExecuteNonQuery();
+			transaction.Commit();
+		}
+		catch (Exception)
+		{
+			transaction.Rollback();
+			throw;
+		}
 	}
 
 	public Db.SystemInfo GetSystemInfo()
@@ -160,96 +190,46 @@ DROP TABLE IF EXISTS SystemInfo;
 
 		// SystemInfo only ever has 1 row
 		const string sql = @"SELECT * FROM SystemInfo";
-
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-
 		connection.Open();
+		var cmd = new SqliteCommand(sql, connection);
 		var reader = cmd.ExecuteReader();
 		reader.Read();
 		return new(
 			reader.GetGuid("ApplicationId"),
 			reader.GetString("Version"),
-			reader.GetDateTimeOffsetNullable("LastClean"),
-			reader.GetDateTimeOffset("LastUpdate"));
+			reader.GetDateTimeOffsetNullable("LastClean"));
 	}
 
-	private Db.SystemInfo SetSystemInfo()
+	public void UpdateLastClean(DateTimeOffset lastClean)
 	{
-		return UpdateSystemInfo(new(
-			ApplicationId,
-			Version,
-			null,
-			DateTimeOffset.Now));
-	}
-
-	public Db.SystemInfo UpdateSystemInfo(Db.SystemInfo info)
-	{
-		var db = info with { LastUpdate = DateTimeOffset.Now };
-
-		const string sql = @"
--- create SystemInfo row if not exists
-INSERT INTO SystemInfo (
-	ApplicationId,
-	Version,
-	LastClean,
-	LastUpdate)
-SELECT
-	@ApplicationId,
-	@Version,
-	@LastClean,
-	@LastUpdate
-WHERE NOT EXISTS (SELECT 1 FROM SystemInfo);
-
--- no where clause needed, only 1 row in the table
-UPDATE SystemInfo
-SET 
-	ApplicationId = @ApplicationId,
-	Version = @Version,
-	LastClean = @LastClean,
-	LastUpdate = @LastUpdate;
-";
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("@ApplicationId", SqliteType.Text, db.ApplicationId.ToString())
-			.AddParameter("@Version", SqliteType.Text, db.Version)
-			.AddParameter("@LastClean", SqliteType.Text, (db.LastClean?.ToDefaultString()).NullCoalesce())
-			.AddParameter("@LastUpdate", SqliteType.Text, db.LastUpdate.ToDefaultString());
-
 		connection.Open();
-		cmd.ExecuteNonQuery();
-
-		return db;
-	}
-
-	public bool VerifyPermission(VFilePermission permission)
-	{
-		// All means access is always allowed
-		if (permission == VFilePermission.All)
-			return true;
-
-		var info = GetSystemInfo();
-
-		if (ApplicationId != info.ApplicationId)
+		using var transaction = connection.BeginTransaction();
+		try
 		{
-			Tools.ErrorHandler(new(
-				VFileErrorCodes.MultipleApplicationInstances,
-				"Detected multiple applications using same VFile instance simultaneously." +
-				"VFilePermission is set to VFilePermission.SingleApplication.",
-				null));
-			throw new Exception(VFileErrorCodes.MultipleApplicationInstances);
+			const string sql = @"
+UPDATE SystemInfo
+SET    LastClean = @LastClean;
+";
+			var cmd = new SqliteCommand(sql, connection, transaction);
+			cmd.AddParameter("LastClean", SqliteType.Text, lastClean.ToDefaultString());
+			cmd.ExecuteNonQuery();
+			transaction.Commit();
 		}
-
-		return true;
+		catch (Exception)
+		{
+			transaction.Rollback();
+			throw;
+		}
 	}
 
 	public Db.UnreferencedFileContent GetUnreferencedFileContent()
 	{
-		VerifyPermission(Permissions.Read);
-
 		var result = new Db.UnreferencedFileContent();
 
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(string.Empty, connection);
 
 		cmd.CommandText += $@"
@@ -261,8 +241,6 @@ FROM
 WHERE
 	f.RowId IS NULL;
 ";
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
@@ -274,8 +252,6 @@ WHERE
 
 	public List<Db.VFile> GetExpiredVFiles(DateTimeOffset cutoff)
 	{
-		VerifyPermission(Permissions.Read);
-
 		var results = new List<Db.VFile>();
 
 		const string sql = @"
@@ -287,10 +263,9 @@ WHERE
 	DeleteAt < @Cutoff
 ";
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.AddParameter("@Cutoff", SqliteType.Text, cutoff.ToDefaultString());
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
@@ -306,8 +281,6 @@ WHERE
 	/// </summary>
 	public List<Db.Directory> GetDirectoriesRecursive(string rootPath)
 	{
-		VerifyPermission(Permissions.Read);
-
 		var results = new List<Db.Directory>();
 
 		const string sql = @"
@@ -328,10 +301,9 @@ WHERE
 SELECT * FROM dirs ORDER BY Path;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.AddParameter("Path", SqliteType.Text, rootPath);
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
@@ -447,10 +419,9 @@ FROM
 	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.AddParameter("Path", SqliteType.Text, path);
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 
 		Db.DirectoryInfo? info = null;
@@ -505,10 +476,10 @@ FROM
 
 	public List<Db.FileContent> GetFileContent(List<long> rowIds)
 	{
-		VerifyPermission(Permissions.Read);
-
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var results = DbUtil.ExecuteGetById(
-			ConnectionString,
+			connection,
 			rowIds,
 			"FileContent",
 			"RowId",
@@ -520,10 +491,10 @@ FROM
 
 	public List<Db.Directory> GetDirectories(List<long> rowIds)
 	{
-		VerifyPermission(Permissions.Read);
-
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var results = DbUtil.ExecuteGetById(
-			ConnectionString,
+			connection,
 			rowIds,
 			"Directory",
 			"RowId",
@@ -537,8 +508,6 @@ FROM
 	{
 		if (ids.IsEmpty()) return [];
 
-		VerifyPermission(Permissions.Read);
-
 		var inClause = DbUtil.BuildInClause(ids.Select(x => x.ToString()), "Id", "VFile");
 		var sql = GetVFilesSql(inClause.Sql);
 
@@ -550,8 +519,6 @@ FROM
 		VersionQuery versionQuery)
 	{
 		if (directories.IsEmpty()) return [];
-
-		VerifyPermission(Permissions.Read);
 
 		var inClause = DbUtil.BuildInClause(directories, "Path", "Directory");
 		var version = GetVersionedSql(versionQuery);
@@ -566,8 +533,6 @@ FROM
 		VersionQuery versionQuery)
 	{
 		if (paths.IsEmpty()) return [];
-
-		VerifyPermission(Permissions.Read);
 
 		var versionedSql = GetVersionedSql(versionQuery);
 		var sql = $@"
@@ -598,10 +563,9 @@ WHERE
 			}).ToJson());
 
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.Add(parameter);
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		return GetVFileModels(reader);
 	}
@@ -609,10 +573,9 @@ WHERE
 	private List<Db.VFileModel> ExecuteVFiles(string sql, List<SqliteParameter> parameters)
 	{
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(parameters);
-
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		return GetVFileModels(reader);
 	}
@@ -659,19 +622,25 @@ WHERE
 
 	public void DeleteVFiles(List<long> rowIds)
 	{
-		VerifyPermission(Permissions.Write);
-
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildDeleteByRowId("VFile", "RowId", rowIds);
 		connection.Open();
-		cmd.ExecuteNonQuery();
+		using var transaction = connection.BeginTransaction();
+		try
+		{
+			var cmd = new SqliteCommand(string.Empty, connection, transaction);
+			cmd.BuildDeleteByRowId("VFile", "RowId", rowIds);
+			cmd.ExecuteNonQuery();
+			transaction.Commit();
+		}
+		catch (Exception)
+		{
+			transaction.Rollback();
+			throw;
+		}
 	}
 
 	public void DeleteFileContent(List<long> rowIds)
 	{
-		VerifyPermission(Permissions.Write);
-
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		using var transaction = connection.BeginTransaction();
@@ -692,18 +661,25 @@ WHERE
 
 	public void DeleteDirectory(List<long> rowIds)
 	{
-		VerifyPermission(Permissions.Write);
-
 		using var connection = new SqliteConnection(ConnectionString);
-		var cmd = new SqliteCommand(string.Empty, connection);
-		cmd.BuildDeleteByRowId("Directory", "RowId", rowIds);
 		connection.Open();
-		cmd.ExecuteNonQuery();
+		using var transaction = connection.BeginTransaction();
+		try
+		{
+			var cmd = new SqliteCommand(string.Empty, connection, transaction);
+			cmd.BuildDeleteByRowId("Directory", "RowId", rowIds);
+			cmd.ExecuteNonQuery();
+			transaction.Commit();
+		}
+		catch (Exception)
+		{
+			transaction.Rollback();
+			throw;
+		}
 	}
 
 	public Db.UnreferencedFileContent DeleteUnreferencedFileContent()
 	{
-		VerifyPermission(Permissions.Write);
 		var result = GetUnreferencedFileContent();
 		DeleteFileContent(result.FileContentRowIds);
 		return result;
@@ -711,8 +687,6 @@ WHERE
 
 	public List<Db.VFile> DeleteExpiredVFiles()
 	{
-		VerifyPermission(Permissions.Write);
-
 		var vfiles = GetExpiredVFiles(DateTimeOffset.Now);
 		DeleteVFiles([.. vfiles.Select(x => x.RowId)]);
 		return vfiles;
@@ -720,8 +694,6 @@ WHERE
 
 	public byte[] GetContentBytes(Db.FileContent content)
 	{
-		VerifyPermission(Permissions.Read);
-
 		const string sql = $@"
 SELECT
 	Content
@@ -731,9 +703,9 @@ WHERE
 	FileContentRowId = @RowId;
 ";
 		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.AddParameter("@RowId", SqliteType.Integer, content.RowId);
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		reader.Read();
 		var result = reader.GetBytes("Content");
@@ -750,17 +722,12 @@ WHERE
 
 		if (contents.Count == 0) return;
 
-		VerifyPermission(Permissions.Write);
-
 		// check for existing FileContent first.
 		// SaveVFiles blindly calls this function without checking.
 		var existingHashes = new HashSet<string>();
 		var hashIn = DbUtil.BuildInClause(contents.Select(x => x.Info.Hash), "Hash", "FileContent");
 		var sql = $"SELECT * FROM FileContent WHERE {hashIn.Sql}";
 
-		// we use a transaction because it is WAY faster to do bulk operations
-		// within a single global transaction, because otherwise sqlite basically
-		// creates an entire new transaction for every single operation.
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		using var transaction = connection.BeginTransaction();
@@ -769,7 +736,6 @@ WHERE
 			var cmd = new SqliteCommand(sql, connection, transaction);
 			cmd.Parameters.AddRange(hashIn.Parameters);
 
-			connection.Open();
 			var reader = cmd.ExecuteReader();
 			while (reader.Read())
 			{
@@ -847,8 +813,6 @@ VALUES (
 	{
 		// @note: no returned value for performance reasons
 		// and because it was not used.
-
-		VerifyPermission(Permissions.Write);
 
 		// All state changes written transactionally.
 		// order:
@@ -1011,7 +975,7 @@ FROM
 
 			transaction.Commit();
 		}
-		catch (SqliteException)
+		catch (Exception)
 		{
 			transaction.Rollback();
 			throw;

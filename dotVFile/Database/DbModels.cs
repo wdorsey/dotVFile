@@ -6,7 +6,6 @@ internal record VFileDatabaseOptions(
 	string Name,
 	string Directory,
 	string Version,
-	VFilePermissions Permissions,
 	VFileTools Tools);
 
 internal static class Db
@@ -80,8 +79,7 @@ internal static class Db
 	public record SystemInfo(
 		Guid ApplicationId,
 		string Version,
-		DateTimeOffset? LastClean,
-		DateTimeOffset LastUpdate);
+		DateTimeOffset? LastClean);
 
 	public record StoreVFilesResult
 	{

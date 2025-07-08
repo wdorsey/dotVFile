@@ -152,16 +152,8 @@ internal static class DbUtil
 		return entity;
 	}
 
-	public static void ExecuteNonQuery(string connectionString, string sql)
-	{
-		using var connection = new SqliteConnection(connectionString);
-		var cmd = new SqliteCommand(sql, connection);
-		connection.Open();
-		cmd.ExecuteNonQuery();
-	}
-
 	public static List<TEntity> ExecuteGetById<TId, TEntity>(
-		string connectionString,
+		SqliteConnection connection,
 		List<TId> ids,
 		string tableName,
 		string columnName,
@@ -180,10 +172,8 @@ FROM
 WHERE
 	{inClause.Sql}
 ";
-		using var connection = new SqliteConnection(connectionString);
 		var cmd = new SqliteCommand(sql, connection);
 		cmd.Parameters.AddRange(inClause.Parameters);
-		connection.Open();
 		var reader = cmd.ExecuteReader();
 		return read(reader);
 	}

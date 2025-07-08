@@ -8,7 +8,7 @@ public class VFile
 	private static string FunctionContext(string fnName) => Context($"{fnName}()");
 	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}(): {ctx}");
 
-	public VFile(VFileOptions opts) : this(x => opts) { }
+	public VFile(VFileOptions opts) : this(_ => opts) { }
 	public VFile(Func<VFileOptions, VFileOptions> configure)
 	{
 		var opts = VFileOptions.Default();
@@ -20,7 +20,7 @@ public class VFile
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
 		Tools = new VFileTools(this, opts.Hooks);
-		Database = new VFileDatabase(new(Name, Directory, Version, opts.Permissions, Tools));
+		Database = new VFileDatabase(new(Name, Directory, Version, Tools));
 		DefaultStoreOptions = opts.DefaultStoreOptions;
 		Debug = opts.Debug;
 
@@ -28,13 +28,12 @@ public class VFile
 	}
 
 	internal VFileDatabase Database { get; private set; }
+	internal VFileTools Tools { get; private set; }
 	public string Name { get; private set; }
 	public string Directory { get; private set; }
-	internal VFileTools Tools { get; private set; }
 	public IVFileHooks Hooks => Tools.Hooks;
 	public StoreOptions DefaultStoreOptions { get; private set; }
 	public bool Debug { get; set; }
-	public SystemInfo SystemInfo => ConvertDbSystemInfo(Database.GetSystemInfo());
 
 	/// <summary>
 	/// Gets the single database file path that _is_ the entire virtual file system.
@@ -55,17 +54,7 @@ public class VFile
 	}
 
 	/// <summary>
-	/// !!! DANGER !!!
-	/// This will delete EVERYTHING.
-	/// This VFile instance will no longer work.
-	/// </summary>
-	public void DANGER_Destroy()
-	{
-		Database.DeleteDatabase();
-	}
-
-	/// <summary>
-	/// Deletes VFiles that have passed their DeleteAt time.<br/>
+	/// Deletes VFiles that have passed their DeleteAt expiration time.<br/>
 	/// Deletes any dangling, unreferenced Content.
 	/// </summary>
 	public CleanResult Clean()
@@ -81,8 +70,7 @@ public class VFile
 		var expired = Database.DeleteExpiredVFiles();
 		var unreferenced = Database.DeleteUnreferencedFileContent();
 
-		var sysInfo = Database.GetSystemInfo() with { LastClean = DateTimeOffset.Now };
-		Database.UpdateSystemInfo(sysInfo);
+		Database.UpdateLastClean(DateTimeOffset.Now);
 
 		var result = new CleanResult(unreferenced, expired);
 
@@ -475,10 +463,9 @@ public class VFile
 	public List<VFileInfo> Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
-		// a StoreVFilesState object.
-		// Any new VFileContent is immediately saved so that the file bytes
-		// are not kept around in memory. This is not harmful should
-		// the state fail to save, any orphaned content can be cleaned up later.
+		// a StoreState object that is saved at the very end.
+		// New Content is also saved in bulk at the very end.
+		// This is all very much NOT thread-safe.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default(); // re-usable timer
@@ -685,15 +672,6 @@ public class VFile
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
 	{
 		return [.. vfiles.Select(x => new VFileInfo(x))];
-	}
-
-	private static SystemInfo ConvertDbSystemInfo(Db.SystemInfo info)
-	{
-		return new(
-			info.ApplicationId,
-			info.Version,
-			info.LastClean,
-			info.LastUpdate);
 	}
 
 	private bool Assert_ValidFileName(string fileName, string context)

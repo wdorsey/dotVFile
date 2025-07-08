@@ -35,8 +35,6 @@ var opts = new VFileOptions(
 	vfilePath,       // Directory to store VFile's single-file
 	new TestHooks(), // IVFileHooks implementation, pass null to ignore
 	storeOpts,       // Default Store options, null will use VFile.GetDefaultStoreOptions()
-					 // Read/Write permissions
-	new(VFilePermission.All, VFilePermission.SingleApplication),
 	debug);          // Debug flag enables Hooks.DebugLog
 
 

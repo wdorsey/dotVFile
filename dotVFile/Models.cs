@@ -47,36 +47,11 @@ public record VFileError(
 	}
 }
 
-public enum VFilePermission
-{
-	/// <summary>
-	/// Only a single application instance can 
-	/// access the VFile system at once.
-	/// VFile is not thread-safe.
-	/// </summary>
-	SingleApplication,
-
-	/// <summary>
-	/// No restrictions.
-	/// </summary>
-	All
-}
-
-public record VFilePermissions(
-	VFilePermission Read,
-	VFilePermission Write)
-{
-	public static VFilePermissions Default() =>
-		new(VFilePermission.All,
-			VFilePermission.SingleApplication);
-}
-
 public record VFileOptions(
 	string? Name,
 	string Directory,
 	IVFileHooks? Hooks = null,
 	StoreOptions? DefaultStoreOptions = null,
-	VFilePermissions? Permissions = null,
 	bool Debug = false)
 {
 	/// <summary>
@@ -104,12 +79,6 @@ public record VFileOptions(
 		DefaultStoreOptions ?? StoreOptions.Default();
 
 	/// <summary>
-	/// Read/Write restrictions for multiple 
-	/// </summary>
-	public VFilePermissions Permissions { get; set; } =
-		Permissions ?? VFilePermissions.Default();
-
-	/// <summary>
 	/// Debug flag enables Hooks.DebugLog. 
 	/// This mostly for internal development and testing.
 	/// </summary>
@@ -120,7 +89,6 @@ public record VFileOptions(
 			Environment.CurrentDirectory,
 			new NotImplementedVFileHooks(),
 			StoreOptions.Default(),
-			VFilePermissions.Default(),
 			false);
 }
 
@@ -390,9 +358,3 @@ public record CleanResult
 	public long DeletedVFileCount;
 	public long DeletedFileContentCount;
 }
-
-public record SystemInfo(
-	Guid ApplicationId,
-	string Version,
-	DateTimeOffset? LastClean,
-	DateTimeOffset LastUpdate);
