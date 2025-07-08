@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using System.Collections.Concurrent;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
@@ -338,11 +339,15 @@ public enum VersionQuery
 	Both = 2
 }
 
+public record StoreResult(
+	List<VFileInfo> NewVFiles,
+	List<StoreRequest> Errors);
+
 internal record StoreState
 {
-	public List<VFileInfo> NewVFiles = [];
-	public List<Db.VFile> UpdateVFiles = [];
-	public List<Db.VFile> DeleteVFiles = [];
+	public ConcurrentBag<VFileInfo> NewVFiles = [];
+	public ConcurrentBag<Db.VFile> UpdateVFiles = [];
+	public ConcurrentBag<Db.VFile> DeleteVFiles = [];
 }
 
 public record CleanResult

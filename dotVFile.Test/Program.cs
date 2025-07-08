@@ -65,12 +65,12 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 {
 	var path = new VFilePath("stream_directory", file.FileName);
 
-	var info = vfile.Store((StoreRequest)new(path, new VFileContent(fs)));
+	var result = vfile.Store((StoreRequest)new(path, new VFileContent(fs)));
 
 	var bytes = vfile.GetBytes(path);
 	TestUtil.AssertFileContent(file, bytes);
 
-	bytes = vfile.GetBytes(info!);
+	bytes = vfile.GetBytes(result.NewVFiles.Single());
 	TestUtil.AssertFileContent(file, bytes);
 }
 

@@ -183,11 +183,11 @@ public static class TestUtil
 				var requests = TestFiles.Select(x => new StoreRequest(x.VFilePath, new(x.FilePath), opts)).ToList();
 				for (var i = 0; i < 2; i++)
 				{
-					var infos = vfile.Store(requests);
-					for (var k = 0; k < infos.Count; k++)
+					var result = vfile.Store(requests);
+					for (var k = 0; k < result.NewVFiles.Count; k++)
 					{
 						// order of infos should mirror TestFiles
-						var info = infos[k];
+						var info = result.NewVFiles[k];
 						var file = TestFiles[k];
 						var bytes = vfile.GetBytes(info) ?? throw new Exception($"null vfile: {info.VFilePath.FilePath}");
 						// write files for debugging
@@ -244,7 +244,7 @@ public static class TestUtil
 					// store new files with different content
 					requests = GenerateMetadataRequests(opts, true);
 					var result = vfile.Store(requests);
-					ctx.Assert(result.IsEmpty(), "VFiles stored w/ Error behavior.");
+					ctx.Assert(result.NewVFiles.IsEmpty(), "VFiles stored w/ Error behavior.");
 				});
 			}
 			else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Version)
@@ -255,7 +255,7 @@ public static class TestUtil
 					requests = GenerateMetadataRequests(opts, true);
 					var result = vfile.Store(requests);
 					var versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-					ctx.Assert(versions.Count == result.Count, $"Version count mismatch: versions.Count={versions.Count}");
+					ctx.Assert(versions.Count == result.NewVFiles.Count, $"Version count mismatch: versions.Count={versions.Count}");
 
 					if (opts.VersionOpts.MaxVersionsRetained.HasValue)
 					{
@@ -267,7 +267,7 @@ public static class TestUtil
 							vfile.Store(requests);
 						}
 						versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-						var expected = max * result.Count;
+						var expected = max * result.NewVFiles.Count;
 						ctx.Assert(versions.Count == expected, $"MaxVersionsRetained: Expected {expected} versions, got {versions.Count}");
 					}
 

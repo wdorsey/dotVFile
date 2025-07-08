@@ -1,4 +1,6 @@
-﻿namespace dotVFile;
+﻿using System.Collections.Concurrent;
+
+namespace dotVFile;
 
 public class VFile
 {
@@ -281,7 +283,7 @@ public class VFile
 
 		Tools.TimerEnd(t);
 
-		return Store(storeRequests);
+		return Store(storeRequests).NewVFiles;
 	}
 
 	/// <summary>
@@ -455,12 +457,12 @@ public class VFile
 		return files;
 	}
 
-	public VFileInfo? Store(StoreRequest request)
+	public StoreResult Store(StoreRequest request)
 	{
-		return Store(request.AsList()).SingleOrDefault();
+		return Store(request.AsList());
 	}
 
-	public List<VFileInfo> Store(List<StoreRequest> requests)
+	public StoreResult Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
 		// a StoreState object that is saved at the very end.
@@ -468,26 +470,19 @@ public class VFile
 		// This is all very much NOT thread-safe.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
-		var timer = Timer.Default(); // re-usable timer
 		var metrics = new StoreVFilesMetrics();
-
-		var result = new List<VFileInfo>();
+		var results = new ConcurrentBag<VFileInfo>();
+		var errors = new ConcurrentBag<StoreRequest>();
 		var state = new StoreState();
-		var uniqueFilePaths = new HashSet<string>();
-		var contentHashes = new HashSet<string>();
-		var saveContent = new List<(VFileInfo Info, byte[] Bytes)>();
+		var saveHashContentMap = new ConcurrentDictionary<string, (VFileInfo Info, byte[] Bytes)>();
 
+		var uniqueFilePaths = new HashSet<string>();
 		foreach (var request in requests)
 		{
-			var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
-
 			var path = request.Path;
-
 			if (!Assert_ValidFileName(path.FileName, nameof(Store)))
 			{
-				Tools.TimerEnd(rqt);
-				Tools.TimerEnd(t);
-				return [];
+				errors.Add(request);
 			}
 
 			if (uniqueFilePaths.Contains(path.FilePath))
@@ -496,11 +491,25 @@ public class VFile
 					VFileErrorCodes.DuplicateStoreVFileRequest,
 					$"Duplicate StoreVFileRequest detected: {path.FilePath}",
 					request));
-				Tools.TimerEnd(rqt);
-				Tools.TimerEnd(t);
-				return [];
+				errors.Add(request);
 			}
 			uniqueFilePaths.Add(path.FilePath);
+		}
+
+		if (!errors.IsEmpty)
+		{
+			return new([], [.. errors]);
+		}
+
+		Parallel.ForEach(
+			requests,
+			new ParallelOptions { MaxDegreeOfParallelism = 16 },
+			request =>
+		{
+			var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
+			var timer = Timer.Default(); // re-usable timer
+
+			var path = request.Path;
 
 			var now = DateTimeOffset.Now;
 			var opts = request.Opts ?? DefaultStoreOptions;
@@ -553,26 +562,24 @@ public class VFile
 			};
 
 			// check to see if we need to save the content
-			if (!contentHashes.Contains(hash) &&
-				request.CopyHash.IsEmpty() &&
+			if (request.CopyHash.IsEmpty() &&
 				(existingVFile?.FileContent == null ||
 				existingVFile.FileContent.Hash != hash))
 			{
 				// bulk saving these at the end is the fastest method I've found.
-				saveContent.Add((newInfo, bytes));
+				saveHashContentMap.AddOrUpdate(hash, (newInfo, bytes), (_, x) => x);
 			}
-			contentHashes.Add(hash);
 
 			if (existingVFile == null)
 			{
 				state.NewVFiles.Add(newInfo);
-				result.Add(newInfo);
+				results.Add(newInfo);
 			}
 			else
 			{
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-				result.Add(contentDifference ? newInfo : new VFileInfo(existingVFile));
+				results.Add(contentDifference ? newInfo : new VFileInfo(existingVFile));
 
 				switch (opts.VersionOpts.ExistsBehavior)
 				{
@@ -594,9 +601,7 @@ public class VFile
 								VFileErrorCodes.OverwriteNotAllowed,
 								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
 								request));
-							Tools.TimerEnd(rqt);
-							Tools.TimerEnd(t);
-							return [];
+							errors.Add(request);
 						}
 						break;
 					}
@@ -627,8 +632,7 @@ public class VFile
 							if (v.VFile.DeleteAt != expected)
 							{
 								v.VFile.DeleteAt = expected;
-								// AddSafe to prevent adding the existingVFile twice
-								state.UpdateVFiles.AddSafe(v.VFile);
+								state.UpdateVFiles.Add(v.VFile);
 							}
 						}
 
@@ -639,7 +643,10 @@ public class VFile
 								.OrderByDescending(x => x.Versioned)
 								.Skip(maxVersions.Value);
 
-							state.DeleteVFiles.AddRange(delete);
+							foreach (var del in delete)
+							{
+								state.DeleteVFiles.Add(del);
+							}
 						}
 
 						Tools.TimerEnd(timer);
@@ -650,12 +657,12 @@ public class VFile
 			}
 
 			Tools.TimerEnd(rqt);
-		}
+		});
 
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
+		var timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
 
 		// wait for all content to finish saving
-		Database.SaveFileContent(saveContent);
+		Database.SaveFileContent([.. saveHashContentMap.Select(x => x.Value)]);
 
 		Tools.TimerEnd(timer);
 		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreState"));
@@ -666,7 +673,7 @@ public class VFile
 		Tools.TimerEnd(t); // overall SaveVFiles timer
 		Tools.Metrics.StoreVFilesMetrics.Add(metrics);
 
-		return result;
+		return new([.. results], [.. errors]);
 	}
 
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)

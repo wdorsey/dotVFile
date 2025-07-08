@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS VFile (
 	FOREIGN KEY(FileContentRowId) REFERENCES FileContent(RowId)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS VFile_Id ON VFile(Id);
+CREATE UNIQUE INDEX IF NOT EXISTS VFile_CompositeId ON VFile(DirectoryRowId, FileName, Versioned);
 CREATE INDEX IF NOT EXISTS        VFile_Versioned ON VFile(Versioned) WHERE Versioned IS NOT NULL;
 CREATE INDEX IF NOT EXISTS        VFile_FileNameVersioned ON VFile(FileName, Versioned);
 CREATE INDEX IF NOT EXISTS        VFile_DeleteAt ON VFile(DeleteAt) WHERE DeleteAt IS NOT NULL;
@@ -151,6 +152,7 @@ WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 			const string sql = @"
 -- indexes
 DROP INDEX IF EXISTS VFile_Id;
+DROP INDEX IF EXISTS VFile_CompositeId;
 DROP INDEX IF EXISTS VFile_Versioned;
 DROP INDEX IF EXISTS VFile_FileNameVersioned;
 DROP INDEX IF EXISTS VFile_DeleteAt;
@@ -722,35 +724,14 @@ WHERE
 
 		if (contents.Count == 0) return;
 
-		// check for existing FileContent first.
-		// SaveVFiles blindly calls this function without checking.
-		var existingHashes = new HashSet<string>();
-		var hashIn = DbUtil.BuildInClause(contents.Select(x => x.Info.Hash), "Hash", "FileContent");
-		var sql = $"SELECT * FROM FileContent WHERE {hashIn.Sql}";
-
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		using var transaction = connection.BeginTransaction();
 		try
 		{
-			var cmd = new SqliteCommand(sql, connection, transaction);
-			cmd.Parameters.AddRange(hashIn.Parameters);
+			var dbContent = contents.Select(x => (ToDbFileContent(x.Info).Stamp(), x.Bytes)).ToList();
 
-			var reader = cmd.ExecuteReader();
-			while (reader.Read())
-			{
-				var existing = GetFileContent(reader);
-				// results.Add(existing);
-				existingHashes.Add(existing.Hash);
-			}
-
-			var newContent = contents.Where(x => !existingHashes.Contains(x.Info.Hash))
-				.Select(x => (ToDbFileContent(x.Info).Stamp(), x.Bytes))
-				.ToList();
-
-			if (newContent.Count > 0)
-			{
-				sql = $@"
+			var sql = $@"
 INSERT INTO FileContent (
 	Id,
 	Hash,
@@ -766,39 +747,45 @@ SELECT
 	value ->> 'Compression',
 	value ->> 'CreateTimestamp'
 FROM
-	json_each(@FileContent);
+	json_each(@FileContent)
+WHERE NOT EXISTS (SELECT 1 FROM FileContent WHERE Hash = value ->> 'Hash');
 ";
-				cmd = new SqliteCommand(sql, connection, transaction);
-				cmd.AddParameter("@FileContent", SqliteType.Text,
-					newContent.Select(x => new
-					{
-						Id = x.Item1.Id.ToString(),
-						x.Item1.Hash,
-						x.Item1.Size,
-						x.Item1.SizeContent,
-						x.Item1.Compression,
-						CreateTimestamp = x.Item1.CreateTimestamp.ToDefaultString()
-					}).ToJson()!);
-
-				// can't use json stuff when storing the blob bytes
-				var idx = 0;
-				foreach (var item in newContent)
+			var cmd = new SqliteCommand(sql, connection, transaction);
+			cmd.AddParameter("@FileContent", SqliteType.Text,
+				dbContent.Select(x => new
 				{
-					cmd.CommandText += $@"
+					Id = x.Item1.Id.ToString(),
+					x.Item1.Hash,
+					x.Item1.Size,
+					x.Item1.SizeContent,
+					x.Item1.Compression,
+					CreateTimestamp = x.Item1.CreateTimestamp.ToDefaultString()
+				}).ToJson()!);
+
+			// can't use json stuff when storing the blob bytes
+			var idx = 0;
+			foreach (var item in dbContent)
+			{
+				cmd.CommandText += $@"
 INSERT INTO FileContentBlob (
 	FileContentRowId,
 	Content)
-VALUES (
-	(SELECT RowId FROM FileContent WHERE Hash = {DbUtil.ParameterName("Hash", idx)}),
-	{DbUtil.ParameterName("Content", idx)});
+SELECT
+	fc.RowId,
+	{DbUtil.ParameterName("Content", idx)}
+FROM
+	FileContent fc
+	LEFT JOIN FileContentBlob b ON b.FileContentRowId = fc.RowId
+WHERE 
+	Hash = {DbUtil.ParameterName("Hash", idx)}
+	AND b.FileContentRowId IS NULL;
 ";
-					cmd.AddParameter("Hash", idx, SqliteType.Text, item.Item1.Hash)
-						.AddParameter("Content", idx, SqliteType.Blob, item.Bytes);
-					idx++;
-				}
-
-				cmd.ExecuteNonQuery();
+				cmd.AddParameter("Hash", idx, SqliteType.Text, item.Item1.Hash)
+					.AddParameter("Content", idx, SqliteType.Blob, item.Bytes);
+				idx++;
 			}
+
+			cmd.ExecuteNonQuery();
 
 			transaction.Commit();
 		}
@@ -942,16 +929,26 @@ INSERT INTO VFile (
 	DeleteAt,
 	CreateTimestamp)
 SELECT
-	Id,	
-	(SELECT RowId FROM Directory WHERE Path = q.Path),
-	(SELECT RowId FROM FileContent WHERE Hash = q.Hash),
-	FileName,
-	FileExtension,
-	Versioned,
-	DeleteAt,
-	CreateTimestamp
+	q.Id,	
+	Directory.RowId,
+	FileContent.RowId,
+	q.FileName,
+	q.FileExtension,
+	q.Versioned,
+	q.DeleteAt,
+	q.CreateTimestamp
 FROM
-	q;
+	q
+	INNER JOIN Directory ON Directory.Path = q.Path
+	INNER JOIN FileContent ON FileContent.Hash = q.Hash
+WHERE NOT EXISTS (
+	SELECT 1 
+	FROM 
+		VFile 
+	WHERE 
+		VFile.DirectoryRowId = Directory.RowId
+		AND VFile.FileName = q.FileName
+		AND VFile.Versioned = q.Versioned);
 ";
 			cmd.AddParameter("@NewVFiles", SqliteType.Text,
 				state.NewVFiles.Select(info =>
