@@ -53,6 +53,7 @@ internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 	{
 		if (!VFile.Debug) return;
 
+		DebugLog("Stats: " + VFile.GetStats().ToJson(true)!);
 		DebugLog("Metrics: " + Metrics.GetMetrics().ToJson(true)!);
 	}
 }

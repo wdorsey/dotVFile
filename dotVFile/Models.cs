@@ -111,7 +111,7 @@ public record VFileOptions(
 
 	/// <summary>
 	/// Debug flag enables Hooks.DebugLog. 
-	/// This makes Hooks.DebugLog _very_ verbose.
+	/// This mostly for internal development and testing.
 	/// </summary>
 	public bool Debug { get; set; } = Debug;
 
@@ -171,19 +171,52 @@ public record VFileInfo
 
 public record VDirectoryInfo
 {
-	public Guid Id;
+	internal VDirectoryInfo(
+		Db.Directory dir,
+		DirectoryStats dirStats,
+		DirectoryStats recursiveStats)
+	{
+		Id = dir.Id;
+		VDirectory = new(dir.Path);
+		CreationTime = dir.CreateTimestamp;
+		DirectoryStats = dirStats;
+		RecursiveStats = recursiveStats;
+	}
+
+	public Guid Id { get; }
+	public VDirectory VDirectory { get; }
+	public string Name => VDirectory.Name;
+	public string Path => VDirectory.Path;
+	public DateTimeOffset CreationTime { get; }
 	/// <summary>
-	/// Name of the directory.
+	/// Stats just for files, subdirs, and content in this Directory.
 	/// </summary>
-	public string Name = string.Empty;
+	public DirectoryStats DirectoryStats { get; internal set; }
 	/// <summary>
-	/// Full path of the directory.
+	/// Stats for files, subdirs, and content in this Directory and all subdirectories.
 	/// </summary>
-	public string Path = string.Empty;
-	public List<string> PathParts = [];
-	public VDirectoryInfo? Parent;
-	public VDirectoryInfo? Root;
-	public DateTimeOffset CreationTime;
+	public DirectoryStats RecursiveStats { get; internal set; }
+}
+
+public record DirectoryStats(
+	int VFileCount,
+	int VFileCountVersions,
+	int ContentCount,
+	int DirectoryCount,
+	long Size,
+	long SizeStored,
+	long SizeVersions,
+	long SizeStoredVersions)
+{
+	public int VFileCountAll => VFileCount + VFileCountVersions;
+	public long SizeAll => Size + SizeVersions;
+	public long SizeStoredAll => SizeStored + SizeStoredVersions;
+	public string SizeString => Util.SizeString(Size);
+	public string SizeStoredString => Util.SizeString(SizeStored);
+	public string SizeVersionsString => Util.SizeString(SizeVersions);
+	public string SizeStoredVersionsString => Util.SizeString(SizeStoredVersions);
+	public string SizeAllString => Util.SizeString(SizeAll);
+	public string SizeStoredAllString => Util.SizeString(SizeStoredAll);
 }
 
 public record VFileContent

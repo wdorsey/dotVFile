@@ -57,6 +57,26 @@ internal static class Db
 		FileContent FileContent,
 		Directory Directory);
 
+	public record DirectoryInfo(Directory Directory)
+	{
+		public int VFileCount;
+		public int VersionedCount;
+		public int ContentCount;
+		public int DirectoryCount;
+		public long SizeTotal;
+		public long SizeContentTotal;
+		public long VersionedSizeTotal;
+		public long VersionedSizeContentTotal;
+		public int RecursiveVFileCount;
+		public int RecursiveVersionedCount;
+		public int RecursiveContentCount;
+		public int RecursiveDirectoryCount;
+		public long RecursiveSizeTotal;
+		public long RecursiveSizeContentTotal;
+		public long RecursiveVersionedSizeTotal;
+		public long RecursiveVersionedSizeContentTotal;
+	}
+
 	public record SystemInfo(
 		Guid ApplicationId,
 		string Version,

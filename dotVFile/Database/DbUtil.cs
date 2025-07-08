@@ -45,6 +45,12 @@ internal static class DbUtil
 		return str.HasValue() ? DateTimeOffset.Parse(str) : null;
 	}
 
+	public static int? GetInt32Nullable(this SqliteDataReader reader, string name)
+	{
+		var value = reader[name];
+		return IsDbNull(value) ? null : Convert.ToInt32(value);
+	}
+
 	public static long? GetInt64Nullable(this SqliteDataReader reader, string name)
 	{
 		var value = reader[name];

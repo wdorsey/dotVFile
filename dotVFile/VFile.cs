@@ -114,6 +114,8 @@ public class VFile
 		return results;
 	}
 
+	public List<VFileInfo> Get(VDirectoryInfo directory, bool recursive = false) =>
+		Get(directory.VDirectory, recursive);
 	public List<VFileInfo> Get(VDirectory directory, bool recursive = false)
 	{
 		var t = Tools.TimerStart(Context("Get(directory)"));
@@ -147,6 +149,12 @@ public class VFile
 
 		return results;
 	}
+
+	public List<VFileInfo> GetVersions(
+		VDirectoryInfo directory,
+		bool recursive = false,
+		VersionQuery versionQuery = VersionQuery.Versions) =>
+		GetVersions(directory.VDirectory, recursive, versionQuery);
 
 	public List<VFileInfo> GetVersions(
 		VDirectory directory,
@@ -209,6 +217,47 @@ public class VFile
 	}
 
 	/// <summary>
+	/// Get <see cref="DirectoryStats"/> for this VFile instance.
+	/// </summary>
+	public DirectoryStats GetStats() => GetDirectory(VDirectory.RootDirectory())!.RecursiveStats;
+	public VDirectoryInfo? GetDirectory(VDirectory directory)
+	{
+		var t = Tools.TimerStart(Context("GetDirectory(directory)"));
+
+		var dbInfo = Database.GetDirectoryInfo(directory.Path);
+
+		VDirectoryInfo? info = null;
+		if (dbInfo != null)
+		{
+			var dirStats = new DirectoryStats(
+				dbInfo.VFileCount,
+				dbInfo.VersionedCount,
+				dbInfo.ContentCount,
+				dbInfo.DirectoryCount,
+				dbInfo.SizeTotal,
+				dbInfo.SizeContentTotal,
+				dbInfo.VersionedSizeTotal,
+				dbInfo.VersionedSizeContentTotal);
+
+			var recursiveStats = new DirectoryStats(
+				dbInfo.RecursiveVFileCount,
+				dbInfo.RecursiveVersionedCount,
+				dbInfo.RecursiveContentCount,
+				dbInfo.RecursiveDirectoryCount,
+				dbInfo.RecursiveSizeTotal,
+				dbInfo.RecursiveSizeContentTotal,
+				dbInfo.RecursiveVersionedSizeTotal,
+				dbInfo.RecursiveVersionedSizeContentTotal);
+
+			info = new(dbInfo.Directory, dirStats, recursiveStats);
+		}
+
+		Tools.TimerEnd(t);
+
+		return info;
+	}
+
+	/// <summary>
 	/// Returns copied VFileInfo. If null, VFile was not found at request.From.
 	/// </summary>
 	/// <param name="request"></param>
@@ -246,6 +295,19 @@ public class VFile
 
 		return Store(storeRequests);
 	}
+
+	/// <summary>
+	/// Copy every vfile in a given Directory.<br/>
+	/// recursive will copy all vfiles in every subdirectory.<br/>
+	/// Returns copied VFileInfos.
+	/// </summary>
+	public List<VFileInfo> Copy(
+		VDirectoryInfo directory,
+		VDirectory to,
+		bool recursive = false,
+		VersionQuery versionQuery = VersionQuery.Latest,
+		StoreOptions? opts = null) =>
+		Copy(directory.VDirectory, to, recursive, versionQuery, opts);
 
 	/// <summary>
 	/// Copy every vfile in a given Directory.<br/>
@@ -302,15 +364,26 @@ public class VFile
 		return new(copied, deleted);
 	}
 
+	/// <summary>
+	/// Copies then deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
+	/// </summary>
+	public MoveResult Move(
+		VDirectoryInfo directory,
+		VDirectory to,
+		StoreOptions? opts = null) =>
+		Move(directory.VDirectory, to, opts);
+
+	/// <summary>
+	/// Copies then deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
+	/// </summary>
 	public MoveResult Move(
 		VDirectory directory,
 		VDirectory to,
-		bool recursive = false,
 		StoreOptions? opts = null)
 	{
 		var t = Tools.TimerStart(Context("Move(directory, to, recursive, opts)"));
 
-		var copied = Copy(directory, to, recursive, VersionQuery.Both, opts);
+		var copied = Copy(directory, to, true, VersionQuery.Both, opts);
 		var deleted = Delete(directory);
 
 		Tools.TimerEnd(t);
@@ -364,7 +437,13 @@ public class VFile
 	}
 
 	/// <summary>
-	/// Deletes given directory, all subdirectories, and all vfiles within them, including any versions.<br/>
+	/// Deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
+	/// Returns deleted vfiles.
+	/// </summary>
+	public List<VFileInfo> Delete(VDirectoryInfo directory) => Delete(directory.VDirectory);
+
+	/// <summary>
+	/// Deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
 	/// Returns deleted vfiles.
 	/// </summary>
 	public List<VFileInfo> Delete(VDirectory directory)

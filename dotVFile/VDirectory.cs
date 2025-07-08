@@ -1,9 +1,9 @@
 ﻿namespace dotVFile;
 
-public class VDirectory
+public class VDirectory : IEquatable<VDirectory>
 {
 	public const char DirectorySeparator = '/';
-	public static VDirectory Default() => new(null);
+	public static VDirectory RootDirectory() => new(DirectorySeparator.ToString());
 
 	public VDirectory(string? directory)
 	{
@@ -12,19 +12,21 @@ public class VDirectory
 	}
 
 	public string Name => DirectoryNames.LastOrDefault() ?? string.Empty;
-
 	public string Path { get; }
+	public bool IsRoot => Equals(RootDirectory());
 
 	/// <summary>
 	/// Names of each separate directory, in order
 	/// </summary>
 	public List<string> DirectoryNames { get; }
 
-	public VDirectory ParentDirectory()
+	public VDirectory? ParentDirectory()
 	{
+		if (IsRoot) return null;
+
 		return DirectoryNames.Count > 1
 			? new(string.Join(DirectorySeparator, DirectoryNames[..^1])) // cut off last element
-			: new(DirectorySeparator.ToString());
+			: RootDirectory();
 	}
 
 	public List<VDirectory> AllDirectoriesInPath()
@@ -45,6 +47,21 @@ public class VDirectory
 	public override string ToString()
 	{
 		return Path;
+	}
+
+	public override int GetHashCode()
+	{
+		return Path.GetHashCode();
+	}
+
+	public override bool Equals(object? obj)
+	{
+		return obj != null && obj is VDirectory directory && Path == directory.Path;
+	}
+
+	public bool Equals(VDirectory? other)
+	{
+		return other?.Path == Path;
 	}
 
 	public static VDirectory Join(VDirectory dir1, VDirectory dir2)
