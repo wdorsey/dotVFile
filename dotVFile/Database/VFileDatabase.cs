@@ -94,18 +94,8 @@ CREATE TABLE IF NOT EXISTS SystemInfo (
 
 -- defrag the database file.
 VACUUM;
-";
 
-		DbUtil.ExecuteNonQuery(ConnectionString, sql);
-
-		// seed root directory
-		// this is the only row where ParentDirectoryRowId is null
-		var dir = new Db.Directory
-		{
-			Name = "",
-			Path = "/"
-		}.Stamp();
-		sql = @"
+-- seed root directory
 INSERT INTO Directory (
 	Id,
 	Name,
@@ -113,17 +103,15 @@ INSERT INTO Directory (
 	CreateTimestamp)
 SELECT
 	@Id,
-	@Name,
-	@Path,
+	'',
+	'/',
 	@CreateTimestamp
-WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = @Path);
+WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 ";
 		using var connection = new SqliteConnection(ConnectionString);
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("Id", SqliteType.Text, dir.Id.ToString())
-			.AddParameter("Name", SqliteType.Text, dir.Name)
-			.AddParameter("Path", SqliteType.Text, dir.Path)
-			.AddParameter("CreateTimestamp", SqliteType.Text, dir.CreateTimestamp.ToDefaultString());
+		cmd.AddParameter("Id", SqliteType.Text, Guid.NewGuid().ToString())
+			.AddParameter("CreateTimestamp", SqliteType.Text, DateTimeOffset.Now.ToDefaultString());
 		connection.Open();
 		cmd.ExecuteNonQuery();
 
