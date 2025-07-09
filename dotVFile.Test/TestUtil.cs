@@ -47,14 +47,16 @@ public record TestFile(
 
 public record TestCase(string Name, StoreOptions Opts);
 
-public class TestContext
+public class TestContext(string testName)
 {
-	public List<string> FailedAsserts = [];
+	public string TestName { get; } = testName;
+	public List<string> Failures = [];
+	public TimeSpan Elapsed { get; set; }
 
 	public void Assert(bool result, string context)
 	{
 		if (!result)
-			FailedAsserts.Add(context);
+			Failures.Add(context);
 	}
 }
 
@@ -68,9 +70,9 @@ public static class TestUtil
 	public static List<TestFile> TestFiles = [];
 	private static bool TestFilesLoaded = false;
 
-	public static void RunTest(string testName, Action<TestContext> testFn)
+	public static TestContext RunTest(string testName, Action<TestContext> testFn)
 	{
-		var context = new TestContext();
+		var context = new TestContext(testName);
 
 		try
 		{
@@ -80,20 +82,22 @@ public static class TestUtil
 
 			timer.Stop();
 
-			var result = context.FailedAsserts.Count > 0 ? "failed" : "passed";
-			WriteLine($"{testName}...{result}...{timer.Elapsed.TimeString()}");
-
-			if (context.FailedAsserts.Count > 0)
-			{
-				WriteLine(new { context.FailedAsserts }.ToJson(true)!);
-			}
+			context.Elapsed = timer.Elapsed;
 		}
 		catch (Exception e)
 		{
-			WriteLine($"test '{testName}' threw exception.");
-			WriteLine(e.ToString());
-			throw;
+			context.Failures.Add(e.ToString());
 		}
+
+		WriteTestResult(context);
+
+		return context;
+	}
+
+	private static void WriteTestResult(TestContext context)
+	{
+		var result = context.Failures.Count > 0 ? "FAILED" : "passed";
+		WriteLine($"{result}...{context.TestName} in {context.Elapsed.TimeString()}");
 	}
 
 	public static void WriteLine(string msg)
@@ -150,14 +154,31 @@ public static class TestUtil
 		Util.DeleteDirectoryContent(ResultsDir, true);
 		LoadTestFiles();
 
-		RunOptionsTests(vfile);
-		RunVFileAPITests(vfile);
+		var results = new List<TestContext>();
+
+		results.AddRange(RunOptionsTests(vfile));
+		results.AddRange(RunVFileAPITests(vfile));
 
 		vfile.Tools.LogMetrics();
+
+		foreach (var result in results)
+		{
+			WriteTestResult(result);
+		}
+
+		foreach (var result in results)
+		{
+			if (result.Failures.Count > 0)
+			{
+				WriteLine(new { result.TestName, result.Failures }.ToJson(true)!);
+			}
+		}
 	}
 
-	public static void RunOptionsTests(VFile vfile)
+	public static List<TestContext> RunOptionsTests(VFile vfile)
 	{
+		var results = new List<TestContext>();
+
 		var cases = new List<TestCase>()
 		{
 			new("Default", StoreOptions.Default()),
@@ -175,7 +196,7 @@ public static class TestUtil
 
 			string TestName(string name) => $"{@case.Name} - {name}";
 
-			RunTest(TestName("StoreVFiles/GetBytes"), ctx =>
+			results.Add(RunTest(TestName("StoreVFiles/GetBytes"), ctx =>
 			{
 				// test actual content
 				// not much here, just verifying Store => Get => Assert bytes match.
@@ -184,10 +205,10 @@ public static class TestUtil
 				for (var i = 0; i < 2; i++)
 				{
 					var result = vfile.Store(requests);
-					for (var k = 0; k < result.NewVFiles.Count; k++)
+					for (var k = 0; k < result.VFiles.Count; k++)
 					{
 						// order of infos should mirror TestFiles
-						var info = result.NewVFiles[k];
+						var info = result.VFiles[k];
 						var file = TestFiles[k];
 						var bytes = vfile.GetBytes(info) ?? throw new Exception($"null vfile: {info.VFilePath.FilePath}");
 						// write files for debugging
@@ -195,14 +216,14 @@ public static class TestUtil
 						AssertFileContent(file, bytes, ctx);
 					}
 				}
-			});
+			}));
 
 			var requests = GenerateMetadataRequests(opts, false);
 			vfile.Store(requests);
 
 			if (opts.Compression == VFileCompression.Compress)
 			{
-				RunTest(TestName("VFileCompression.Compress"), ctx =>
+				results.Add(RunTest(TestName("VFileCompression.Compress"), ctx =>
 				{
 					var infos = GetMetadataVFileInfos(vfile, requests.Count, ctx);
 
@@ -210,12 +231,12 @@ public static class TestUtil
 					{
 						ctx.Assert(info.SizeStored <= info.Size, $"Compressed Size is not smaller than SizeStored: {info.VFilePath.FilePath}");
 					}
-				});
+				}));
 			}
 
 			if (opts.TTL.HasValue)
 			{
-				RunTest(TestName("opts.TTL"), ctx =>
+				results.Add(RunTest(TestName("opts.TTL"), ctx =>
 				{
 					var infos = GetMetadataVFileInfos(vfile, requests.Count, ctx);
 
@@ -223,39 +244,45 @@ public static class TestUtil
 					{
 						ctx.Assert(info.DeleteAt.HasValue, $"DeleteAt null: {info.VFilePath.FilePath}");
 					}
-				});
+				}));
 			}
 
 			if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Overwrite)
 			{
-				RunTest(TestName("VFileExistsBehavior.Overwrite"), ctx =>
+				results.Add(RunTest(TestName("VFileExistsBehavior.Overwrite"), ctx =>
 				{
 					// store new files with different content
 					requests = GenerateMetadataRequests(opts, true);
 					vfile.Store(requests);
 					var versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
 					ctx.Assert(versions.Count == 0, $"versions found w/ Overwrite behavior: versions.Count={versions.Count}");
-				});
+				}));
 			}
 			else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Error)
 			{
-				RunTest(TestName("VFileExistsBehavior.Error"), ctx =>
+				results.Add(RunTest(TestName("VFileExistsBehavior.Error"), ctx =>
 				{
-					// store new files with different content
-					requests = GenerateMetadataRequests(opts, true);
+					// store files at same path with same content, should not error.
+					requests = GenerateMetadataRequests(opts, false);
 					var result = vfile.Store(requests);
-					ctx.Assert(result.NewVFiles.IsEmpty(), "VFiles stored w/ Error behavior.");
-				});
+					ctx.Assert(result.VFiles.Count == requests.Count, "result.VFiles.Count == requests.Count");
+					ctx.Assert(result.Errors.Count == 0, "result.Errors.Count == 0");
+					// try to store files at same path but with different content, should error
+					requests = GenerateMetadataRequests(opts, true);
+					result = vfile.Store(requests);
+					ctx.Assert(result.VFiles.IsEmpty(), "Duplicate VFiles stored w/ Error behavior");
+					ctx.Assert(result.Errors.Count == requests.Count, "result.Errors.Count == requests.Count");
+				}));
 			}
 			else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Version)
 			{
-				RunTest(TestName("VFileExistsBehavior.Version"), ctx =>
+				results.Add(RunTest(TestName("VFileExistsBehavior.Version"), ctx =>
 				{
 					// store new files with different content
 					requests = GenerateMetadataRequests(opts, true);
 					var result = vfile.Store(requests);
 					var versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-					ctx.Assert(versions.Count == result.NewVFiles.Count, $"Version count mismatch: versions.Count={versions.Count}");
+					ctx.Assert(versions.Count == result.VFiles.Count, $"Version count mismatch: versions.Count={versions.Count}");
 
 					if (opts.VersionOpts.MaxVersionsRetained.HasValue)
 					{
@@ -267,7 +294,7 @@ public static class TestUtil
 							vfile.Store(requests);
 						}
 						versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-						var expected = max * result.NewVFiles.Count;
+						var expected = max * result.VFiles.Count;
 						ctx.Assert(versions.Count == expected, $"MaxVersionsRetained: Expected {expected} versions, got {versions.Count}");
 					}
 
@@ -282,15 +309,19 @@ public static class TestUtil
 							ctx.Assert(version.DeleteAt.HasValue, $"DeleteAt null: {version.VFilePath.FilePath}");
 						}
 					}
-				});
+				}));
 			}
 
 			vfile.Clean();
 		}
+
+		return results;
 	}
 
-	public static void RunVFileAPITests(VFile vfile)
+	public static List<TestContext> RunVFileAPITests(VFile vfile)
 	{
+		var results = new List<TestContext>();
+
 		vfile.DANGER_WipeData();
 
 		// store twice to generate versions
@@ -302,7 +333,7 @@ public static class TestUtil
 		var notFound = "__not_found__";
 
 		var context = "GetVFileInfosByPath";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			var rq = requests.ChooseOne();
 			var info = vfile.Get(rq.Path);
@@ -319,10 +350,10 @@ public static class TestUtil
 
 			info = vfile.Get(new VFilePath(notFound));
 			ctx.Assert(info == null, "info == null");
-		});
+		}));
 
 		context = "GetVFileInfosByDirectory";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			foreach (var rq in requests.GroupBy(x => x.Path.Directory.Path))
 			{
@@ -338,10 +369,10 @@ public static class TestUtil
 			ctx.Assert(result.Count == 0, "result.Count == 0");
 
 			// get Versions by Directory is tested good enough by RunOptionsTests
-		});
+		}));
 
 		context = "GetBytes";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			var rq = requests.ChooseOne();
 			var expected = rq.Content.GetContent();
@@ -352,10 +383,10 @@ public static class TestUtil
 			var info = vfile.Get(rq.Path);
 			bytes = vfile.GetBytes(info!);
 			AssertContent(expected, bytes, ctx, context);
-		});
+		}));
 
 		context = "CopyVFiles";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			var to = new VDirectory("copy/to/here");
 
@@ -404,10 +435,10 @@ public static class TestUtil
 			AssertRequestsVFileInfos(
 				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.Directory), x.Path.FileName) })],
 				copies, false, ctx, context);
-		});
+		}));
 
 		context = "DeleteVFiles";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			var count = 5;
 
@@ -456,10 +487,10 @@ public static class TestUtil
 			ctx.Assert(result.Count == deleteResult.Count, $"{result.Count} == {deleteResult.Count}");
 			result = vfile.Get(to, true);
 			ctx.Assert(result.Count == 0, $"{result.Count} == 0");
-		});
+		}));
 
 		context = "GetOrStore";
-		RunTest(context, ctx =>
+		results.Add(RunTest(context, ctx =>
 		{
 			var path = new VFilePath("cache-test", "value.txt");
 			var content = "1";
@@ -502,7 +533,9 @@ public static class TestUtil
 			ctx.Assert(cacheMiss, "expected cache miss");
 			resultValue = Util.GetString(result.Bytes);
 			ctx.Assert(content == resultValue, $"{content} == {resultValue}");
-		});
+		}));
+
+		return results;
 	}
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFile vfile, int expectedCount, TestContext ctx)
@@ -526,19 +559,6 @@ public static class TestUtil
 				new VFileContent(x.ToBytes(update)),
 				opts);
 		})];
-	}
-
-	public static void AssertFileContent(TestFile file, byte[]? bytes)
-	{
-		var ctx = new TestContext();
-
-		AssertFileContent(file, bytes, ctx);
-
-		if (ctx.FailedAsserts.Count > 0)
-		{
-			WriteLine(new { ctx.FailedAsserts }.ToJson(true)!);
-			throw new Exception();
-		}
 	}
 
 	public static void AssertFileContent(TestFile file, byte[]? bytes, TestContext ctx)

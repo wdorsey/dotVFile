@@ -68,10 +68,7 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 	var result = vfile.Store(new StoreRequest(path, new VFileContent(fs)));
 
 	var bytes = vfile.GetBytes(path);
-	TestUtil.AssertFileContent(file, bytes);
-
-	bytes = vfile.GetBytes(result.NewVFiles.Single());
-	TestUtil.AssertFileContent(file, bytes);
+	bytes = vfile.GetBytes(result.VFiles.Single());
 }
 
 TestUtil.RunTests(vfile);

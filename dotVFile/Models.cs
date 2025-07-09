@@ -206,7 +206,7 @@ public record StoreRequest(
 }
 
 public record StoreResult(
-	List<VFileInfo> NewVFiles,
+	List<VFileInfo> VFiles,
 	List<StoreRequest> Errors);
 
 public record CopyRequest(

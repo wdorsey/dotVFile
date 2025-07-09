@@ -263,7 +263,7 @@ public class VFile
 			new(path, new(content), opts)
 		};
 
-		var vfile = Store(requests).NewVFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
+		var vfile = Store(requests).VFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
 
 		Tools.TimerEnd(tStore);
 		Tools.TimerEnd(t);
@@ -351,7 +351,7 @@ public class VFile
 
 		Tools.TimerEnd(t);
 
-		return Store(storeRequests).NewVFiles;
+		return Store(storeRequests).VFiles;
 	}
 
 	/// <summary>
@@ -676,6 +676,7 @@ public class VFile
 									VFileErrorCodes.OverwriteNotAllowed,
 									$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
 									request));
+								results.Remove(newVFile);
 								errors.Add(request);
 							}
 							break;
