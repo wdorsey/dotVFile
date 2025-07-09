@@ -1,5 +1,5 @@
 # dotVFile
-**_dotVFile_** (short for .NET Virtual File System) is a single-file virtual file system .NET library.
+**_dotVFile_** (.NET Virtual File System) is a single-file virtual file system .NET library.
 
 ### Major Features
 - Single Sqlite database file is the **_entire_** file system
