@@ -27,6 +27,7 @@ public class VFile
 		Clean();
 	}
 
+	private readonly Mutex Mutex = new();
 	internal VFileDatabase Database { get; private set; }
 	internal VFileTools Tools { get; private set; }
 	public string Name { get; private set; }
@@ -504,162 +505,171 @@ public class VFile
 			return new([], [.. errors]);
 		}
 
+		// lock
+		Mutex.WaitOne();
 
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Get existing VFiles via GetVFilesByFilePath"));
-
-		var existingVFiles = Database.GetVFilesByFilePath([.. uniqueFilePaths.Values], VersionQuery.Latest)
-			.ToDictionary(x => x.Directory.Path + x.VFile.FileName);
-
-		Tools.TimerEnd(timer);
-
-		foreach (var request in requests)
+		try
 		{
-			var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Get existing VFiles via GetVFilesByFilePath"));
 
-			var path = request.Path;
-
-			var now = DateTimeOffset.Now;
-			var opts = request.Opts ?? DefaultStoreOptions;
-
-			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
-
-			// process content
-			var hash = string.Empty;
-			long size = 0;
-			long sizeStored = 0;
-			var bytes = Util.EmptyBytes();
-			if (request.CopyHash.HasValue())
-			{
-				hash = request.CopyHash;
-			}
-			else
-			{
-				var content = request.Content.GetContent();
-				bytes = opts.Compression == VFileCompression.Compress
-					? Util.Compress(content)
-					: content;
-				hash = Util.HashSHA256(bytes);
-				size = content.LongLength;
-				sizeStored = bytes.LongLength;
-				metrics.ContentSizes.Add(bytes.Length);
-			}
+			var existingVFiles = Database.GetVFilesByFilePath([.. uniqueFilePaths.Values], VersionQuery.Latest)
+				.ToDictionary(x => x.Directory.Path + x.VFile.FileName);
 
 			Tools.TimerEnd(timer);
 
-			var existingVFile = existingVFiles.GetValueOrDefault(path.FilePath);
-
-			var newVFile = new VFileInfo
+			foreach (var request in requests)
 			{
-				Id = Guid.NewGuid(),
-				VFilePath = path,
-				DeleteAt = opts.TTL.HasValue ? now + opts.TTL : null,
-				CreationTime = now,
-				ContentId = Guid.NewGuid(),
-				Hash = hash,
-				Size = size,
-				SizeStored = sizeStored,
-				Compression = opts.Compression,
-				ContentCreationTime = now
-			};
+				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
 
-			// check to see if we need to save the content
-			if (request.CopyHash.IsEmpty() &&
-				(existingVFile?.FileContent == null ||
-				existingVFile.FileContent.Hash != hash))
-			{
-				// bulk saving these at the end is the fastest method I've found.
-				saveHashContentMap.AddSafe(hash, (newVFile, bytes));
-			}
+				var path = request.Path;
 
-			if (existingVFile == null)
-			{
-				state.NewVFiles.Add(newVFile);
-				results.Add(newVFile);
-			}
-			else
-			{
-				// previous VFileInfo exists but content is different.
-				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-				results.Add(contentDifference ? newVFile : new VFileInfo(existingVFile));
+				var now = DateTimeOffset.Now;
+				var opts = request.Opts ?? DefaultStoreOptions;
 
-				switch (opts.VersionOpts.ExistsBehavior)
+				timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
+
+				// process content
+				var hash = string.Empty;
+				long size = 0;
+				long sizeStored = 0;
+				var bytes = Util.EmptyBytes();
+				if (request.CopyHash.HasValue())
 				{
-					case VFileExistsBehavior.Overwrite:
+					hash = request.CopyHash;
+				}
+				else
+				{
+					var content = request.Content.GetContent();
+					bytes = opts.Compression == VFileCompression.Compress
+						? Util.Compress(content)
+						: content;
+					hash = Util.HashSHA256(bytes);
+					size = content.LongLength;
+					sizeStored = bytes.LongLength;
+					metrics.ContentSizes.Add(bytes.Length);
+				}
+
+				Tools.TimerEnd(timer);
+
+				var existingVFile = existingVFiles.GetValueOrDefault(path.FilePath);
+
+				var newVFile = new VFileInfo
+				{
+					Id = Guid.NewGuid(),
+					VFilePath = path,
+					DeleteAt = opts.TTL.HasValue ? now + opts.TTL : null,
+					CreationTime = now,
+					ContentId = Guid.NewGuid(),
+					Hash = hash,
+					Size = size,
+					SizeStored = sizeStored,
+					Compression = opts.Compression,
+					ContentCreationTime = now
+				};
+
+				// check to see if we need to save the content
+				if (request.CopyHash.IsEmpty() &&
+					(existingVFile?.FileContent == null ||
+					existingVFile.FileContent.Hash != hash))
+				{
+					// bulk saving these at the end is the fastest method I've found.
+					saveHashContentMap.AddSafe(hash, (newVFile, bytes));
+				}
+
+				if (existingVFile == null)
+				{
+					state.NewVFiles.Add(newVFile);
+					results.Add(newVFile);
+				}
+				else
+				{
+					// previous VFileInfo exists but content is different.
+					var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
+					results.Add(contentDifference ? newVFile : new VFileInfo(existingVFile));
+
+					switch (opts.VersionOpts.ExistsBehavior)
 					{
-						if (contentDifference)
+						case VFileExistsBehavior.Overwrite:
 						{
-							state.DeleteVFiles.Add(existingVFile.VFile);
-							state.NewVFiles.Add(newVFile);
-						}
-						break;
-					}
-
-					case VFileExistsBehavior.Error:
-					{
-						if (contentDifference)
-						{
-							Hooks.ErrorHandler(new(
-								VFileErrorCodes.OverwriteNotAllowed,
-								$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
-								request));
-							errors.Add(request);
-						}
-						break;
-					}
-
-					case VFileExistsBehavior.Version:
-					{
-						timer = Tools.TimerStart(FunctionContext(nameof(Store), "VFileExistsBehavior.Version"));
-
-						if (contentDifference)
-						{
-							existingVFile.VFile.Versioned = now;
-							existingVFile.VFile.DeleteAt = opts.VersionOpts.TTL.HasValue
-								? existingVFile.VFile.Versioned + opts.VersionOpts.TTL
-								: null;
-							state.UpdateVFiles.Add(existingVFile.VFile);
-							state.NewVFiles.Add(newVFile);
+							if (contentDifference)
+							{
+								state.DeleteVFiles.Add(existingVFile.VFile);
+								state.NewVFiles.Add(newVFile);
+							}
+							break;
 						}
 
-						var maxVersions = opts.VersionOpts.MaxVersionsRetained;
-						if (maxVersions.HasValue)
+						case VFileExistsBehavior.Error:
 						{
-							var versions = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Versions);
-
-							// if contentDifference, then existingVFile is now a version, but is not
-							// included in versions, so subtracting 1 accounts for that.
-							var max = contentDifference ? maxVersions.Value - 1 : maxVersions.Value;
-
-							var delete = versions.Select(x => x.VFile)
-								.OrderByDescending(x => x.Versioned)
-								.Skip(max);
-
-							state.DeleteVFiles.AddRange(delete);
+							if (contentDifference)
+							{
+								Hooks.ErrorHandler(new(
+									VFileErrorCodes.OverwriteNotAllowed,
+									$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
+									request));
+								errors.Add(request);
+							}
+							break;
 						}
 
-						Tools.TimerEnd(timer);
+						case VFileExistsBehavior.Version:
+						{
+							timer = Tools.TimerStart(FunctionContext(nameof(Store), "VFileExistsBehavior.Version"));
 
-						break;
+							if (contentDifference)
+							{
+								existingVFile.VFile.Versioned = now;
+								existingVFile.VFile.DeleteAt = opts.VersionOpts.TTL.HasValue
+									? existingVFile.VFile.Versioned + opts.VersionOpts.TTL
+									: null;
+								state.UpdateVFiles.Add(existingVFile.VFile);
+								state.NewVFiles.Add(newVFile);
+							}
+
+							var maxVersions = opts.VersionOpts.MaxVersionsRetained;
+							if (maxVersions.HasValue)
+							{
+								var versions = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Versions);
+
+								// if contentDifference, then existingVFile is now a version, but is not
+								// included in versions, so subtracting 1 accounts for that.
+								var max = contentDifference ? maxVersions.Value - 1 : maxVersions.Value;
+
+								var delete = versions.Select(x => x.VFile)
+									.OrderByDescending(x => x.Versioned)
+									.Skip(max);
+
+								state.DeleteVFiles.AddRange(delete);
+							}
+
+							Tools.TimerEnd(timer);
+
+							break;
+						}
 					}
 				}
+
+				Tools.TimerEnd(rqt);
 			}
 
-			Tools.TimerEnd(rqt);
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
+
+			// wait for all content to finish saving
+			Database.SaveFileContent([.. saveHashContentMap.Select(x => x.Value)]);
+
+			Tools.TimerEnd(timer);
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreState"));
+
+			Database.SaveStoreState(state);
+
+			Tools.TimerEnd(timer);
+			Tools.TimerEnd(t); // overall SaveVFiles timer
+			Tools.Metrics.StoreVFilesMetrics.Add(metrics);
 		}
-
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
-
-		// wait for all content to finish saving
-		Database.SaveFileContent([.. saveHashContentMap.Select(x => x.Value)]);
-
-		Tools.TimerEnd(timer);
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreState"));
-
-		Database.SaveStoreState(state);
-
-		Tools.TimerEnd(timer);
-		Tools.TimerEnd(t); // overall SaveVFiles timer
-		Tools.Metrics.StoreVFilesMetrics.Add(metrics);
+		finally
+		{
+			Mutex.ReleaseMutex();
+		}
 
 		return new([.. results], [.. errors]);
 	}
