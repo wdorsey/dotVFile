@@ -8,7 +8,6 @@ internal class VFileDatabase
 {
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
-		ApplicationId = Guid.NewGuid();
 		Directory = opts.Directory;
 		Version = opts.Version;
 		Tools = opts.Tools;
@@ -17,7 +16,6 @@ internal class VFileDatabase
 		CreateDatabase();
 	}
 
-	public Guid ApplicationId { get; }
 	public string Directory { get; }
 	public string Version { get; }
 	public VFileTools Tools { get; }
@@ -90,26 +88,22 @@ CREATE INDEX IF NOT EXISTS		  Directory_ParentDirectoryRowId ON Directory(Parent
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
 
 CREATE TABLE IF NOT EXISTS SystemInfo (
-	ApplicationId	TEXT NOT NULL,
 	Version			TEXT NOT NULL,
 	LastClean		TEXT
 );
 
 -- create SystemInfo row if not exists
 INSERT INTO SystemInfo (
-	ApplicationId,
 	Version,
 	LastClean)
 SELECT
-	'application-id',
 	'version',
 	NULL
 WHERE NOT EXISTS (SELECT 1 FROM SystemInfo);
 
 -- no where clause needed, only 1 row in the table
 UPDATE SystemInfo
-SET    ApplicationId = @ApplicationId,
-	   Version = @Version;
+SET    Version = @Version;
 
 -- seed root directory
 INSERT INTO Directory (
@@ -125,8 +119,7 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 ";
 			var cmd = new SqliteCommand(sql, connection, transaction);
-			cmd.AddParameter("ApplicationId", SqliteType.Text, ApplicationId.ToString())
-				.AddParameter("Version", SqliteType.Text, Version)
+			cmd.AddParameter("Version", SqliteType.Text, Version)
 				.AddParameter("DirectoryId", SqliteType.Text, Guid.NewGuid().ToString())
 				.AddParameter("CreateTimestamp", SqliteType.Text, DateTimeOffset.Now.ToDefaultString());
 			cmd.ExecuteNonQuery();
