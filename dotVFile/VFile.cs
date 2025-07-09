@@ -234,14 +234,13 @@ public class VFile
 			var cacheInfo = Get(cachePath);
 			if (cacheInfo != null)
 			{
-				var cacheHash = Util.GetString(GetBytes(cacheInfo));
-				if (cacheHash == hash)
+				var cacheRecord = Util.GetString(GetBytes(cacheInfo)).As<CacheRecord>();
+				if (cacheRecord?.Hash == hash)
 				{
 					var info = Get(path);
 					var bytes = GetBytes(path);
 					if (info != null && bytes != null)
 					{
-						Tools.Hooks.DebugLog("=== FOUND IN CACHE ===");
 						Tools.TimerEnd(tGet);
 						Tools.TimerEnd(t);
 						return new(info, bytes);
@@ -253,15 +252,15 @@ public class VFile
 		Tools.TimerEnd(tGet);
 		var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
 
-		var cacheOpts = new StoreOptions(VFileCompression.None, ttl,
+		var opts = new StoreOptions(VFileCompression.None, ttl,
 			new(VFileExistsBehavior.Overwrite, null, null));
 
 		var content = contentFn().GetContent();
 
 		var requests = new List<StoreRequest>
 		{
-			new(cachePath, new(Util.GetBytes(new CacheRecord(hash))), cacheOpts),
-			new(path, new(content), cacheOpts)
+			new(cachePath, new(Util.GetBytes(new CacheRecord(hash))), opts),
+			new(path, new(content), opts)
 		};
 
 		var vfile = Store(requests).NewVFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
