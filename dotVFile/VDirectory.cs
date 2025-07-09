@@ -16,7 +16,7 @@ public class VDirectory : IEquatable<VDirectory>
 	public bool IsRoot => Equals(RootDirectory());
 
 	/// <summary>
-	/// Names of each separate directory, in order
+	/// Names of each directory in Path, in order
 	/// </summary>
 	public List<string> DirectoryNames { get; }
 

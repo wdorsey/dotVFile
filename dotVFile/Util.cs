@@ -84,31 +84,6 @@ internal static class Util
 		return !list.AnySafe();
 	}
 
-	public static List<List<T>> Partition<T>(this IEnumerable<T> items, int itemsPerList)
-	{
-		var result = new List<List<T>>();
-		var curr = new List<T>();
-		foreach (var item in items)
-		{
-			if (curr.Count < itemsPerList)
-			{
-				curr.Add(item);
-			}
-			else
-			{
-				result.Add(curr);
-				curr =
-				[
-					item
-				];
-			}
-		}
-
-		result.Add(curr);
-
-		return result;
-	}
-
 	public static byte[] GetContent(this VFileContent content)
 	{
 		if (content.Bytes != null)
@@ -153,24 +128,6 @@ internal static class Util
 		return (name, ext);
 	}
 
-	public static List<string> GetPathParts(string? path, char dirSeparator)
-	{
-		if (path.IsEmpty())
-			return [];
-
-		return [.. path.Split(dirSeparator, StringSplitOptions.RemoveEmptyEntries)];
-	}
-
-	public static string GetString(this IEnumerable<char> values)
-	{
-		return new string([.. values]);
-	}
-
-	public static string GetString(this IEnumerable<string> values)
-	{
-		return values.SelectMany(x => x).GetString();
-	}
-
 	public static byte[] GetBytes(
 		object? obj,
 		bool format = false,
@@ -199,14 +156,6 @@ internal static class Util
 		return text.HasValue()
 			? Encoding.GetBytes(text)
 			: EmptyBytes();
-	}
-
-	public static string? Decode(byte[]? bytes)
-	{
-		if (bytes.IsEmpty())
-			return null;
-
-		return Encoding.GetString(bytes);
 	}
 
 	public static string HashSHA256(byte[] bytes)

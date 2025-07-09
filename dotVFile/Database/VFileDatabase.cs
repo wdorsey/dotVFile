@@ -387,7 +387,6 @@ FROM
 	VFile
 	INNER JOIN dirs ON dirs.RowId = VFile.DirectoryRowId;
 
-
 ;WITH RECURSIVE dirs AS (
 	SELECT 
 		* 
@@ -797,8 +796,8 @@ WHERE
 		// All state changes written transactionally.
 		// order:
 		//	Delete VFiles
-		//  Update VFiles
-		//  Insert new Directories
+		//	Update VFiles
+		//	Insert new Directories
 		//	Insert new VFiles
 
 		using var connection = new SqliteConnection(ConnectionString);
