@@ -77,7 +77,6 @@ internal static class Db
 	}
 
 	public record SystemInfo(
-		Guid ApplicationId,
 		string Version,
 		DateTimeOffset? LastClean);
 
