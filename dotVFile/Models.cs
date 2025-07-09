@@ -157,11 +157,11 @@ public record VDirectoryInfo
 	public string Path => VDirectory.Path;
 	public DateTimeOffset CreationTime { get; }
 	/// <summary>
-	/// Stats just for files, subdirs, and content in this Directory.
+	/// Stats for files, dirs, and content in this Directory.
 	/// </summary>
 	public DirectoryStats DirectoryStats { get; internal set; }
 	/// <summary>
-	/// Stats for files, subdirs, and content in this Directory and all subdirectories.
+	/// Stats for files, dirs, and content in this Directory and all subdirectories.
 	/// </summary>
 	public DirectoryStats RecursiveStats { get; internal set; }
 }
@@ -187,30 +187,6 @@ public record DirectoryStats(
 	public string SizeStoredAllString => Util.SizeString(SizeStoredAll);
 }
 
-public record VFileContent
-{
-	public VFileContent(byte[] bytes)
-	{
-		Bytes = bytes;
-	}
-
-	public VFileContent(string filePath)
-	{
-		FilePath = filePath;
-	}
-
-	public VFileContent(Stream stream)
-	{
-		Stream = stream;
-	}
-
-	public byte[]? Bytes;
-	public string? FilePath;
-	public Stream? Stream;
-
-	public static VFileContent Default() => new(Util.EmptyBytes());
-}
-
 public record StoreRequest(
 	VFilePath Path,
 	VFileContent Content,
@@ -229,6 +205,10 @@ public record StoreRequest(
 	internal string? CopyHash { get; set; }
 }
 
+public record StoreResult(
+	List<VFileInfo> NewVFiles,
+	List<StoreRequest> Errors);
+
 public record CopyRequest(
 	VFilePath From,
 	VFilePath To)
@@ -242,6 +222,15 @@ public record CopyRequest(
 public record MoveResult(
 	List<VFileInfo> NewVFileInfos,
 	List<VFileInfo> DeletedVFileInfos);
+
+internal record CacheRecord(string Hash);
+
+public record GetOrStoreResult(
+	VFileInfo? VFileInfo,
+	byte[]? Bytes)
+{
+	public bool ErrorOccurred => VFileInfo == null;
+}
 
 [JsonConverter(typeof(StringEnumConverter))]
 public enum VFileExistsBehavior
@@ -337,10 +326,6 @@ public enum VersionQuery
 	Versions = 1,
 	Both = 2
 }
-
-public record StoreResult(
-	List<VFileInfo> NewVFiles,
-	List<StoreRequest> Errors);
 
 internal record StoreState
 {

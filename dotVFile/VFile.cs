@@ -206,6 +206,73 @@ public class VFile
 	}
 
 	/// <summary>
+	/// Caching mechanism. Ideal for content that requires a repeated and expensive process to generate.<br/>
+	/// e.g. A build pipeline that processes raw files, like minifying html.
+	/// The raw file would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// </summary>
+	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
+	/// <param name="cacheKey">Value that will be hashed and checked against the existing key for <paramref name="path"/> before running <paramref name="contentFn"/></param>
+	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
+	/// <param name="ttl">Optional time-to-live for the content.</param>
+	/// <param name="bypassCache">Will bypass cache and run contentFn.</param>
+	public GetOrStoreResult GetOrStore(
+		VFilePath path,
+		object cacheKey,
+		Func<VFileContent> contentFn,
+		TimeSpan? ttl = null,
+		bool bypassCache = false)
+	{
+		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
+		var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
+
+		var hash = Hash(Util.GetBytes(cacheKey));
+		var cacheDir = new VDirectory("__vfile-cache__");
+		var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
+
+		if (!bypassCache)
+		{
+			var cacheInfo = Get(cachePath);
+			if (cacheInfo != null)
+			{
+				var cacheHash = Util.GetString(GetBytes(cacheInfo));
+				if (cacheHash == hash)
+				{
+					var info = Get(path);
+					var bytes = GetBytes(path);
+					if (info != null && bytes != null)
+					{
+						Tools.Hooks.DebugLog("=== FOUND IN CACHE ===");
+						Tools.TimerEnd(tGet);
+						Tools.TimerEnd(t);
+						return new(info, bytes);
+					}
+				}
+			}
+		}
+
+		Tools.TimerEnd(tGet);
+		var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
+
+		var cacheOpts = new StoreOptions(VFileCompression.None, ttl,
+			new(VFileExistsBehavior.Overwrite, null, null));
+
+		var content = contentFn().GetContent();
+
+		var requests = new List<StoreRequest>
+		{
+			new(cachePath, new(Util.GetBytes(new CacheRecord(hash))), cacheOpts),
+			new(path, new(content), cacheOpts)
+		};
+
+		var vfile = Store(requests).NewVFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
+
+		Tools.TimerEnd(tStore);
+		Tools.TimerEnd(t);
+
+		return new(vfile, content);
+	}
+
+	/// <summary>
 	/// Get <see cref="DirectoryStats"/> for this VFile instance.
 	/// </summary>
 	public DirectoryStats GetStats() => GetDirectory(VDirectory.RootDirectory())!.RecursiveStats;
@@ -251,7 +318,10 @@ public class VFile
 	/// </summary>
 	/// <param name="request"></param>
 	/// <returns></returns>
-	public VFileInfo? Copy(CopyRequest request, VersionQuery versionQuery = VersionQuery.Latest, StoreOptions? opts = null) =>
+	public VFileInfo? Copy(
+		CopyRequest request,
+		VersionQuery versionQuery = VersionQuery.Latest,
+		StoreOptions? opts = null) =>
 		Copy([request], versionQuery, opts).SingleOrDefault();
 
 	/// <summary>
@@ -543,7 +613,7 @@ public class VFile
 					bytes = opts.Compression == VFileCompression.Compress
 						? Util.Compress(content)
 						: content;
-					hash = Util.HashSHA256(bytes);
+					hash = Hash(bytes);
 					size = content.LongLength;
 					sizeStored = bytes.LongLength;
 					metrics.ContentSizes.Add(bytes.Length);
@@ -677,6 +747,11 @@ public class VFile
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
 	{
 		return [.. vfiles.Select(x => new VFileInfo(x))];
+	}
+
+	private static string Hash(byte[] bytes)
+	{
+		return Util.HashSHA256(bytes);
 	}
 
 	private bool Assert_ValidFileName(string fileName, string context)

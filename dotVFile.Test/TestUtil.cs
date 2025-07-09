@@ -457,6 +457,53 @@ public static class TestUtil
 			result = vfile.Get(to, true);
 			ctx.Assert(result.Count == 0, $"{result.Count} == 0");
 		});
+
+		context = "GetOrStore";
+		RunTest(context, ctx =>
+		{
+			var path = new VFilePath("cache-test", "value.txt");
+			var cacheKey = 1;
+			var value = "42";
+			bool cacheMiss = false;
+			VFileContent GetContent()
+			{
+				cacheMiss = true;
+				return new(Util.GetBytes(value));
+			}
+
+			// first time through should be a cache miss and store the value via getContent
+			var result = vfile.GetOrStore(
+				path,
+				cacheKey,
+				GetContent);
+			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
+			ctx.Assert(cacheMiss, "expected cache miss");
+			var resultValue = Util.GetString(result.Bytes);
+			ctx.Assert(value == resultValue, $"{value} == {resultValue}");
+
+			// now we expect it to pull from cache
+			cacheMiss = false;
+			result = vfile.GetOrStore(
+				path,
+				cacheKey,
+				GetContent);
+			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
+			ctx.Assert(!cacheMiss, "expected cache hit");
+			resultValue = Util.GetString(result.Bytes);
+			ctx.Assert(value == resultValue, $"{value} == {resultValue}");
+
+			// now change content and it should result in a cache miss
+			cacheMiss = false;
+			value = "new-value";
+			vfile.GetOrStore(
+				path,
+				cacheKey,
+				GetContent);
+			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
+			ctx.Assert(cacheMiss, "expected cache miss");
+			resultValue = Util.GetString(result.Bytes);
+			ctx.Assert(value == resultValue, $"{value} == {resultValue}");
+		});
 	}
 
 	private static List<VFileInfo> GetMetadataVFileInfos(VFile vfile, int expectedCount, TestContext ctx)

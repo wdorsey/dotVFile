@@ -1,6 +1,6 @@
 ﻿namespace dotVFile;
 
-public class VFilePath
+public class VFilePath : IEquatable<VFilePath>
 {
 	public static VFilePath Default() => new(string.Empty, string.Empty);
 
@@ -38,5 +38,22 @@ public class VFilePath
 	public override string ToString()
 	{
 		return FilePath;
+	}
+
+	public override int GetHashCode()
+	{
+		return FilePath.GetHashCode();
+	}
+
+	public override bool Equals(object? obj)
+	{
+		return obj != null &&
+			obj is VFilePath path &&
+			FilePath == path.FilePath;
+	}
+
+	public bool Equals(VFilePath? other)
+	{
+		return other?.FilePath == FilePath;
 	}
 }

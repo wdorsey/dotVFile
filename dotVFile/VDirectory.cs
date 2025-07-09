@@ -56,7 +56,9 @@ public class VDirectory : IEquatable<VDirectory>
 
 	public override bool Equals(object? obj)
 	{
-		return obj != null && obj is VDirectory directory && Path == directory.Path;
+		return obj != null &&
+			obj is VDirectory directory &&
+			Path == directory.Path;
 	}
 
 	public bool Equals(VDirectory? other)

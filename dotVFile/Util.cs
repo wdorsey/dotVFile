@@ -84,36 +84,6 @@ internal static class Util
 		return !list.AnySafe();
 	}
 
-	public static byte[] GetContent(this VFileContent content)
-	{
-		if (content.Bytes != null)
-			return content.Bytes;
-
-		if (content.FilePath.HasValue())
-		{
-			content.Bytes = GetFileBytes(content.FilePath);
-			return content.Bytes;
-		}
-
-		if (content.Stream != null)
-		{
-			Span<byte> buffer = new byte[1024];
-			var result = new List<byte>();
-
-			int read;
-			while ((read = content.Stream.Read(buffer)) > 0)
-			{
-				result.AddRange(buffer[..read]);
-			}
-
-			content.Bytes = [.. result];
-
-			return content.Bytes;
-		}
-
-		throw new Exception("unable to get VFileContent bytes.");
-	}
-
 	public static string FileExtension(string? fileName)
 	{
 		return fileName.IsEmpty()
@@ -156,6 +126,19 @@ internal static class Util
 		return text.HasValue()
 			? Encoding.GetBytes(text)
 			: EmptyBytes();
+	}
+
+	public static string? GetString(byte[]? bytes)
+	{
+		return Decode(bytes);
+	}
+
+	public static string? Decode(byte[]? bytes)
+	{
+		if (bytes.IsEmpty())
+			return null;
+
+		return Encoding.GetString(bytes);
 	}
 
 	public static string HashSHA256(byte[] bytes)
