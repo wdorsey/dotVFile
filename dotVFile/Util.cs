@@ -38,6 +38,18 @@ internal static class Util
 		return list;
 	}
 
+	public static Dictionary<TKey, TValue> AddSafe<TKey, TValue>(
+		this Dictionary<TKey, TValue> dict,
+		TKey key,
+		TValue value)
+		where TKey : notnull
+	{
+		if (!dict.TryAdd(key, value))
+			dict[key] = value;
+
+		return dict;
+	}
+
 	public static Dictionary<TKey, List<TValue>> AddSafe<TKey, TValue>(
 		this Dictionary<TKey, List<TValue>> dict,
 		TKey key,

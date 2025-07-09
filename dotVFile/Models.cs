@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
@@ -345,9 +344,9 @@ public record StoreResult(
 
 internal record StoreState
 {
-	public ConcurrentBag<VFileInfo> NewVFiles = [];
-	public ConcurrentBag<Db.VFile> UpdateVFiles = [];
-	public ConcurrentBag<Db.VFile> DeleteVFiles = [];
+	public List<VFileInfo> NewVFiles = [];
+	public List<Db.VFile> UpdateVFiles = [];
+	public List<Db.VFile> DeleteVFiles = [];
 }
 
 public record CleanResult

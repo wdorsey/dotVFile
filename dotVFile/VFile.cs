@@ -1,6 +1,4 @@
-﻿using System.Collections.Concurrent;
-
-namespace dotVFile;
+﻿namespace dotVFile;
 
 public class VFile
 {
@@ -470,13 +468,16 @@ public class VFile
 		// This is all very much NOT thread-safe.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
+		var timer = Timer.Default(); // re-usable timer
 		var metrics = new StoreVFilesMetrics();
-		var results = new ConcurrentBag<VFileInfo>();
-		var errors = new ConcurrentBag<StoreRequest>();
+		var results = new List<VFileInfo>();
+		var errors = new List<StoreRequest>();
 		var state = new StoreState();
-		var saveHashContentMap = new ConcurrentDictionary<string, (VFileInfo Info, byte[] Bytes)>();
+		var saveHashContentMap = new Dictionary<string, (VFileInfo Info, byte[] Bytes)>();
+		var uniqueFilePaths = new Dictionary<string, VFilePath>();
 
-		var uniqueFilePaths = new HashSet<string>();
+		// this validation loop also serves to gather unique VFilePaths.
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Validate requests"));
 		foreach (var request in requests)
 		{
 			var path = request.Path;
@@ -485,7 +486,7 @@ public class VFile
 				errors.Add(request);
 			}
 
-			if (uniqueFilePaths.Contains(path.FilePath))
+			if (uniqueFilePaths.ContainsKey(path.FilePath))
 			{
 				Hooks.ErrorHandler(new(
 					VFileErrorCodes.DuplicateStoreVFileRequest,
@@ -493,21 +494,27 @@ public class VFile
 					request));
 				errors.Add(request);
 			}
-			uniqueFilePaths.Add(path.FilePath);
+			uniqueFilePaths.Add(path.FilePath, path);
 		}
+		Tools.TimerEnd(timer);
 
-		if (!errors.IsEmpty)
+		if (errors.Count > 0)
 		{
+			Tools.TimerEnd(t);
 			return new([], [.. errors]);
 		}
 
-		Parallel.ForEach(
-			requests,
-			new ParallelOptions { MaxDegreeOfParallelism = 16 },
-			request =>
+
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Get existing VFiles via GetVFilesByFilePath"));
+
+		var existingVFiles = Database.GetVFilesByFilePath([.. uniqueFilePaths.Values], VersionQuery.Latest)
+			.ToDictionary(x => x.Directory.Path + x.VFile.FileName);
+
+		Tools.TimerEnd(timer);
+
+		foreach (var request in requests)
 		{
 			var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
-			var timer = Timer.Default(); // re-usable timer
 
 			var path = request.Path;
 
@@ -538,16 +545,10 @@ public class VFile
 			}
 
 			Tools.TimerEnd(timer);
-			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.GetVFilesByFilePath"));
 
-			var existingVFile = Database.GetVFilesByFilePath(
-					path.AsList(),
-					VersionQuery.Latest)
-				.SingleOrDefault();
+			var existingVFile = existingVFiles.GetValueOrDefault(path.FilePath);
 
-			Tools.TimerEnd(timer);
-
-			var newInfo = new VFileInfo
+			var newVFile = new VFileInfo
 			{
 				Id = Guid.NewGuid(),
 				VFilePath = path,
@@ -567,19 +568,19 @@ public class VFile
 				existingVFile.FileContent.Hash != hash))
 			{
 				// bulk saving these at the end is the fastest method I've found.
-				saveHashContentMap.AddOrUpdate(hash, (newInfo, bytes), (_, x) => x);
+				saveHashContentMap.AddSafe(hash, (newVFile, bytes));
 			}
 
 			if (existingVFile == null)
 			{
-				state.NewVFiles.Add(newInfo);
-				results.Add(newInfo);
+				state.NewVFiles.Add(newVFile);
+				results.Add(newVFile);
 			}
 			else
 			{
 				// previous VFileInfo exists but content is different.
 				var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-				results.Add(contentDifference ? newInfo : new VFileInfo(existingVFile));
+				results.Add(contentDifference ? newVFile : new VFileInfo(existingVFile));
 
 				switch (opts.VersionOpts.ExistsBehavior)
 				{
@@ -588,7 +589,7 @@ public class VFile
 						if (contentDifference)
 						{
 							state.DeleteVFiles.Add(existingVFile.VFile);
-							state.NewVFiles.Add(newInfo);
+							state.NewVFiles.Add(newVFile);
 						}
 						break;
 					}
@@ -610,43 +611,30 @@ public class VFile
 					{
 						timer = Tools.TimerStart(FunctionContext(nameof(Store), "VFileExistsBehavior.Version"));
 
-						var versions = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Versions);
-
 						if (contentDifference)
 						{
 							existingVFile.VFile.Versioned = now;
-							versions.Add(existingVFile);
-							state.UpdateVFiles.Add(existingVFile.VFile);
-							state.NewVFiles.Add(newInfo);
-						}
-
-						// always check for TTL and MaxVersionsRetained changes
-						foreach (var v in versions)
-						{
-							// always updates version's DeleteAt to the current opts.VersionOpts.TTL.
-							// DeleteAt calculated off the Versioned timestamp.
-							var expected = opts.VersionOpts.TTL.HasValue
-								? v.VFile.Versioned + opts.VersionOpts.TTL
+							existingVFile.VFile.DeleteAt = opts.VersionOpts.TTL.HasValue
+								? existingVFile.VFile.Versioned + opts.VersionOpts.TTL
 								: null;
-
-							if (v.VFile.DeleteAt != expected)
-							{
-								v.VFile.DeleteAt = expected;
-								state.UpdateVFiles.Add(v.VFile);
-							}
+							state.UpdateVFiles.Add(existingVFile.VFile);
+							state.NewVFiles.Add(newVFile);
 						}
 
 						var maxVersions = opts.VersionOpts.MaxVersionsRetained;
-						if (maxVersions.HasValue && versions.Count > maxVersions)
+						if (maxVersions.HasValue)
 						{
+							var versions = Database.GetVFilesByFilePath(path.AsList(), VersionQuery.Versions);
+
+							// if contentDifference, then existingVFile is now a version, but is not
+							// included in versions, so subtracting 1 accounts for that.
+							var max = contentDifference ? maxVersions.Value - 1 : maxVersions.Value;
+
 							var delete = versions.Select(x => x.VFile)
 								.OrderByDescending(x => x.Versioned)
-								.Skip(maxVersions.Value);
+								.Skip(max);
 
-							foreach (var del in delete)
-							{
-								state.DeleteVFiles.Add(del);
-							}
+							state.DeleteVFiles.AddRange(delete);
 						}
 
 						Tools.TimerEnd(timer);
@@ -657,9 +645,9 @@ public class VFile
 			}
 
 			Tools.TimerEnd(rqt);
-		});
+		}
 
-		var timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
 
 		// wait for all content to finish saving
 		Database.SaveFileContent([.. saveHashContentMap.Select(x => x.Value)]);
