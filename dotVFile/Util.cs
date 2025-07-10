@@ -84,6 +84,11 @@ internal static class Util
 		return !list.AnySafe();
 	}
 
+	public static string PluralChar(this int count, string one = "", string plural = "s")
+	{
+		return count == 1 ? one : plural;
+	}
+
 	public static string FileExtension(string? fileName)
 	{
 		return fileName.IsEmpty()

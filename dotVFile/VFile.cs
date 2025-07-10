@@ -206,27 +206,29 @@ public class VFile
 	}
 
 	/// <summary>
-	/// Caching mechanism. Ideal for content that requires a repeated and expensive process to generate.<br/>
+	/// Caching mechanism.<br/>
+	/// Ideal for content that requires a repeated and expensive process to generate where the same input always generates the same output.<br/>
 	/// e.g. A build pipeline that processes raw files, like minifying html.
-	/// The raw file would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
 	/// </summary>
 	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
-	/// <param name="cacheKey">Value that will be hashed and checked against the existing key for <paramref name="path"/> before running <paramref name="contentFn"/></param>
+	/// <param name="cacheKey">Value that will be hashed and checked against the existing cached content at <paramref name="path"/></param>
 	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
 	/// <param name="ttl">Optional time-to-live for the content.</param>
-	/// <param name="bypassCache">Will bypass cache and run contentFn.</param>
+	/// <param name="bypassCache">Bypass cache and run contentFn.</param>
 	public GetOrStoreResult GetOrStore(
 		VFilePath path,
-		object cacheKey,
+		byte[] cacheKey,
 		Func<VFileContent> contentFn,
 		TimeSpan? ttl = null,
 		bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
 		var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
+		var tCheckHash = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Check Hash"));
 
-		var hash = Hash(Util.GetBytes(cacheKey));
-		var cacheDir = new VDirectory("__vfile-cache__");
+		var hash = Hash(cacheKey);
+		var cacheDir = new VDirectory("__vfile-cache-lookup__");
 		var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
 
 		if (!bypassCache)
@@ -234,9 +236,10 @@ public class VFile
 			var cacheInfo = Get(cachePath);
 			if (cacheInfo != null)
 			{
-				var cacheRecord = Util.GetString(GetBytes(cacheInfo)).As<CacheRecord>();
-				if (cacheRecord?.Hash == hash)
+				var cacheHash = Util.GetString(GetBytes(cacheInfo));
+				if (cacheHash == hash)
 				{
+					Tools.TimerEnd(tCheckHash);
 					var info = Get(path);
 					var bytes = GetBytes(path);
 					if (info != null && bytes != null)
@@ -250,6 +253,7 @@ public class VFile
 		}
 
 		Tools.TimerEnd(tGet);
+		Tools.TimerEnd(tCheckHash);
 		var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
 
 		var opts = new StoreOptions(VFileCompression.None, ttl,
@@ -259,7 +263,7 @@ public class VFile
 
 		var requests = new List<StoreRequest>
 		{
-			new(cachePath, new(Util.GetBytes(new CacheRecord(hash))), opts),
+			new(cachePath, new(Util.GetBytes(hash)), opts),
 			new(path, new(content), opts)
 		};
 

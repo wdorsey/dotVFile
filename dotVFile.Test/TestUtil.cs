@@ -161,17 +161,32 @@ public static class TestUtil
 
 		vfile.Tools.LogMetrics();
 
+		int passed = 0, failed = 0;
 		foreach (var result in results)
 		{
 			WriteTestResult(result);
+			if (result.Failures.Count == 0)
+				passed++;
+			else
+				failed++;
 		}
 
-		foreach (var result in results)
+		if (failed > 0)
 		{
-			if (result.Failures.Count > 0)
+			var failedMsg = $"=== {failed} TEST{Util.PluralChar(failed, plural: "S")} FAILED ===";
+			WriteLine(failedMsg);
+			foreach (var result in results)
 			{
-				WriteLine(new { result.TestName, result.Failures }.ToJson(true)!);
+				if (result.Failures.Count > 0)
+				{
+					WriteLine(new { result.TestName, result.Failures }.ToJson(true)!);
+				}
 			}
+			WriteLine(failedMsg);
+		}
+		else
+		{
+			WriteLine("=== all tests passed ===");
 		}
 	}
 
@@ -404,17 +419,17 @@ public static class TestUtil
 			var copies = vfile.Copy([.. copyRequests], opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies, false, ctx, context);
+				copies, false, ctx, $"{context} copy all requests");
 
 			// copy by directory
 			to = new VDirectory("copy/by/directory");
 			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies, false, ctx, context);
+				copies, false, ctx, $"{context} copy by directory");
 
 			// copy by directory recursive
-			var from = new VDirectory(TestFileMetadataDir);
+			var from = new VDirectory("recursive");
 			to = new VDirectory("copy/by/directory/recursive");
 			string RecursivePath(string subdir) => VDirectory.Join(from, new(subdir)).Path;
 			VDirectory ToRecursiveDir(VDirectory fromRequest) => new(fromRequest.Path.Replace(from.Path, to.Path));
@@ -430,11 +445,12 @@ public static class TestUtil
 				requests.ChooseOne() with { Path = new(RecursivePath("a/c/d"), "file7.txt") }
 			};
 
-			vfile.Store(recursiveRequests);
-			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, true, opts: opts);
+			var result = vfile.Store(recursiveRequests);
+			ctx.Assert(result.VFiles.Count == recursiveRequests.Count, "result.VFiles.Count == recursiveRequests.Count");
+			copies = vfile.Copy(from, to, true, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.Directory), x.Path.FileName) })],
-				copies, false, ctx, context);
+				copies, false, ctx, $"{context} copy by directory recursive");
 		}));
 
 		context = "DeleteVFiles";
@@ -504,7 +520,7 @@ public static class TestUtil
 			// first time through should be a cache miss and store the value via getContent
 			var result = vfile.GetOrStore(
 				path,
-				content,
+				Util.GetBytes(content),
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(cacheMiss, "expected cache miss");
@@ -515,7 +531,7 @@ public static class TestUtil
 			cacheMiss = false;
 			result = vfile.GetOrStore(
 				path,
-				content,
+				Util.GetBytes(content),
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(!cacheMiss, "expected cache hit");
@@ -527,7 +543,7 @@ public static class TestUtil
 			content = "2";
 			result = vfile.GetOrStore(
 				path,
-				content,
+				Util.GetBytes(content),
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(cacheMiss, "expected cache miss");
@@ -584,7 +600,7 @@ public static class TestUtil
 		TestContext ctx,
 		string context)
 	{
-		ctx.Assert(requests.Count == infos.Count, context);
+		ctx.Assert(requests.Count == infos.Count, $"AssertRequestsVFileInfos(): {context} - (requests.Count {requests.Count} == {infos.Count} infos.Count)");
 		var infoPathMap = infos.ToDictionary(x => x.VFilePath.FilePath);
 
 		foreach (var request in requests)
