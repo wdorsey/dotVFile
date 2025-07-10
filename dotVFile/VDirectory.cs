@@ -3,6 +3,7 @@
 public class VDirectory : IEquatable<VDirectory>
 {
 	public const char DirectorySeparator = '/';
+	public static VDirectory Default() => new(string.Empty);
 	public static VDirectory RootDirectory() => new(DirectorySeparator.ToString());
 
 	public VDirectory(string? directory)
@@ -12,7 +13,7 @@ public class VDirectory : IEquatable<VDirectory>
 	}
 
 	public VDirectory(params string[] directories)
-		: this(string.Join(DirectorySeparator, StandardizeDirectories(directories))) { }
+		: this(string.Join(string.Empty, StandardizeDirectories(directories))) { }
 
 	public string Name => DirectoryNames.LastOrDefault() ?? string.Empty;
 	public string Path { get; }
@@ -67,6 +68,11 @@ public class VDirectory : IEquatable<VDirectory>
 	public bool Equals(VDirectory? other)
 	{
 		return other?.Path == Path;
+	}
+
+	public static VDirectory RemoveRootPath(VDirectory dir, VDirectory root)
+	{
+		return new(dir.Path.Replace(root.Path, string.Empty));
 	}
 
 	public static VDirectory Join(VDirectory dir1, VDirectory dir2)

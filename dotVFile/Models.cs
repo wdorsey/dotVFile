@@ -116,6 +116,7 @@ public record VFileInfo
 	public string FilePath => VFilePath.FilePath;
 	public VDirectory VDirectory => VFilePath.Directory;
 	public string DirectoryName => VDirectory.Name;
+	public string DirectoryPath => VDirectory.Path;
 	public DateTimeOffset? Versioned { get; internal set; }
 	public bool IsVersion => Versioned.HasValue;
 	public DateTimeOffset? DeleteAt { get; internal set; }

@@ -8,18 +8,26 @@ public class VFilePath : IEquatable<VFilePath>
 	{
 		Directory = directory;
 		FileName = fileName;
-		FileExtension = Util.FileExtension(fileName);
+		FileExtension = Util.FileExtension(FileName);
 		FilePath = $"{Directory.Path}{FileName}";
-		SystemFilePath = Path.Combine(
-			Path.Combine([.. Directory.DirectoryNames]),
-			FileName);
+		SystemFilePath = GetSystemFilePath(Directory, FileName);
+	}
+
+	public VFilePath(string vfilePath)
+	{
+		var idx = vfilePath.LastIndexOf(VDirectory.DirectorySeparator);
+		if (idx == -1)
+			throw new ArgumentException($"invalid vfilePath: {vfilePath}");
+
+		Directory = new VDirectory(vfilePath[..idx]);
+		FileName = vfilePath[(idx + 1)..];
+		FileExtension = Util.FileExtension(FileName);
+		FilePath = $"{Directory.Path}{FileName}";
+		SystemFilePath = GetSystemFilePath(Directory, FileName);
 	}
 
 	public VFilePath(string? directory, string fileName)
 		: this(new VDirectory(directory), fileName) { }
-
-	public VFilePath(string filePath)
-		: this(new FileInfo(filePath)) { }
 
 	public VFilePath(FileInfo fi)
 		: this(fi.DirectoryName, fi.Name) { }
@@ -34,6 +42,13 @@ public class VFilePath : IEquatable<VFilePath>
 	/// e.g. "/a/b/c/file.txt" converts to "a\b\c\file.txt" on Windows
 	/// </summary>
 	public string SystemFilePath { get; }
+
+	public static string GetSystemFilePath(VDirectory directory, string fileName)
+	{
+		return Path.Combine(
+			Path.Combine([.. directory.DirectoryNames]),
+			fileName);
+	}
 
 	public override string ToString()
 	{

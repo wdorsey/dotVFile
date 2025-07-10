@@ -322,7 +322,7 @@ public static class TestUtil
 			infos = vfile.GetVersions([.. requests.Select(x => x.Path)], VersionQuery.Both);
 			ctx.Assert(infos.Count == requests.Count * 2, context);
 
-			info = vfile.Get(new VFilePath(notFound));
+			info = vfile.Get(new VFilePath(notFound, notFound));
 			ctx.Assert(info == null, "info == null");
 		}));
 
