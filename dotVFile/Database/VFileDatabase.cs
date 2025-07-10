@@ -88,17 +88,14 @@ CREATE INDEX IF NOT EXISTS		  Directory_ParentDirectoryRowId ON Directory(Parent
 CREATE UNIQUE INDEX IF NOT EXISTS Directory_Path ON Directory(Path);
 
 CREATE TABLE IF NOT EXISTS SystemInfo (
-	Version			TEXT NOT NULL,
-	LastClean		TEXT
+	Version			TEXT NOT NULL
 );
 
 -- create SystemInfo row if not exists
 INSERT INTO SystemInfo (
-	Version,
-	LastClean)
+	Version)
 SELECT
-	'version',
-	NULL
+	@Version
 WHERE NOT EXISTS (SELECT 1 FROM SystemInfo);
 
 -- no where clause needed, only 1 row in the table
@@ -191,32 +188,16 @@ DROP TABLE IF EXISTS SystemInfo;
 		var cmd = new SqliteCommand(sql, connection);
 		var reader = cmd.ExecuteReader();
 		reader.Read();
-		return new(
-			reader.GetString("Version"),
-			reader.GetDateTimeOffsetNullable("LastClean"));
+		return new(reader.GetString("Version"));
 	}
 
-	public void UpdateLastClean(DateTimeOffset lastClean)
+	public DateTimeOffset? GetVFileMinDeleteAt()
 	{
+		const string sql = @"SELECT MIN(DeleteAt) AS DeleteAt FROM VFile WHERE DeleteAt IS NOT NULL";
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
-		using var transaction = connection.BeginTransaction();
-		try
-		{
-			const string sql = @"
-UPDATE SystemInfo
-SET    LastClean = @LastClean;
-";
-			var cmd = new SqliteCommand(sql, connection, transaction);
-			cmd.AddParameter("LastClean", SqliteType.Text, lastClean.ToDefaultString());
-			cmd.ExecuteNonQuery();
-			transaction.Commit();
-		}
-		catch (Exception)
-		{
-			transaction.Rollback();
-			throw;
-		}
+		var cmd = new SqliteCommand(sql, connection);
+		return cmd.ExecuteScalar().ConvertDateTimeOffsetNullable();
 	}
 
 	public Db.UnreferencedFileContent GetUnreferencedFileContent()

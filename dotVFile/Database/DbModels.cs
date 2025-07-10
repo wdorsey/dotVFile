@@ -76,9 +76,7 @@ internal static class Db
 		public long RecursiveVersionedSizeContentTotal;
 	}
 
-	public record SystemInfo(
-		string Version,
-		DateTimeOffset? LastClean);
+	public record SystemInfo(string Version);
 
 	public record StoreVFilesResult
 	{

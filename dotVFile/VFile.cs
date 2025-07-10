@@ -8,6 +8,8 @@ public class VFile
 	private static string FunctionContext(string fnName) => Context($"{fnName}()");
 	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}(): {ctx}");
 
+	private readonly Mutex Mutex = new();
+
 	public VFile(VFileOptions opts) : this(_ => opts) { }
 	public VFile(Func<VFileOptions, VFileOptions> configure)
 	{
@@ -27,7 +29,6 @@ public class VFile
 		Clean();
 	}
 
-	private readonly Mutex Mutex = new();
 	internal VFileDatabase Database { get; private set; }
 	internal VFileTools Tools { get; private set; }
 	public string Name { get; private set; }
@@ -35,6 +36,8 @@ public class VFile
 	public IVFileHooks Hooks => Tools.Hooks;
 	public StoreOptions DefaultStoreOptions { get; private set; }
 	public bool Debug { get; set; }
+	public DateTimeOffset LastClean { get; internal set; }
+	public DateTimeOffset NextClean { get; internal set; }
 
 	/// <summary>
 	/// Gets the single database file path that _is_ the entire virtual file system.
@@ -66,19 +69,53 @@ public class VFile
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Clean)));
 
-		// delete expired VFiles first so that their content and directories 
-		// are freed to be cleaned up via DeleteUnreferencedEntities.
-		var expired = Database.DeleteExpiredVFiles();
-		var unreferenced = Database.DeleteUnreferencedFileContent();
+		CleanResult? result;
 
-		Database.UpdateLastClean(DateTimeOffset.Now);
+		Mutex.WaitOne();
+		try
+		{
+			// delete expired VFiles first so that their content and directories 
+			// are freed to be cleaned up via DeleteUnreferencedEntities.
+			var expired = Database.DeleteExpiredVFiles();
+			var unreferenced = Database.DeleteUnreferencedFileContent();
 
-		var result = new CleanResult(unreferenced, expired);
+			result = new CleanResult(unreferenced, expired);
 
-		Tools.DebugLog($"{t.Name} => {result.ToJson()}");
+			LastClean = DateTimeOffset.Now;
+			SetNextClean();
+		}
+		finally
+		{
+			Mutex.ReleaseMutex();
+		}
+
+		Tools.DebugLog($"{t.Name} => {new { Result = result, NextClean }.ToJson()}");
 		Tools.TimerEnd(t);
 
 		return result;
+	}
+
+	private void CleanCheck()
+	{
+		if (NextClean <= DateTimeOffset.Now)
+		{
+			Clean();
+		}
+	}
+
+	private void SetNextClean()
+	{
+		var t = Tools.TimerStart(FunctionContext(nameof(SetNextClean)));
+
+		var candidates = new List<DateTimeOffset>
+		{
+			Database.GetVFileMinDeleteAt() ?? DateTimeOffset.MaxValue,
+			LastClean.AddHours(1)
+		};
+
+		NextClean = candidates.Min();
+
+		Tools.TimerEnd(t);
 	}
 
 	public VFileInfo? Get(VFilePath path)
@@ -131,6 +168,8 @@ public class VFile
 	{
 		var t = Tools.TimerStart(Context("GetVersions(paths, versionQuery)"));
 
+		CleanCheck();
+
 		var vfiles = Database.GetVFilesByFilePath(paths, versionQuery);
 		var results = ConvertDbVFile(vfiles);
 
@@ -151,6 +190,8 @@ public class VFile
 		VersionQuery versionQuery = VersionQuery.Versions)
 	{
 		var t = Tools.TimerStart(Context("GetVersions(directory, recursive, versionQuery)"));
+
+		CleanCheck();
 
 		var paths = recursive
 			? Database.GetDirectoriesRecursive(directory.Path).Select(x => x.Path)
@@ -227,6 +268,8 @@ public class VFile
 		var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
 		var tCheckHash = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Check Hash"));
 
+		CleanCheck();
+
 		var hash = Hash(cacheKey);
 		var cacheDir = new VDirectory("__vfile-cache-lookup__");
 		var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
@@ -282,6 +325,8 @@ public class VFile
 	public VDirectoryInfo? GetDirectory(VDirectory directory)
 	{
 		var t = Tools.TimerStart(Context("GetDirectory(directory)"));
+
+		CleanCheck();
 
 		var dbInfo = Database.GetDirectoryInfo(directory.Path);
 
@@ -385,6 +430,8 @@ public class VFile
 	{
 		var t = Tools.TimerStart(Context("Copy(directory, to, recursive, opts)"));
 
+		CleanCheck();
+
 		var requests = new List<CopyRequest>();
 
 		var directories = recursive
@@ -472,6 +519,9 @@ public class VFile
 
 		Database.DeleteVFiles([.. vfiles.Select(x => x.VFile.RowId)]);
 
+		// delete file content, if possible
+		Database.DeleteUnreferencedFileContent();
+
 		Tools.TimerEnd(t);
 
 		return [.. vfiles.Select(x => new VFileInfo(x))];
@@ -492,6 +542,9 @@ public class VFile
 		var vfiles = Database.GetVFilesById([.. infos.Select(x => x.Id)]);
 
 		Database.DeleteVFiles([.. vfiles.Select(x => x.VFile.RowId)]);
+
+		// delete file content, if possible
+		Database.DeleteUnreferencedFileContent();
 
 		Tools.TimerEnd(t);
 
@@ -549,6 +602,9 @@ public class VFile
 		var state = new StoreState();
 		var saveHashContentMap = new Dictionary<string, (VFileInfo Info, byte[] Bytes)>();
 		var uniqueFilePaths = new Dictionary<string, VFilePath>();
+		var optsTTLIsSet = false;
+
+		CleanCheck();
 
 		// this validation loop also serves to gather unique VFilePaths.
 		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Validate requests"));
@@ -598,6 +654,7 @@ public class VFile
 
 				var now = DateTimeOffset.Now;
 				var opts = request.Opts ?? DefaultStoreOptions;
+				optsTTLIsSet = optsTTLIsSet || opts.TTL.HasValue;
 
 				timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
 
@@ -692,6 +749,7 @@ public class VFile
 
 							if (contentDifference)
 							{
+								optsTTLIsSet = optsTTLIsSet || opts.VersionOpts.TTL.HasValue;
 								existingVFile.VFile.Versioned = now;
 								existingVFile.VFile.DeleteAt = opts.VersionOpts.TTL.HasValue
 									? existingVFile.VFile.Versioned + opts.VersionOpts.TTL
@@ -737,6 +795,17 @@ public class VFile
 			Database.SaveStoreState(state);
 
 			Tools.TimerEnd(timer);
+
+			if (optsTTLIsSet && (state.NewVFiles.Count > 0 || state.UpdateVFiles.Count > 0))
+				SetNextClean();
+
+			// @note: We do not check to see if the content of state.DeleteVFiles
+			// can be deleted here because it is faster not to.
+			// The deletes that happen here are also more of an implicit nature,
+			// so the expectation is different compared to the explicit Delete() functions.
+			// It doesn't hurt anything to leave them dangling and they'll eventually
+			// get deleted via Clean().
+
 			Tools.TimerEnd(t); // overall SaveVFiles timer
 			Tools.Metrics.StoreVFilesMetrics.Add(metrics);
 		}
