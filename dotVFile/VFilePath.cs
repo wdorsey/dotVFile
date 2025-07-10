@@ -56,4 +56,9 @@ public class VFilePath : IEquatable<VFilePath>
 	{
 		return other?.FilePath == FilePath;
 	}
+
+	public static VFilePath Combine(VDirectory root, VFilePath path)
+	{
+		return new(VDirectory.Join(root, path.Directory), path.FileName);
+	}
 }

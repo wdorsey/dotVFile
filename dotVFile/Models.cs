@@ -227,27 +227,32 @@ public record CacheRequest(
 	byte[] CacheKey,
 	VFilePath Path,
 	Func<VFileContent> ContentFn,
-	StoreOptions? StoreOptions = null);
+	StoreOptions? StoreOptions = null)
+{
+	public byte[] CacheKey { get; set; } = CacheKey;
+	public VFilePath Path { get; set; } = Path;
+	public Func<VFileContent> ContentFn { get; set; } = ContentFn;
+	public StoreOptions? StoreOptions { get; set; } = StoreOptions;
+}
 
 public record CacheResult(CacheRequest CacheRequest)
 {
 	public VFileInfo? VFileInfo { get; internal set; }
-	public byte[]? Bytes { get; internal set; }
 	public bool ErrorOccurred => VFileInfo == null;
+	public byte[]? Bytes { get; internal set; }
+	public bool CacheHit = false;
 }
 
 internal record CacheRecord(string Hash);
 
 internal record CacheRequestState(
 	int Index,
-	CacheRequest CacheRequest,
-	string Hash,
-	VFilePath CachePath)
+	CacheRequest CacheRequest)
 {
 	public string Id => CacheRequest.Path.FilePath;
+	public string? Hash;
+	public VFilePath? CachePath;
 	public CacheResult Result = new(CacheRequest);
-	public bool Found => Result.VFileInfo != null && Result.Bytes != null;
-	public bool Error;
 }
 
 [JsonConverter(typeof(StringEnumConverter))]

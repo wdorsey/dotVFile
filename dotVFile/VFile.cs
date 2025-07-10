@@ -272,59 +272,6 @@ public class VFile
 	{
 		var request = new CacheRequest(cacheKey, path, contentFn, storeOptions);
 		return GetOrStore(request.AsList(), bypassCache).Single();
-		//var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
-		//var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
-		//var tCheckHash = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Check Hash"));
-
-		//CleanCheck();
-
-		//var hash = Hash(cacheKey);
-		//var cacheDir = new VDirectory("__vfile-cache-lookup__");
-		//var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
-
-		//if (!bypassCache)
-		//{
-		//	var cacheInfo = Get(cachePath);
-		//	if (cacheInfo != null)
-		//	{
-		//		var cacheHash = Util.GetString(GetBytes(cacheInfo));
-		//		if (cacheHash == hash)
-		//		{
-		//			Tools.TimerEnd(tCheckHash);
-
-		//			var info = Get(path);
-		//			var bytes = GetBytes(path);
-		//			if (info != null && bytes != null)
-		//			{
-		//				Tools.TimerEnd(tGet);
-		//				Tools.TimerEnd(t);
-		//				return new(request) { VFileInfo = info, Bytes = bytes };
-		//			}
-		//		}
-		//	}
-		//}
-
-		//Tools.TimerEnd(tGet);
-		//Tools.TimerEnd(tCheckHash);
-		//var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
-
-		//var opts = new StoreOptions(VFileCompression.None, storeOptions?.TTL,
-		//	new(VFileExistsBehavior.Overwrite, null, null));
-
-		//var content = contentFn().GetContent();
-
-		//var requests = new List<StoreRequest>
-		//{
-		//	new(cachePath, new(Util.GetBytes(hash)), opts),
-		//	new(path, new(content), storeOptions)
-		//};
-
-		//var vfile = Store(requests).VFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
-
-		//Tools.TimerEnd(tStore);
-		//Tools.TimerEnd(t);
-
-		//return new(request) { VFileInfo = vfile, Bytes = content };
 	}
 
 	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
@@ -332,110 +279,124 @@ public class VFile
 
 	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
-		// optimize ideas:
-		//	put state into "remaining" dicts, have results ONLY be those that are final
-		//  this means we don't have to iterate through those found in the cache again
-		//	and get drop the ERror and Found flags.
-		//	can we avoid the ordering at the end? pre-pop the Final result list from above?
-
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
+		var metrics = new GetOrStoreMetrics { RequestCount = requests.Count };
 
 		CleanCheck();
 
 		// key is FilePath
-		var results = new Dictionary<string, CacheRequestState>();
-		var resultsByCacheFilePath = new Dictionary<string, CacheRequestState>();
+		var results = new List<CacheResult>();
+		var stateFilePathMap = new Dictionary<string, CacheRequestState>();
+		var stateCacheFilePathMap = new Dictionary<string, CacheRequestState>();
 		var cachePaths = new List<VFilePath>();
 		var cacheDir = new VDirectory("__vfile-cache-lookup__");
 
+		var tState = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "build state"));
 		for (var i = 0; i < requests.Count; i++)
 		{
 			var request = requests[i];
 			var filePath = request.Path.FilePath;
+			var state = new CacheRequestState(i, request);
 
-			if (results.ContainsKey(filePath))
+			if (!stateFilePathMap.TryAdd(filePath, state))
 			{
 				Hooks.ErrorHandler(new(
 					VFileErrorCodes.DuplicateRequest,
 					$"Duplicate CacheRequest detected: {filePath}",
-					request));
+					request.Path));
+			}
+			else
+			{
 
-				results.Add(filePath,
-					new CacheRequestState(i, request, string.Empty, VFilePath.Default())
-					{
-						Error = true
-					});
-
-				continue;
+				state.Hash = Hash(request.CacheKey);
+				state.CachePath = VFilePath.Combine(cacheDir, request.Path);
+				cachePaths.Add(state.CachePath);
+				stateCacheFilePathMap.Add(state.CachePath.FilePath, state);
 			}
 
-			var hash = Hash(request.CacheKey);
-			var cachePath = new VFilePath(VDirectory.Join(cacheDir, request.Path.Directory), request.Path.FileName);
-			var state = new CacheRequestState(i, request, hash, cachePath);
-
-			cachePaths.Add(cachePath);
-			results.Add(filePath, state);
-			resultsByCacheFilePath.Add(cachePath.FilePath, state);
+			results.Add(state.Result); // results created here, in order of requests
 		}
+		Tools.TimerEnd(tState);
 
+		var tCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "get from cache"));
 		if (!bypassCache)
 		{
+			var tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check cache"));
+
 			var cachedInfos = Get(cachePaths);
+
+			Tools.TimerEnd(tCheckCache);
+
 			var cachedPaths = new List<VFilePath>();
 			foreach (var cachedInfo in cachedInfos)
 			{
+				tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check cache"));
+
 				var hash = Util.GetString(GetBytes(cachedInfo));
-				var info = resultsByCacheFilePath[cachedInfo.FilePath];
+				var info = stateCacheFilePathMap[cachedInfo.FilePath];
+
+				Tools.TimerEnd(tCheckCache);
+
 				if (info.Hash == hash)
 				{
 					// We have to call GetBytes one at a time,
 					// but we'll add path to a list and then 
 					// below we'll Get the VFileInfos in one go.
 					var path = info.CacheRequest.Path;
-					cachedPaths.Add(path);
-					info.Result.Bytes = GetBytes(path);
+					var bytes = GetBytes(path);
+					if (bytes != null)
+					{
+						info.Result.Bytes = bytes;
+						info.Result.CacheHit = true;
+						cachedPaths.Add(path);
+					}
 				}
 			}
 
 			foreach (var info in Get(cachedPaths))
 			{
-				results[info.FilePath].Result.VFileInfo = info;
+				stateFilePathMap[info.FilePath].Result.VFileInfo = info;
+
+				// remove from stateFilePathMap since it was found
+				// and stateFilePathMap serves as the "remaining-to-be-found" list.
+				stateFilePathMap.Remove(info.FilePath);
 			}
 		}
+		Tools.TimerEnd(tCache);
 
-		var storeRequests = new List<StoreRequest>();
-		foreach (var (filePath, info) in results)
+		if (stateFilePathMap.Count > 0)
 		{
-			// skip those found in cache
-			if (info.Found || info.Error)
-				continue;
+			var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "store"));
+			var storeRequests = new List<StoreRequest>();
+			foreach (var (filePath, info) in stateFilePathMap)
+			{
+				info.Result.Bytes = info.CacheRequest.ContentFn().GetContent();
 
-			info.Result.Bytes = info.CacheRequest.ContentFn().GetContent();
+				// use request TTL
+				var cacheOpts = new StoreOptions(VFileCompression.None, info.CacheRequest.StoreOptions?.TTL,
+					new(VFileExistsBehavior.Overwrite, null, null));
 
-			// use request TTL
-			var cacheOpts = new StoreOptions(VFileCompression.None, info.CacheRequest.StoreOptions?.TTL,
-				new(VFileExistsBehavior.Overwrite, null, null));
+				// cache store request
+				storeRequests.Add(new(info.CachePath!, new(Util.GetBytes(info.Hash)), cacheOpts));
 
-			// cache store request
-			storeRequests.Add(new(info.CachePath, new(Util.GetBytes(info.Hash)), cacheOpts));
+				// requested content store request
+				storeRequests.Add(new(info.CacheRequest.Path, new(info.Result.Bytes), info.CacheRequest.StoreOptions));
+			}
 
-			// requested content store request
-			storeRequests.Add(new(info.CacheRequest.Path, new(info.Result.Bytes), info.CacheRequest.StoreOptions));
+			var storeResult = Store(storeRequests);
+			foreach (var result in storeResult.VFiles)
+			{
+				// TryGetValue becaues storeResult will contain the cache hash vfiles too.
+				if (stateFilePathMap.TryGetValue(result.FilePath, out var file))
+					file.Result.VFileInfo = result;
+			}
+			Tools.TimerEnd(tStore);
 		}
-
-		var storeResult = Store(storeRequests);
-		foreach (var result in storeResult.VFiles)
-		{
-			// TryGetValue becaues storeResult will contain the cache hash vfiles too.
-			if (results.TryGetValue(result.FilePath, out var file))
-				file.Result.VFileInfo = result;
-		}
-
-		var final = results.Values.OrderBy(x => x.Index).Select(x => x.Result).ToList();
 
 		Tools.TimerEnd(t);
+		Tools.Metrics.GetOrStoreMetrics.Add(metrics);
 
-		return final;
+		return results;
 	}
 
 	/// <summary>
@@ -718,7 +679,7 @@ public class VFile
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default(); // re-usable timer
-		var metrics = new StoreVFilesMetrics();
+		var metrics = new StoreMetrics();
 		var results = new List<VFileInfo>();
 		var errors = new List<StoreRequest>();
 		var state = new StoreState();
@@ -929,7 +890,7 @@ public class VFile
 			// get deleted via Clean().
 
 			Tools.TimerEnd(t); // overall SaveVFiles timer
-			Tools.Metrics.StoreVFilesMetrics.Add(metrics);
+			Tools.Metrics.StoreMetrics.Add(metrics);
 		}
 		finally
 		{

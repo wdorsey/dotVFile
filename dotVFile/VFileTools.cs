@@ -86,9 +86,14 @@ internal class Timer(string Name)
 	}
 }
 
-internal class StoreVFilesMetrics
+internal record StoreMetrics
 {
 	public List<long> ContentSizes = [];
+}
+
+internal record GetOrStoreMetrics
+{
+	public int RequestCount;
 }
 
 internal record Stats<T>(int Count, T Sum, T Avg, T Min, T Max, Func<T, string> ToStringFn)
@@ -113,12 +118,14 @@ internal record Stats<T>(int Count, T Sum, T Avg, T Min, T Max, Func<T, string> 
 internal class Metrics
 {
 	public Dictionary<string, List<Timer>> Timers = [];
-	public List<StoreVFilesMetrics> StoreVFilesMetrics = [];
+	public List<StoreMetrics> StoreMetrics = [];
+	public List<GetOrStoreMetrics> GetOrStoreMetrics = [];
 
 	public void Clear()
 	{
 		Timers.Clear();
-		StoreVFilesMetrics.Clear();
+		StoreMetrics.Clear();
+		GetOrStoreMetrics.Clear();
 	}
 
 	public Dictionary<string, object> GetMetrics()
@@ -131,11 +138,14 @@ internal class Metrics
 			results.Add($"Timer: {name}", stats.JsonObject());
 		}
 
-		results.Add("StoreVFilesMetrics - Content Count",
-			Stats([.. StoreVFilesMetrics.Select(x => x.ContentSizes.Count)]).JsonObject());
+		results.Add("StoreMetrics - Content Count",
+			Stats([.. StoreMetrics.Select(x => x.ContentSizes.Count)]).JsonObject());
 
-		results.Add("StoreVFilesMetrics - Content Size",
-			StatsSize([.. StoreVFilesMetrics.Select(x => x.ContentSizes.Sum())]).JsonObject());
+		results.Add("StoreMetrics - Content Size",
+			StatsSize([.. StoreMetrics.Select(x => x.ContentSizes.Sum())]).JsonObject());
+
+		results.Add("GetOrStoreMetrics - Request Count",
+			Stats([.. GetOrStoreMetrics.Select(x => x.RequestCount)]).JsonObject());
 
 		return results;
 	}
@@ -149,6 +159,17 @@ internal class Metrics
 			new TimeSpan(timespans.Min(x => x.Ticks)),
 			new TimeSpan(timespans.Max(x => x.Ticks)),
 			x => x.TimeString());
+	}
+
+	public static Stats<int> Stats(List<int> values)
+	{
+		return new Stats<int>(
+			values.Count,
+			values.Sum(),
+			values.Sum() / values.Count,
+			values.Min(),
+			values.Max(),
+			x => x.ToString());
 	}
 
 	public static Stats<long> Stats(List<long> values)

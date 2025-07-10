@@ -19,47 +19,6 @@ public class TestHooks : IVFileHooks
 	}
 }
 
-public record TestFile(
-	List<string> Directories,
-	string FileName)
-{
-	public VFilePath VFilePath = new(Path.Combine([.. Directories]), FileName);
-	public VFileContent VFileContent = new(Util.EmptyBytes());
-	public string FileExtension = Util.FileExtension(FileName);
-	public string FilePath = string.Empty;
-	// used to change content of TestFile when storing ToBytes() as it's own VFile
-	public DateTimeOffset Update;
-
-	public byte[] ToBytes(bool update)
-	{
-		if (update)
-			Update = DateTimeOffset.Now;
-		return Util.GetBytes(
-			new
-			{
-				VFilePath,
-				FileExtension,
-				FilePath,
-				Update
-			}, true, false);
-	}
-}
-
-public record TestCase(string Name, StoreOptions Opts);
-
-public class TestContext(string testName)
-{
-	public string TestName { get; } = testName;
-	public List<string> Failures = [];
-	public TimeSpan Elapsed { get; set; }
-
-	public void Assert(bool result, string context)
-	{
-		if (!result)
-			Failures.Add(context);
-	}
-}
-
 public static class TestUtil
 {
 	public static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "test-log.txt");
@@ -508,47 +467,88 @@ public static class TestUtil
 		context = "GetOrStore";
 		results.Add(RunTest(context, ctx =>
 		{
-			var path = new VFilePath("cache-test", "value.txt");
-			var content = "1";
-			bool cacheMiss = false;
-			VFileContent GetContent()
+			void AssertCacheResults(
+				List<CacheRequest> requests,
+				List<CacheTestCase> results,
+				string test)
 			{
-				cacheMiss = true;
-				return new(Util.GetBytes(content));
+				ctx.Assert(requests.Count == results.Count, $"{test}: requests.Count == results.Count");
+				for (var i = 0; i < requests.Count; i++)
+				{
+					var request = requests[i];
+					var result = results[i];
+					ctx.Assert(request.Path.Equals(result.Result.CacheRequest.Path), $"{test}: Results order check, Path.Equals");
+					if (result.ExpectedError)
+					{
+						ctx.Assert(result.Result.ErrorOccurred, $"{test}: ExpectedError - ErrorOccurred");
+						ctx.Assert(result.Result.VFileInfo == null, $"{test}: ExpectedError - VFileInfo == null");
+						ctx.Assert(result.Result.Bytes == null, $"{test}: ExpectedError - Bytes == null");
+					}
+					else
+					{
+						ctx.Assert(result.Result.VFileInfo != null, $"{test}: VFileInfo != null");
+						ctx.Assert(result.Result.Bytes != null, $"{test}: Bytes != null");
+						ctx.Assert(result.Result.CacheHit == result.ExpectedCacheHit, $"{test}: ExpectedCacheHit");
+						ctx.Assert(Util.GetString(result.Result.Bytes) == Util.GetString(result.ExpectedContent), $"{test}: ExpectedContent");
+					}
+				}
 			}
 
-			// first time through should be a cache miss and store the value via getContent
-			var result = vfile.GetOrStore(
-				Util.GetBytes(content),
-				path,
+			var content = Util.GetBytes("Content");
+			VFileContent GetContent()
+			{
+				return new(content);
+			}
+
+			var requests = new List<CacheRequest>();
+			var request = new CacheRequest(
+				Util.GetBytes("1"),
+				new VFilePath("cache-test", "value.txt"),
 				GetContent);
-			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
-			ctx.Assert(cacheMiss, "expected cache miss");
-			var resultValue = Util.GetString(result.Bytes);
-			ctx.Assert(content == resultValue, $"{content} == {resultValue}");
+			requests.Add(request);
+
+			// first time through should be a cache miss and store the value via getContent
+			var test = "Single, Cache Miss";
+			var results = vfile.GetOrStore(requests);
+			var @case = new CacheTestCase(results.Single(), false, false, content);
+			AssertCacheResults(requests, [@case], test);
 
 			// now we expect it to pull from cache
-			cacheMiss = false;
-			result = vfile.GetOrStore(
-				Util.GetBytes(content),
-				path,
-				GetContent);
-			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
-			ctx.Assert(!cacheMiss, "expected cache hit");
-			resultValue = Util.GetString(result.Bytes);
-			ctx.Assert(content == resultValue, $"{content} == {resultValue}");
+			test = "Single, Cache Hit";
+			@case.Result = vfile.GetOrStore(requests).Single();
+			@case.ExpectedCacheHit = true;
+			AssertCacheResults(requests, [@case], test);
 
 			// now change content and it should result in a cache miss
-			cacheMiss = false;
-			content = "2";
-			result = vfile.GetOrStore(
-				Util.GetBytes(content),
-				path,
-				GetContent);
-			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
-			ctx.Assert(cacheMiss, "expected cache miss");
-			resultValue = Util.GetString(result.Bytes);
-			ctx.Assert(content == resultValue, $"{content} == {resultValue}");
+			test = "Single, Different Cache Key, Cache Miss";
+			request.CacheKey = Util.GetBytes("new-key");
+			@case.Result = vfile.GetOrStore(requests).Single();
+			@case.ExpectedCacheHit = false;
+			AssertCacheResults(requests, [@case], test);
+
+			// dupe test
+			test = "Dupe request";
+			requests.Add(request with { });
+			results = vfile.GetOrStore(requests);
+			var dupeCases = new CacheTestCase(results[1], true, false, content);
+			AssertCacheResults(requests, [@case, dupeCases], test);
+
+			// bulk tests
+			test = "Bulk test";
+			var dir = new VDirectory("cache-test");
+			requests = [.. GenerateMetadataRequests(opts, true).Select(x =>
+				new CacheRequest(
+					Util.GetBytes(x.Path.FilePath),
+					VFilePath.Combine(dir, x.Path),
+					() => x.Content))];
+			results = vfile.GetOrStore(requests);
+			var cases = results.Select(x => new CacheTestCase(x, false, false, x.CacheRequest.ContentFn().GetContent())).ToList();
+			AssertCacheResults(requests, cases, test);
+
+			test = "Bulk test, Cache Hit";
+			results = vfile.GetOrStore(requests);
+			cases = [.. results.Select(x => new CacheTestCase(x, false, true, x.CacheRequest.ContentFn().GetContent()))];
+			AssertCacheResults(requests, cases, test);
 		}));
 
 		return results;
