@@ -11,6 +11,9 @@ public class VDirectory : IEquatable<VDirectory>
 		DirectoryNames = [.. Path.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
 	}
 
+	public VDirectory(params string[] directories)
+		: this(string.Join(DirectorySeparator, StandardizeDirectories(directories))) { }
+
 	public string Name => DirectoryNames.LastOrDefault() ?? string.Empty;
 	public string Path { get; }
 	public bool IsRoot => Equals(RootDirectory());
@@ -78,7 +81,7 @@ public class VDirectory : IEquatable<VDirectory>
 	/// and the full path always starts and ends with '/'.
 	/// e.g. /x/y/z/
 	/// </summary>
-	internal static string StandardizeDirectory(string? directory)
+	private static string StandardizeDirectory(string? directory)
 	{
 		char[] dividers = ['/', '\\'];
 		var parts = directory?.Split(dividers, StringSplitOptions.RemoveEmptyEntries);
@@ -89,5 +92,10 @@ public class VDirectory : IEquatable<VDirectory>
 			result += DirectorySeparator;
 		}
 		return result;
+	}
+
+	private static List<string> StandardizeDirectories(IEnumerable<string> directories)
+	{
+		return [.. directories.Select(StandardizeDirectory)];
 	}
 }

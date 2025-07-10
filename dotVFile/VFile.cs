@@ -40,10 +40,15 @@ public class VFile
 	public DateTimeOffset NextClean { get; internal set; }
 
 	/// <summary>
-	/// Gets the single database file path that _is_ the entire virtual file system.
+	/// FilePath for the single database file that is the entire virtual file system.
 	/// This file could potentially be very large, so take care in retrieving it programmatically.
 	/// </summary>
 	public string SingleFilePath => Database.DatabaseFilePath;
+
+	/// <summary>
+	/// FileName of the single database file that is the entire virutal file system.
+	/// </summary>
+	public string SingleFileName => Database.DatabaseFileName;
 
 	/// <summary>
 	/// !!! DANGER !!!
@@ -247,9 +252,10 @@ public class VFile
 	}
 
 	/// <summary>
-	/// Caching mechanism.<br/>
-	/// Ideal for content that requires a repeated and expensive process to generate where the same input always generates the same output.<br/>
-	/// e.g. A build pipeline that processes raw files, like minifying html.
+	/// Provides caching functionality.<br/>
+	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
+	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
+	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
 	/// </summary>
 	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
@@ -283,6 +289,7 @@ public class VFile
 				if (cacheHash == hash)
 				{
 					Tools.TimerEnd(tCheckHash);
+
 					var info = Get(path);
 					var bytes = GetBytes(path);
 					if (info != null && bytes != null)

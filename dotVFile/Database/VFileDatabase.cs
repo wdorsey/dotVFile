@@ -11,7 +11,8 @@ internal class VFileDatabase
 		Directory = opts.Directory;
 		Version = opts.Version;
 		Tools = opts.Tools;
-		DatabaseFilePath = new(Path.Combine(Directory, $"{opts.Name}.vfile.db"));
+		DatabaseFileName = $"{opts.Name}.vfile.db";
+		DatabaseFilePath = new(Path.Combine(Directory, DatabaseFileName));
 		ConnectionString = $"Data Source={DatabaseFilePath};";
 		CreateDatabase();
 	}
@@ -19,6 +20,7 @@ internal class VFileDatabase
 	public string Directory { get; }
 	public string Version { get; }
 	public VFileTools Tools { get; }
+	public string DatabaseFileName { get; }
 	public string DatabaseFilePath { get; }
 	public string ConnectionString { get; }
 
