@@ -3,7 +3,8 @@
 
 ### Major Features
 - Single Sqlite database file is the **_entire_** file system
-- Supports multiple virtual paths per file, with content stored on disk only once
-- Optional versioning, compression, and TTL for every vfile
+- Supports multiple virtual paths per file, with file content stored on disk only once
+- Optional versioning, TTL, and compression for every individual vfile
+- Caching functionality provided through GetOrStore functions.
 - Optimized for high-performance read/write operations
-- Easy to backup and restore, it's just a single file!
+- Super easy to backup and restore, it's just a single file!
