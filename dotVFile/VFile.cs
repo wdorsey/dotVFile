@@ -599,7 +599,6 @@ public class VFile
 		// this function builds up all the VFileInfo changes within
 		// a StoreState object that is saved at the very end.
 		// New Content is also saved in bulk at the very end.
-		// This is all very much NOT thread-safe.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default(); // re-usable timer
