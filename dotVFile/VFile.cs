@@ -68,9 +68,9 @@ public class VFile
 	/// </summary>
 	public CleanResult Clean()
 	{
-		// Some of the unreferenced data should normally be deleted during StoreVFiles 
+		// Some of the unreferenced data should normally be deleted during Store()
 		// but it isn't for both performance reasons and because it has
-		// to be checked here anyways because expired VFiles are deleted.
+		// to be checked here anyways after expired VFiles are deleted.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Clean)));
 
