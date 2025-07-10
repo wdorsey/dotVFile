@@ -258,71 +258,184 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
 	/// </summary>
-	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
 	/// <param name="cacheKey">Value that will be hashed and checked against the existing cached content at <paramref name="path"/></param>
+	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
 	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
 	/// <param name="ttl">Optional time-to-live for the content.</param>
 	/// <param name="bypassCache">Bypass cache and run contentFn.</param>
-	public GetOrStoreResult GetOrStore(
-		VFilePath path,
+	public CacheResult GetOrStore(
 		byte[] cacheKey,
+		VFilePath path,
 		Func<VFileContent> contentFn,
-		TimeSpan? ttl = null,
+		StoreOptions? storeOptions = null,
 		bool bypassCache = false)
 	{
+		var request = new CacheRequest(cacheKey, path, contentFn, storeOptions);
+		return GetOrStore(request.AsList(), bypassCache).Single();
+		//var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
+		//var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
+		//var tCheckHash = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Check Hash"));
+
+		//CleanCheck();
+
+		//var hash = Hash(cacheKey);
+		//var cacheDir = new VDirectory("__vfile-cache-lookup__");
+		//var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
+
+		//if (!bypassCache)
+		//{
+		//	var cacheInfo = Get(cachePath);
+		//	if (cacheInfo != null)
+		//	{
+		//		var cacheHash = Util.GetString(GetBytes(cacheInfo));
+		//		if (cacheHash == hash)
+		//		{
+		//			Tools.TimerEnd(tCheckHash);
+
+		//			var info = Get(path);
+		//			var bytes = GetBytes(path);
+		//			if (info != null && bytes != null)
+		//			{
+		//				Tools.TimerEnd(tGet);
+		//				Tools.TimerEnd(t);
+		//				return new(request) { VFileInfo = info, Bytes = bytes };
+		//			}
+		//		}
+		//	}
+		//}
+
+		//Tools.TimerEnd(tGet);
+		//Tools.TimerEnd(tCheckHash);
+		//var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
+
+		//var opts = new StoreOptions(VFileCompression.None, storeOptions?.TTL,
+		//	new(VFileExistsBehavior.Overwrite, null, null));
+
+		//var content = contentFn().GetContent();
+
+		//var requests = new List<StoreRequest>
+		//{
+		//	new(cachePath, new(Util.GetBytes(hash)), opts),
+		//	new(path, new(content), storeOptions)
+		//};
+
+		//var vfile = Store(requests).VFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
+
+		//Tools.TimerEnd(tStore);
+		//Tools.TimerEnd(t);
+
+		//return new(request) { VFileInfo = vfile, Bytes = content };
+	}
+
+	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
+		GetOrStore(request.AsList(), bypassCache).Single();
+
+	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
+	{
+		// optimize ideas:
+		//	put state into "remaining" dicts, have results ONLY be those that are final
+		//  this means we don't have to iterate through those found in the cache again
+		//	and get drop the ERror and Found flags.
+		//	can we avoid the ordering at the end? pre-pop the Final result list from above?
+
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
-		var tGet = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Get"));
-		var tCheckHash = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Check Hash"));
 
 		CleanCheck();
 
-		var hash = Hash(cacheKey);
+		// key is FilePath
+		var results = new Dictionary<string, CacheRequestState>();
+		var resultsByCacheFilePath = new Dictionary<string, CacheRequestState>();
+		var cachePaths = new List<VFilePath>();
 		var cacheDir = new VDirectory("__vfile-cache-lookup__");
-		var cachePath = new VFilePath(VDirectory.Join(cacheDir, path.Directory), path.FileName);
+
+		for (var i = 0; i < requests.Count; i++)
+		{
+			var request = requests[i];
+			var filePath = request.Path.FilePath;
+
+			if (results.ContainsKey(filePath))
+			{
+				Hooks.ErrorHandler(new(
+					VFileErrorCodes.DuplicateRequest,
+					$"Duplicate CacheRequest detected: {filePath}",
+					request));
+
+				results.Add(filePath,
+					new CacheRequestState(i, request, string.Empty, VFilePath.Default())
+					{
+						Error = true
+					});
+
+				continue;
+			}
+
+			var hash = Hash(request.CacheKey);
+			var cachePath = new VFilePath(VDirectory.Join(cacheDir, request.Path.Directory), request.Path.FileName);
+			var state = new CacheRequestState(i, request, hash, cachePath);
+
+			cachePaths.Add(cachePath);
+			results.Add(filePath, state);
+			resultsByCacheFilePath.Add(cachePath.FilePath, state);
+		}
 
 		if (!bypassCache)
 		{
-			var cacheInfo = Get(cachePath);
-			if (cacheInfo != null)
+			var cachedInfos = Get(cachePaths);
+			var cachedPaths = new List<VFilePath>();
+			foreach (var cachedInfo in cachedInfos)
 			{
-				var cacheHash = Util.GetString(GetBytes(cacheInfo));
-				if (cacheHash == hash)
+				var hash = Util.GetString(GetBytes(cachedInfo));
+				var info = resultsByCacheFilePath[cachedInfo.FilePath];
+				if (info.Hash == hash)
 				{
-					Tools.TimerEnd(tCheckHash);
-
-					var info = Get(path);
-					var bytes = GetBytes(path);
-					if (info != null && bytes != null)
-					{
-						Tools.TimerEnd(tGet);
-						Tools.TimerEnd(t);
-						return new(info, bytes);
-					}
+					// We have to call GetBytes one at a time,
+					// but we'll add path to a list and then 
+					// below we'll Get the VFileInfos in one go.
+					var path = info.CacheRequest.Path;
+					cachedPaths.Add(path);
+					info.Result.Bytes = GetBytes(path);
 				}
+			}
+
+			foreach (var info in Get(cachedPaths))
+			{
+				results[info.FilePath].Result.VFileInfo = info;
 			}
 		}
 
-		Tools.TimerEnd(tGet);
-		Tools.TimerEnd(tCheckHash);
-		var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
-
-		var opts = new StoreOptions(VFileCompression.None, ttl,
-			new(VFileExistsBehavior.Overwrite, null, null));
-
-		var content = contentFn().GetContent();
-
-		var requests = new List<StoreRequest>
+		var storeRequests = new List<StoreRequest>();
+		foreach (var (filePath, info) in results)
 		{
-			new(cachePath, new(Util.GetBytes(hash)), opts),
-			new(path, new(content), opts)
-		};
+			// skip those found in cache
+			if (info.Found || info.Error)
+				continue;
 
-		var vfile = Store(requests).VFiles.SingleOrDefault(x => x.VFilePath.Equals(path));
+			info.Result.Bytes = info.CacheRequest.ContentFn().GetContent();
 
-		Tools.TimerEnd(tStore);
+			// use request TTL
+			var cacheOpts = new StoreOptions(VFileCompression.None, info.CacheRequest.StoreOptions?.TTL,
+				new(VFileExistsBehavior.Overwrite, null, null));
+
+			// cache store request
+			storeRequests.Add(new(info.CachePath, new(Util.GetBytes(info.Hash)), cacheOpts));
+
+			// requested content store request
+			storeRequests.Add(new(info.CacheRequest.Path, new(info.Result.Bytes), info.CacheRequest.StoreOptions));
+		}
+
+		var storeResult = Store(storeRequests);
+		foreach (var result in storeResult.VFiles)
+		{
+			// TryGetValue becaues storeResult will contain the cache hash vfiles too.
+			if (results.TryGetValue(result.FilePath, out var file))
+				file.Result.VFileInfo = result;
+		}
+
+		var final = results.Values.OrderBy(x => x.Index).Select(x => x.Result).ToList();
+
 		Tools.TimerEnd(t);
 
-		return new(vfile, content);
+		return final;
 	}
 
 	/// <summary>
@@ -589,6 +702,9 @@ public class VFile
 		return files;
 	}
 
+	public StoreResult Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
+		Store(new StoreRequest(path, content, opts));
+
 	public StoreResult Store(StoreRequest request)
 	{
 		return Store(request.AsList());
@@ -625,8 +741,8 @@ public class VFile
 			if (uniqueFilePaths.ContainsKey(path.FilePath))
 			{
 				Hooks.ErrorHandler(new(
-					VFileErrorCodes.DuplicateStoreVFileRequest,
-					$"Duplicate StoreVFileRequest detected: {path.FilePath}",
+					VFileErrorCodes.DuplicateRequest,
+					$"Duplicate StoreRequest detected: {path.FilePath}",
 					request));
 				errors.Add(request);
 			}

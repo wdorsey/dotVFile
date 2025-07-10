@@ -24,7 +24,7 @@ public class NotImplementedVFileHooks : IVFileHooks
 
 public static class VFileErrorCodes
 {
-	public const string DuplicateStoreVFileRequest = "DUPLICATE_STORE_VFILE_REQUEST";
+	public const string DuplicateRequest = "DUPLICATE_REQUEST";
 	public const string InvalidParameter = "INVALID_PARAMETER";
 	public const string NotFound = "NOT_FOUND";
 	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
@@ -223,13 +223,31 @@ public record MoveResult(
 	List<VFileInfo> NewVFileInfos,
 	List<VFileInfo> DeletedVFileInfos);
 
+public record CacheRequest(
+	byte[] CacheKey,
+	VFilePath Path,
+	Func<VFileContent> ContentFn,
+	StoreOptions? StoreOptions = null);
+
+public record CacheResult(CacheRequest CacheRequest)
+{
+	public VFileInfo? VFileInfo { get; internal set; }
+	public byte[]? Bytes { get; internal set; }
+	public bool ErrorOccurred => VFileInfo == null;
+}
+
 internal record CacheRecord(string Hash);
 
-public record GetOrStoreResult(
-	VFileInfo? VFileInfo,
-	byte[]? Bytes)
+internal record CacheRequestState(
+	int Index,
+	CacheRequest CacheRequest,
+	string Hash,
+	VFilePath CachePath)
 {
-	public bool ErrorOccurred => VFileInfo == null;
+	public string Id => CacheRequest.Path.FilePath;
+	public CacheResult Result = new(CacheRequest);
+	public bool Found => Result.VFileInfo != null && Result.Bytes != null;
+	public bool Error;
 }
 
 [JsonConverter(typeof(StringEnumConverter))]

@@ -70,30 +70,6 @@ public static class TestUtil
 	public static List<TestFile> TestFiles = [];
 	private static bool TestFilesLoaded = false;
 
-	public static TestContext RunTest(string testName, Action<TestContext> testFn)
-	{
-		var context = new TestContext(testName);
-
-		try
-		{
-			var timer = new Timer(string.Empty).Start();
-
-			testFn(context);
-
-			timer.Stop();
-
-			context.Elapsed = timer.Elapsed;
-		}
-		catch (Exception e)
-		{
-			context.Failures.Add(e.ToString());
-		}
-
-		WriteTestResult(context);
-
-		return context;
-	}
-
 	private static void WriteTestResult(TestContext context)
 	{
 		var result = context.Failures.Count > 0 ? "FAILED" : "passed";
@@ -188,6 +164,30 @@ public static class TestUtil
 		{
 			WriteLine("=== all tests passed ===");
 		}
+	}
+
+	public static TestContext RunTest(string testName, Action<TestContext> testFn)
+	{
+		var context = new TestContext(testName);
+
+		try
+		{
+			var timer = new Timer(string.Empty).Start();
+
+			testFn(context);
+
+			timer.Stop();
+
+			context.Elapsed = timer.Elapsed;
+		}
+		catch (Exception e)
+		{
+			context.Failures.Add(e.ToString());
+		}
+
+		WriteTestResult(context);
+
+		return context;
 	}
 
 	public static List<TestContext> RunOptionsTests(VFile vfile)
@@ -519,8 +519,8 @@ public static class TestUtil
 
 			// first time through should be a cache miss and store the value via getContent
 			var result = vfile.GetOrStore(
-				path,
 				Util.GetBytes(content),
+				path,
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(cacheMiss, "expected cache miss");
@@ -530,8 +530,8 @@ public static class TestUtil
 			// now we expect it to pull from cache
 			cacheMiss = false;
 			result = vfile.GetOrStore(
-				path,
 				Util.GetBytes(content),
+				path,
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(!cacheMiss, "expected cache hit");
@@ -542,8 +542,8 @@ public static class TestUtil
 			cacheMiss = false;
 			content = "2";
 			result = vfile.GetOrStore(
-				path,
 				Util.GetBytes(content),
+				path,
 				GetContent);
 			ctx.Assert(!result.ErrorOccurred, "ErrorOccurred");
 			ctx.Assert(cacheMiss, "expected cache miss");
