@@ -40,8 +40,9 @@ public class VFile
 	public DateTimeOffset NextClean { get; internal set; }
 
 	/// <summary>
-	/// FilePath for the single database file that is the entire virtual file system.
-	/// This file could potentially be very large, so take care in retrieving it programmatically.
+	/// FilePath for the single database file that is the entire virtual file system.<br/>
+	/// This file most likely cannot be directly read outside of this library, it is fully locked.
+	/// If you want to create a backup programatically, use File.Copy(SingleFilePath, [dest]).
 	/// </summary>
 	public string SingleFilePath => Database.DatabaseFilePath;
 
@@ -125,6 +126,7 @@ public class VFile
 
 	/// <summary>
 	/// Defragment the single database file. This is _very_ slow.
+	/// During this process the Database file will be completely locked.
 	/// </summary>
 	public void DefragDatabaseFile()
 	{
