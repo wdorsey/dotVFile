@@ -38,16 +38,14 @@ public class VFilePath : IEquatable<VFilePath>
 	public string FilePath { get; }
 
 	/// <summary>
-	/// Converts FilePath to a path standardized for the current system via Path.Combine.
+	/// Converts FilePath to a path standardized for the current system via Path.Combine.<br/>
 	/// e.g. "/a/b/c/file.txt" converts to "a\b\c\file.txt" on Windows
 	/// </summary>
 	public string SystemFilePath { get; }
 
 	public static string GetSystemFilePath(VDirectory directory, string fileName)
 	{
-		return Path.Combine(
-			Path.Combine([.. directory.DirectoryNames]),
-			fileName);
+		return Path.Combine(directory.SystemPath, fileName);
 	}
 
 	public override string ToString()

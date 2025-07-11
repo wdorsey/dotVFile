@@ -10,6 +10,7 @@ public class VDirectory : IEquatable<VDirectory>
 	{
 		Path = StandardizeDirectory(directory);
 		DirectoryNames = [.. Path.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+		SystemPath = System.IO.Path.Combine([.. DirectoryNames]);
 	}
 
 	public VDirectory(params string[] directories)
@@ -18,6 +19,12 @@ public class VDirectory : IEquatable<VDirectory>
 	public string Name => DirectoryNames.LastOrDefault() ?? string.Empty;
 	public string Path { get; }
 	public bool IsRoot => Equals(RootDirectory());
+
+	/// <summary>
+	/// Converts Path to a path standardized for the current system via Path.Combine.<br/>
+	/// e.g. "/a/b/c/" converts to "a\b\c" on Windows
+	/// </summary>
+	public string SystemPath { get; }
 
 	/// <summary>
 	/// Names of each directory in Path, in order

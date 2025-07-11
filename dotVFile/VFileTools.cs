@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace dotVFile;
 
@@ -32,7 +33,7 @@ internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 
 		var timer = new Timer(name);
 
-		Metrics.Timers.AddSafe(name, timer);
+		Metrics.Timers.AddOrUpdate(name, [timer], (_, list) => { list.Add(timer); return list; });
 
 		timer.Start();
 		return timer;
@@ -117,9 +118,9 @@ internal record Stats<T>(int Count, T Sum, T Avg, T Min, T Max, Func<T, string> 
 
 internal class Metrics
 {
-	public Dictionary<string, List<Timer>> Timers = [];
-	public List<StoreMetrics> StoreMetrics = [];
-	public List<GetOrStoreMetrics> GetOrStoreMetrics = [];
+	public ConcurrentDictionary<string, ConcurrentBag<Timer>> Timers = [];
+	public ConcurrentBag<StoreMetrics> StoreMetrics = [];
+	public ConcurrentBag<GetOrStoreMetrics> GetOrStoreMetrics = [];
 
 	public void Clear()
 	{

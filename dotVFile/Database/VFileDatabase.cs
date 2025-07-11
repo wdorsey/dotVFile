@@ -123,10 +123,6 @@ WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 				.AddParameter("CreateTimestamp", SqliteType.Text, DateTimeOffset.Now.ToDefaultString());
 			cmd.ExecuteNonQuery();
 			transaction.Commit();
-
-			// defrag database file. cannot be run within the transacstion
-			//cmd = new SqliteCommand("VACUUM;", connection);
-			//cmd.ExecuteNonQuery();
 		}
 		catch (Exception)
 		{
@@ -177,6 +173,15 @@ DROP TABLE IF EXISTS SystemInfo;
 			transaction.Rollback();
 			throw;
 		}
+	}
+
+	public void Vacuum()
+	{
+		// defrag database file. this is _very_ slow on large files.
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		var cmd = new SqliteCommand("VACUUM;", connection);
+		cmd.ExecuteNonQuery();
 	}
 
 	public Db.SystemInfo GetSystemInfo()

@@ -123,6 +123,14 @@ public class VFile
 		Tools.TimerEnd(t);
 	}
 
+	/// <summary>
+	/// Defragment the single database file. This is _very_ slow.
+	/// </summary>
+	public void DefragDatabaseFile()
+	{
+		Database.Vacuum();
+	}
+
 	public VFileInfo? Get(VFilePath path)
 	{
 		var t = Tools.TimerStart(Context("Get(path)"));
@@ -898,6 +906,44 @@ public class VFile
 		}
 
 		return new([.. results], [.. errors]);
+	}
+
+	public List<string> ExportDirectory(
+		VDirectory fromDirectory,
+		VDirectory toDirectory,
+		VDirectory? removeRootDirectory = null,
+		bool recursive = true,
+		Func<string, string>? modifyFileName = null,
+		Func<string, string>? modifyDirectoryPath = null)
+	{
+		var t = Tools.TimerStart(FunctionContext(nameof(ExportDirectory)));
+
+		var results = new List<string>();
+
+		var vfiles = Get(fromDirectory, recursive);
+
+		foreach (var vfile in vfiles)
+		{
+			var relativeDir = removeRootDirectory != null
+				? VDirectory.RemoveRootPath(vfile.VDirectory, removeRootDirectory)
+				: vfile.VDirectory;
+
+			var dir = new VDirectory(toDirectory.Path, relativeDir.Path);
+
+			dir = new VDirectory(modifyDirectoryPath?.Invoke(dir.Path) ?? dir.Path);
+			var fileName = modifyFileName?.Invoke(vfile.FileName) ?? vfile.FileName;
+
+			var path = new VFilePath(dir, fileName);
+
+			var bytes = GetBytes(vfile)!;
+			Util.WriteFile(path.SystemFilePath, bytes);
+
+			results.Add(path.SystemFilePath);
+		}
+
+		Tools.TimerEnd(t);
+
+		return results;
 	}
 
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)
