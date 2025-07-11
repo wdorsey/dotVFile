@@ -125,8 +125,8 @@ WHERE NOT EXISTS (SELECT 1 FROM Directory WHERE Path = '/');
 			transaction.Commit();
 
 			// defrag database file. cannot be run within the transacstion
-			cmd = new SqliteCommand("VACUUM;", connection);
-			cmd.ExecuteNonQuery();
+			//cmd = new SqliteCommand("VACUUM;", connection);
+			//cmd.ExecuteNonQuery();
 		}
 		catch (Exception)
 		{
