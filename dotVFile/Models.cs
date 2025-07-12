@@ -142,7 +142,7 @@ public record VFileStats(
 	long DatabaseFileSize,
 	FileStats VFiles,
 	FileStats Versions,
-	FileStats ContentStats,
+	FileStats Content,
 	int DirectoryCount)
 {
 	public string DatabaseFileSizeString => Util.SizeString(DatabaseFileSize);

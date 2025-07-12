@@ -97,24 +97,29 @@ internal record GetOrStoreMetrics
 	public int RequestCount;
 }
 
-internal record Stats<T>(int Count, T Sum, T Avg, T Min, T Max, Func<T, string> ToStringFn)
+public record Stats<T>(string Name, int Count, T Sum, T Avg, T Min, T Max, Func<T, string> ToStringFn)
 {
 	public string SumString => ToStringFn(Sum);
 	public string AvgString => ToStringFn(Avg);
 	public string MinString => ToStringFn(Min);
 	public string MaxString => ToStringFn(Max);
-	public object JsonObject()
-	{
-		return new
-		{
-			Count,
-			Sum = SumString,
-			Avg = AvgString,
-			Min = MinString,
-			Max = MaxString
-		};
-	}
+
+	public StatsDisplay GetDisplay() => new(Name, Count, SumString, AvgString, MinString, MaxString);
 }
+
+public record StatsDisplay(
+	string Name,
+	int Count,
+	string Sum,
+	string Avg,
+	string Min,
+	string Max);
+
+public record MetricsResult(
+	List<Stats<TimeSpan>> Timers,
+	Stats<int> StoreContentCount,
+	Stats<long> StoreContentSizes,
+	Stats<int> GetOrStoreCount);
 
 internal class Metrics
 {
@@ -129,31 +134,26 @@ internal class Metrics
 		GetOrStoreMetrics.Clear();
 	}
 
-	public Dictionary<string, object> GetMetrics()
+	public MetricsResult GetMetrics()
 	{
-		var results = new Dictionary<string, object>();
-
+		var timerStats = new List<Stats<TimeSpan>>();
 		foreach (var (name, timers) in Timers.OrderBy(x => x.Key))
 		{
-			var stats = Stats([.. timers.Select(x => x.Elapsed)]);
-			results.Add($"Timer: {name}", stats.JsonObject());
+			var stats = Stats($"{name} Timer", [.. timers.Select(x => x.Elapsed)]);
+			timerStats.Add(stats);
 		}
 
-		results.Add("StoreMetrics - Content Count",
-			Stats([.. StoreMetrics.Select(x => x.ContentSizes.Count)]).JsonObject());
+		var statsStoreCount = Stats("Store Content Count", [.. StoreMetrics.Select(x => x.ContentSizes.Count)]);
+		var statsStoreSizes = StatsSize("Store Content Size", [.. StoreMetrics.Select(x => x.ContentSizes.Sum())]);
+		var statsGetOrStoreCount = Stats("GetOrStore Request Count", [.. GetOrStoreMetrics.Select(x => x.RequestCount)]);
 
-		results.Add("StoreMetrics - Content Size",
-			StatsSize([.. StoreMetrics.Select(x => x.ContentSizes.Sum())]).JsonObject());
-
-		results.Add("GetOrStoreMetrics - Request Count",
-			Stats([.. GetOrStoreMetrics.Select(x => x.RequestCount)]).JsonObject());
-
-		return results;
+		return new(timerStats, statsStoreCount, statsStoreSizes, statsGetOrStoreCount);
 	}
 
-	public static Stats<TimeSpan> Stats(List<TimeSpan> timespans)
+	public static Stats<TimeSpan> Stats(string name, List<TimeSpan> timespans)
 	{
 		return new Stats<TimeSpan>(
+			name,
 			timespans.Count,
 			new TimeSpan(timespans.Sum(x => x.Ticks)),
 			new TimeSpan(Util.DivideLong(timespans.Sum(x => x.Ticks), timespans.Count)),
@@ -162,9 +162,10 @@ internal class Metrics
 			x => x.TimeString());
 	}
 
-	public static Stats<int> Stats(List<int> values)
+	public static Stats<int> Stats(string name, List<int> values)
 	{
 		return new Stats<int>(
+			name,
 			values.Count,
 			values.Sum(),
 			Util.DivideInt(values.Sum(), values.Count),
@@ -173,9 +174,10 @@ internal class Metrics
 			x => x.ToString());
 	}
 
-	public static Stats<long> Stats(List<long> values)
+	public static Stats<long> Stats(string name, List<long> values)
 	{
 		return new Stats<long>(
+			name,
 			values.Count,
 			values.Sum(),
 			Util.DivideLong(values.Sum(), values.Count),
@@ -184,9 +186,10 @@ internal class Metrics
 			x => x.ToString());
 	}
 
-	public static Stats<long> StatsSize(List<long> values)
+	public static Stats<long> StatsSize(string name, List<long> values)
 	{
 		return new Stats<long>(
+			name,
 			values.Count,
 			values.Sum(),
 			Util.DivideLong(values.Sum(), values.Count),

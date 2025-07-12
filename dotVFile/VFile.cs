@@ -4,9 +4,9 @@ public class VFile
 {
 	public const string Version = "1.0.0";
 
-	private static string Context(string ctx) => $"{nameof(VFile)}.{ctx}";
+	private static string Context(string ctx) => $"{ctx}"; // placeholder in case I want to add something
 	private static string FunctionContext(string fnName) => Context($"{fnName}()");
-	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}(): {ctx}");
+	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}() {ctx}");
 
 	private readonly Mutex Mutex = new();
 
@@ -168,7 +168,7 @@ public class VFile
 
 	public List<VFileInfo> GetVersions(VFilePath path, VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVersions(path, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(path)"));
 
 		var results = GetVersions(path.AsList(), versionQuery);
 
@@ -179,7 +179,7 @@ public class VFile
 
 	public List<VFileInfo> GetVersions(List<VFilePath> paths, VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVersions(paths, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(paths)"));
 
 		CleanCheck();
 
@@ -196,7 +196,7 @@ public class VFile
 		bool recursive = false,
 		VersionQuery versionQuery = VersionQuery.Versions)
 	{
-		var t = Tools.TimerStart(Context("GetVersions(directory, recursive, versionQuery)"));
+		var t = Tools.TimerStart(Context("GetVersions(directory)"));
 
 		CleanCheck();
 
@@ -328,7 +328,7 @@ public class VFile
 		var cachePaths = new List<VFilePath>();
 		var cacheDir = new VDirectory("__vfile-cache-lookup__");
 
-		var tState = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "build state"));
+		var tState = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "build-state"));
 		for (var i = 0; i < requests.Count; i++)
 		{
 			var request = requests[i];
@@ -355,10 +355,10 @@ public class VFile
 		}
 		Tools.TimerEnd(tState);
 
-		var tCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "get from cache"));
+		var tCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "get-from-cache"));
 		if (!bypassCache)
 		{
-			var tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check cache"));
+			var tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check-cache"));
 
 			var cachedInfos = Get(cachePaths);
 
@@ -367,7 +367,7 @@ public class VFile
 			var cachedPaths = new List<VFilePath>();
 			foreach (var cachedInfo in cachedInfos)
 			{
-				tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check cache"));
+				tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check-cache"));
 
 				var hash = Util.GetString(GetBytes(cachedInfo));
 				var info = stateCacheFilePathMap[cachedInfo.FilePath];
@@ -403,7 +403,7 @@ public class VFile
 
 		if (stateFilePathMap.Count > 0)
 		{
-			var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "store"));
+			var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
 			var storeRequests = new List<StoreRequest>();
 			foreach (var (filePath, info) in stateFilePathMap)
 			{
@@ -490,7 +490,7 @@ public class VFile
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null)
 	{
-		var t = Tools.TimerStart(Context("Copy(directory, to, recursive, opts)"));
+		var t = Tools.TimerStart(Context("Copy(directory)"));
 
 		CleanCheck();
 
@@ -525,7 +525,7 @@ public class VFile
 		VersionQuery versionQuery = VersionQuery.Both,
 		StoreOptions? opts = null)
 	{
-		var t = Tools.TimerStart(Context("Move(requests, versionQuery)"));
+		var t = Tools.TimerStart(Context("Move(requests)"));
 
 		var copied = Copy(requests, versionQuery, opts);
 		var deleted = Delete([.. requests.Select(x => x.From)], versionQuery);
@@ -543,7 +543,7 @@ public class VFile
 		VDirectory to,
 		StoreOptions? opts = null)
 	{
-		var t = Tools.TimerStart(Context("Move(directory, to, recursive, opts)"));
+		var t = Tools.TimerStart(Context("Move(directory)"));
 
 		var copied = Copy(directory, to, true, VersionQuery.Both, opts);
 		var deleted = Delete(directory);
@@ -656,7 +656,7 @@ public class VFile
 		CleanCheck();
 
 		// this validation loop also serves to gather unique VFilePaths.
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Validate requests"));
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Validate"));
 		foreach (var request in requests)
 		{
 			var path = request.Path;
@@ -688,7 +688,7 @@ public class VFile
 
 		try
 		{
-			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Get existing VFiles via GetVFilesByFilePath"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "GetVFilesByFilePath"));
 
 			var existingVFiles = Database.GetVFilesByFilePath([.. uniqueFilePaths.Values], VersionQuery.Latest)
 				.ToDictionary(x => x.Directory.Path + x.VFile.FileName);
@@ -697,7 +697,7 @@ public class VFile
 
 			foreach (var request in requests)
 			{
-				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Process request"));
+				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Request"));
 
 				var path = request.Path;
 
@@ -705,7 +705,7 @@ public class VFile
 				var opts = request.Opts ?? DefaultStoreOptions;
 				optsTTLIsSet = optsTTLIsSet || opts.TTL.HasValue;
 
-				timer = Tools.TimerStart(FunctionContext(nameof(Store), "Process Content"));
+				timer = Tools.TimerStart(FunctionContext(nameof(Store), "GetContent"));
 
 				// process content
 				var hash = string.Empty;
@@ -794,7 +794,7 @@ public class VFile
 
 						case VFileExistsBehavior.Version:
 						{
-							timer = Tools.TimerStart(FunctionContext(nameof(Store), "VFileExistsBehavior.Version"));
+							timer = Tools.TimerStart(FunctionContext(nameof(Store), "Version"));
 
 							if (contentDifference)
 							{
@@ -833,13 +833,13 @@ public class VFile
 				Tools.TimerEnd(rqt);
 			}
 
-			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveFileContent"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "SaveFileContent"));
 
 			// wait for all content to finish saving
 			Database.SaveFileContent([.. saveHashContentMap.Select(x => x.Value)]);
 
 			Tools.TimerEnd(timer);
-			timer = Tools.TimerStart(FunctionContext(nameof(Store), "Database.SaveStoreState"));
+			timer = Tools.TimerStart(FunctionContext(nameof(Store), "SaveStoreState"));
 
 			Database.SaveStoreState(state);
 
@@ -976,7 +976,7 @@ public class VFile
 			allDirs.Count);
 	}
 
-	public Dictionary<string, object> GetMetrics()
+	public MetricsResult GetMetrics()
 	{
 		return Tools.Metrics.GetMetrics();
 	}

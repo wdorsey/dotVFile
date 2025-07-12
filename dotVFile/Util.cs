@@ -393,23 +393,30 @@ internal static class Util
 
 	public static string NanosecondsString(this TimeSpan ts)
 	{
-		return $"0.{((int)ts.TotalNanoseconds).ToString().PadLeft(6, '0')} milliseconds";
+		return $"0.{((int)ts.TotalNanoseconds).ToString().PadLeft(6, '0')} ms";
 	}
 
 	public static string MillisecondsString(this TimeSpan ts)
 	{
-		return $"{((int)ts.TotalMilliseconds).ToStringNumber()} milliseconds";
+		return $"{((int)ts.TotalMilliseconds).ToStringNumber()} ms";
 	}
 
 	public static string SecondsString(this TimeSpan ts)
 	{
-		return $"{ts.Seconds.ToStringNumber()}.{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')} seconds";
+		return $"{ts.Seconds.ToStringNumber()},{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')} ms";
+	}
+
+	public static string MinutesString(this TimeSpan ts)
+	{
+		return $"{ts.TotalMinutes.ToStringNumber()} min";
 	}
 
 	public static string TimeString(this TimeSpan ts)
 	{
 		// only works if less than 60 seconds
-		return ts.TotalSeconds >= 1
+		return ts.TotalMinutes >= 1
+			? ts.MinutesString()
+			: ts.TotalSeconds >= 1
 			? ts.SecondsString()
 			: ts.TotalMilliseconds >= 1
 			? ts.MillisecondsString()
