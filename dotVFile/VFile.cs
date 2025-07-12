@@ -155,8 +155,6 @@ public class VFile
 		return results;
 	}
 
-	public List<VFileInfo> Get(VDirectoryInfo directory, bool recursive = false) =>
-		Get(directory.VDirectory, recursive);
 	public List<VFileInfo> Get(VDirectory directory, bool recursive = false)
 	{
 		var t = Tools.TimerStart(Context("Get(directory)"));
@@ -192,12 +190,6 @@ public class VFile
 
 		return results;
 	}
-
-	public List<VFileInfo> GetVersions(
-		VDirectoryInfo directory,
-		bool recursive = false,
-		VersionQuery versionQuery = VersionQuery.Versions) =>
-		GetVersions(directory.VDirectory, recursive, versionQuery);
 
 	public List<VFileInfo> GetVersions(
 		VDirectory directory,
@@ -262,6 +254,27 @@ public class VFile
 	}
 
 	/// <summary>
+	/// Get all VDirectories within directory.
+	/// Optionally recursive.
+	/// </summary>
+	public List<VDirectory> GetDirectories(VDirectory directory, bool recursive = false)
+	{
+		var t = Tools.TimerStart(Context("GetDirectories(dir)"));
+
+		// GetDirectoriesRecursive skips 1 because the first result will be
+		// directory, which we don't want to include.
+		var dirs = (recursive
+			? Database.GetDirectoriesRecursive(directory.Path).Skip(1)
+			: Database.GetDirectories(directory.Path))
+			.Select(x => new VDirectory(x.Path))
+			.ToList();
+
+		Tools.TimerEnd(t);
+
+		return dirs;
+	}
+
+	/// <summary>
 	/// Provides caching functionality.<br/>
 	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
 	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
@@ -284,9 +297,23 @@ public class VFile
 		return GetOrStore(request.AsList(), bypassCache).Single();
 	}
 
+	/// <summary>
+	/// Provides caching functionality.<br/>
+	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
+	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
+	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// </summary>
 	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
 		GetOrStore(request.AsList(), bypassCache).Single();
 
+	/// <summary>
+	/// Provides caching functionality.<br/>
+	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
+	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
+	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// </summary>
 	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
@@ -409,45 +436,6 @@ public class VFile
 		return results;
 	}
 
-	public VDirectoryInfo? GetDirectory(VDirectory directory)
-	{
-		var t = Tools.TimerStart(Context("GetDirectory(directory)"));
-
-		CleanCheck();
-
-		var dbInfo = Database.GetDirectoryInfo(directory.Path);
-
-		VDirectoryInfo? info = null;
-		if (dbInfo != null)
-		{
-			var dirStats = new DirectoryStats(
-				dbInfo.VFileCount,
-				dbInfo.VersionedCount,
-				dbInfo.ContentCount,
-				dbInfo.DirectoryCount,
-				dbInfo.SizeTotal,
-				dbInfo.SizeContentTotal,
-				dbInfo.VersionedSizeTotal,
-				dbInfo.VersionedSizeContentTotal);
-
-			var recursiveStats = new DirectoryStats(
-				dbInfo.RecursiveVFileCount,
-				dbInfo.RecursiveVersionedCount,
-				dbInfo.RecursiveContentCount,
-				dbInfo.RecursiveDirectoryCount,
-				dbInfo.RecursiveSizeTotal,
-				dbInfo.RecursiveSizeContentTotal,
-				dbInfo.RecursiveVersionedSizeTotal,
-				dbInfo.RecursiveVersionedSizeContentTotal);
-
-			info = new(dbInfo.Directory);
-		}
-
-		Tools.TimerEnd(t);
-
-		return info;
-	}
-
 	/// <summary>
 	/// Returns copied VFileInfo. If null, VFile was not found at request.From.
 	/// </summary>
@@ -489,19 +477,6 @@ public class VFile
 
 		return Store(storeRequests).VFiles;
 	}
-
-	/// <summary>
-	/// Copy every vfile in a given Directory.<br/>
-	/// recursive will copy all vfiles in every subdirectory.<br/>
-	/// Returns copied VFileInfos.
-	/// </summary>
-	public List<VFileInfo> Copy(
-		VDirectoryInfo directory,
-		VDirectory to,
-		bool recursive = false,
-		VersionQuery versionQuery = VersionQuery.Latest,
-		StoreOptions? opts = null) =>
-		Copy(directory.VDirectory, to, recursive, versionQuery, opts);
 
 	/// <summary>
 	/// Copy every vfile in a given Directory.<br/>
@@ -559,15 +534,6 @@ public class VFile
 
 		return new(copied, deleted);
 	}
-
-	/// <summary>
-	/// Copies then deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
-	/// </summary>
-	public MoveResult Move(
-		VDirectoryInfo directory,
-		VDirectory to,
-		StoreOptions? opts = null) =>
-		Move(directory.VDirectory, to, opts);
 
 	/// <summary>
 	/// Copies then deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
@@ -637,12 +603,6 @@ public class VFile
 
 		return [.. vfiles.Select(x => new VFileInfo(x))];
 	}
-
-	/// <summary>
-	/// Deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
-	/// Returns deleted vfiles.
-	/// </summary>
-	public List<VFileInfo> Delete(VDirectoryInfo directory) => Delete(directory.VDirectory);
 
 	/// <summary>
 	/// Deletes given directory, all subdirectories, and all vfiles within them, including versions.<br/>
@@ -944,14 +904,76 @@ public class VFile
 		return results;
 	}
 
+	public DirectoryStats GetDirectoryStats(VDirectory directory)
+	{
+		var t = Tools.TimerStart(FunctionContext(nameof(GetDirectoryStats)));
+
+		CleanCheck();
+
+		var stats = new DirectoryStats(
+			directory,
+			GetVFileStats(directory, false, false),
+			GetVFileStats(directory, true, false),
+			GetVFileStats(directory, false, true),
+			GetVFileStats(directory, true, true),
+			GetDirectories(directory, false));
+
+		Tools.TimerEnd(t);
+
+		return stats;
+	}
+
+	private FileStats GetVFileStats(VDirectory directory, bool versions, bool recursive)
+	{
+		var vfiles = versions ? GetVersions(directory, recursive) : Get(directory, recursive);
+
+		return new FileStats(vfiles.Count, vfiles.Sum(x => x.Size), vfiles.Sum(x => x.SizeStored));
+	}
+
+	public FileStats GetContentStats()
+	{
+		var t = Tools.TimerStart(FunctionContext(nameof(GetContentStats)));
+
+		CleanCheck();
+
+		var contents = Database.GetFileContent();
+
+		long size = 0, sizeStored = 0;
+		foreach (var content in contents)
+		{
+			size += content.Size;
+			sizeStored += content.SizeContent;
+		}
+
+		var stats = new FileStats(contents.Count, size, sizeStored);
+
+		Tools.TimerEnd(t);
+
+		return stats;
+	}
+
 	/// <summary>
 	/// Get <see cref="VFileStats"/> for this VFile instance.
 	/// </summary>
 	public VFileStats GetStats()
 	{
-		//var virtualStats = GetDirectory(VDirectory.RootDirectory())!.RecursiveStats;
+		var t = Tools.TimerStart(FunctionContext(nameof(GetStats)));
+
+		CleanCheck();
+
 		var dbSize = new FileInfo(SingleFilePath).Length;
-		return new(dbSize);
+		var dirStats = GetDirectoryStats(VDirectory.RootDirectory());
+		var contentStats = GetContentStats();
+		var allDirs = Database.GetDirectoriesRecursive(VDirectory.RootDirectory().Path);
+
+		Tools.TimerEnd(t);
+
+		return new(
+			dbSize,
+			dirStats.TotalVFiles,
+			dirStats.TotalVersions,
+			contentStats,
+			allDirs.Count);
 	}
 
 	public Dictionary<string, object> GetMetrics()

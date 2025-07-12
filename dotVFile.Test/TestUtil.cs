@@ -95,6 +95,7 @@ public static class TestUtil
 		results.AddRange(RunVFileAPITests(vfile));
 
 		vfile.Tools.LogMetrics();
+		WriteLine(vfile.GetStats().ToJson(true)!);
 
 		int passed = 0, failed = 0;
 		foreach (var result in results)

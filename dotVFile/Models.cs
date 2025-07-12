@@ -138,60 +138,34 @@ public record VFileInfo
 	public DateTimeOffset ContentCreationTime { get; internal set; }
 }
 
-public record VDirectoryInfo
+public record VFileStats(
+	long DatabaseFileSize,
+	FileStats VFiles,
+	FileStats Versions,
+	FileStats ContentStats,
+	int DirectoryCount)
 {
-	// @TODO: DirectoryStats currently aren't correct or good.
-	// removing them for now until it can be fixed.
-	internal VDirectoryInfo(
-		Db.Directory dir)
-	{
-		Id = dir.Id;
-		VDirectory = new(dir.Path);
-		CreationTime = dir.CreateTimestamp;
-		//DirectoryStats = dirStats;
-		//RecursiveStats = recursiveStats;
-	}
-
-	public Guid Id { get; }
-	public VDirectory VDirectory { get; }
-	public string Name => VDirectory.Name;
-	public string Path => VDirectory.Path;
-	public DateTimeOffset CreationTime { get; }
-	/// <summary>
-	/// Stats for files, dirs, and content in this Directory.
-	/// </summary>
-	//public DirectoryStats DirectoryStats { get; internal set; }
-	/// <summary>
-	/// Stats for files, dirs, and content in this Directory and all subdirectories.
-	/// </summary>
-	//public DirectoryStats RecursiveStats { get; internal set; }
+	public string DatabaseFileSizeString => Util.SizeString(DatabaseFileSize);
 }
 
 public record DirectoryStats(
-	int VFileCount,
-	int VFileCountVersions,
-	int ContentCount,
-	int DirectoryCount,
-	long Size,
-	long SizeStored,
-	long SizeVersions,
-	long SizeStoredVersions)
+	VDirectory Directory,
+	FileStats VFiles,
+	FileStats Versions,
+	FileStats TotalVFiles,
+	FileStats TotalVersions,
+	List<VDirectory> Directories)
 {
-	public int VFileCountAll => VFileCount + VFileCountVersions;
-	public long SizeAll => Size + SizeVersions;
-	public long SizeStoredAll => SizeStored + SizeStoredVersions;
-	public string SizeString => Util.SizeString(Size);
-	public string SizeStoredString => Util.SizeString(SizeStored);
-	public string SizeVersionsString => Util.SizeString(SizeVersions);
-	public string SizeStoredVersionsString => Util.SizeString(SizeStoredVersions);
-	public string SizeAllString => Util.SizeString(SizeAll);
-	public string SizeStoredAllString => Util.SizeString(SizeStoredAll);
+	public int DirectoryCount => Directories.Count;
 }
 
-public record VFileStats(
-	long DatabaseFileSize)
+public record FileStats(
+	int Count,
+	long Size,
+	long SizeStored)
 {
-	public string DatabaseFileSizeString => Util.SizeString(DatabaseFileSize);
+	public string SizeString => Util.SizeString(Size);
+	public string SizeStoredString => Util.SizeString(SizeStored);
 }
 
 public record StoreRequest(

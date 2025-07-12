@@ -259,10 +259,39 @@ WHERE
 	}
 
 	/// <summary>
-	/// Gets Directory at rootPath and all subdirectories.
+	/// Gets all Directories in path.
+	/// </summary>
+	public List<Db.Directory> GetDirectories(string path)
+	{
+		var results = new List<Db.Directory>();
+
+		const string sql = @"
+SELECT
+	d.*
+FROM
+	Directory d
+	INNER JOIN Directory p ON p.RowId = d.ParentDirectoryRowId
+WHERE
+	p.Path = @Path
+";
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		var cmd = new SqliteCommand(sql, connection);
+		cmd.AddParameter("Path", SqliteType.Text, path);
+		var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			results.Add(GetDirectory(reader));
+		}
+
+		return results;
+	}
+
+	/// <summary>
+	/// Gets Directory at path and all subdirectories.
 	/// Returns in order from root down through subdirectories.
 	/// </summary>
-	public List<Db.Directory> GetDirectoriesRecursive(string rootPath)
+	public List<Db.Directory> GetDirectoriesRecursive(string path)
 	{
 		var results = new List<Db.Directory>();
 
@@ -286,187 +315,12 @@ SELECT * FROM dirs ORDER BY Path;
 		using var connection = new SqliteConnection(ConnectionString);
 		connection.Open();
 		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("Path", SqliteType.Text, rootPath);
+		cmd.AddParameter("Path", SqliteType.Text, path);
 		var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
 			results.Add(GetDirectory(reader));
 		}
-
-		return results;
-	}
-
-	public Db.DirectoryInfo? GetDirectoryInfo(string path)
-	{
-		const string sql = $@"
-SELECT
-	*
-FROM
-	Directory
-WHERE
-	Path = @Path;
-
--- stats for just @Path
-SELECT
-	COUNT(c.RowId) AS Count
-FROM
-	Directory d
-	INNER JOIN Directory c ON c.ParentDirectoryRowId = d.RowId
-WHERE
-	d.Path = @Path;
-
-SELECT
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN 1 ELSE 0 END) AS Count,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN 1 ELSE 0 END) AS VersionedCount
-FROM
-	VFile
-	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId
-WHERE
-	Directory.Path = @Path;
-
-SELECT
-	COUNT(FileContent.RowId) AS Count,
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN Size ELSE 0 END) AS SizeTotal,
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN SizeContent ELSE 0 END) AS SizeContentTotal,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN Size ELSE 0 END) AS VersionedSizeTotal,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN SizeContent ELSE 0 END) AS VersionedSizeContentTotal
-FROM
-	VFile
-	INNER JOIN Directory ON Directory.RowId = VFile.DirectoryRowId
-	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId
-WHERE
-	Directory.Path = @Path;
-
--- recursive stats
-;WITH RECURSIVE dirs AS (
-	SELECT 
-		* 
-	FROM 
-		Directory 
-	WHERE 
-		Path = @Path
-	UNION ALL
-	SELECT 
-		Directory.* 
-	FROM 
-		dirs 
-		INNER JOIN Directory ON Directory.ParentDirectoryRowId = dirs.RowId
-)
-SELECT COUNT(*) AS Count FROM dirs;
-
-;WITH RECURSIVE dirs AS (
-	SELECT 
-		* 
-	FROM 
-		Directory 
-	WHERE 
-		Path = @Path
-	UNION ALL
-	SELECT 
-		Directory.* 
-	FROM 
-		dirs 
-		INNER JOIN Directory ON Directory.ParentDirectoryRowId = dirs.RowId
-)
-SELECT
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN 1 ELSE 0 END) AS Count,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN 1 ELSE 0 END) AS VersionedCount
-FROM
-	VFile
-	INNER JOIN dirs ON dirs.RowId = VFile.DirectoryRowId;
-
-;WITH RECURSIVE dirs AS (
-	SELECT 
-		* 
-	FROM 
-		Directory 
-	WHERE 
-		Path = @Path
-	UNION ALL
-	SELECT 
-		Directory.* 
-	FROM 
-		dirs 
-		INNER JOIN Directory ON Directory.ParentDirectoryRowId = dirs.RowId
-)
-SELECT
-	COUNT(FileContent.RowId) AS Count,
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN Size ELSE 0 END) AS SizeTotal,
-	SUM(CASE WHEN VFile.Versioned IS NULL THEN SizeContent ELSE 0 END) AS SizeContentTotal,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN Size ELSE 0 END) AS VersionedSizeTotal,
-	SUM(CASE WHEN VFile.Versioned IS NOT NULL THEN SizeContent ELSE 0 END) AS VersionedSizeContentTotal
-FROM
-	VFile
-	INNER JOIN dirs ON dirs.RowId = VFile.DirectoryRowId
-	INNER JOIN FileContent ON FileContent.RowId = VFile.FileContentRowId;
-";
-		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
-		var cmd = new SqliteCommand(sql, connection);
-		cmd.AddParameter("Path", SqliteType.Text, path);
-		var reader = cmd.ExecuteReader();
-
-		Db.DirectoryInfo? info = null;
-		if (reader.Read())
-		{
-			info = new Db.DirectoryInfo(GetDirectory(reader));
-
-			reader.NextResult();
-			reader.Read();
-
-			info.DirectoryCount = reader.GetInt32Nullable("Count") ?? 0;
-
-			reader.NextResult();
-			reader.Read();
-
-			info.VFileCount = reader.GetInt32Nullable("Count") ?? 0;
-			info.VersionedCount = reader.GetInt32Nullable("VersionedCount") ?? 0;
-
-			reader.NextResult();
-			reader.Read();
-
-			info.ContentCount = reader.GetInt32Nullable("Count") ?? 0;
-			info.SizeTotal = reader.GetInt64Nullable("SizeTotal") ?? 0;
-			info.SizeContentTotal = reader.GetInt64Nullable("SizeContentTotal") ?? 0;
-			info.VersionedSizeTotal = reader.GetInt64Nullable("VersionedSizeTotal") ?? 0;
-			info.VersionedSizeContentTotal = reader.GetInt64Nullable("VersionedSizeContentTotal") ?? 0;
-
-			reader.NextResult();
-			reader.Read();
-
-			// the recursive query includes the @Path dir, so subtract 1 to get the correct count of subdirectories.
-			info.RecursiveDirectoryCount = (reader.GetInt32Nullable("Count") - 1) ?? 0;
-
-			reader.NextResult();
-			reader.Read();
-
-			info.RecursiveVFileCount = reader.GetInt32Nullable("Count") ?? 0;
-			info.RecursiveVersionedCount = reader.GetInt32Nullable("VersionedCount") ?? 0;
-
-			reader.NextResult();
-			reader.Read();
-
-			info.RecursiveContentCount = reader.GetInt32Nullable("Count") ?? 0;
-			info.RecursiveSizeTotal = reader.GetInt64Nullable("SizeTotal") ?? 0;
-			info.RecursiveSizeContentTotal = reader.GetInt64Nullable("SizeContentTotal") ?? 0;
-			info.RecursiveVersionedSizeTotal = reader.GetInt64Nullable("VersionedSizeTotal") ?? 0;
-			info.RecursiveVersionedSizeContentTotal = reader.GetInt64Nullable("VersionedSizeContentTotal") ?? 0;
-		}
-
-		return info;
-	}
-
-	public List<Db.FileContent> GetFileContent(List<long> rowIds)
-	{
-		using var connection = new SqliteConnection(ConnectionString);
-		connection.Open();
-		var results = DbUtil.ExecuteGetById(
-			connection,
-			rowIds,
-			"FileContent",
-			"RowId",
-			"*",
-			reader => ReadEntities(reader, GetFileContent));
 
 		return results;
 	}
@@ -482,6 +336,31 @@ FROM
 			"RowId",
 			"*",
 			reader => ReadEntities(reader, GetDirectory));
+
+		return results;
+	}
+
+	public List<Db.FileContent> GetFileContent()
+	{
+		const string sql = @"SELECT * FROM FileContent";
+		using var connection = new SqliteConnection(ConnectionString);
+		var cmd = new SqliteCommand(sql, connection);
+		connection.Open();
+		var reader = cmd.ExecuteReader();
+		return ReadEntities(reader, GetFileContent);
+	}
+
+	public List<Db.FileContent> GetFileContent(List<long> rowIds)
+	{
+		using var connection = new SqliteConnection(ConnectionString);
+		connection.Open();
+		var results = DbUtil.ExecuteGetById(
+			connection,
+			rowIds,
+			"FileContent",
+			"RowId",
+			"*",
+			reader => ReadEntities(reader, GetFileContent));
 
 		return results;
 	}
