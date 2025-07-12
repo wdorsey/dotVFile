@@ -1,24 +1,5 @@
 ﻿namespace dotVFile.Test;
 
-public class TestHooks : IVFileHooks
-{
-
-	public TestHooks()
-	{
-		Util.DeleteFile(TestUtil.LogFilePath);
-	}
-
-	public void ErrorHandler(VFileError err)
-	{
-		TestUtil.WriteLine(err.ToString());
-	}
-
-	public void DebugLog(string msg)
-	{
-		TestUtil.WriteLine(msg);
-	}
-}
-
 public static class TestUtil
 {
 	public static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "test-log.txt");
@@ -28,6 +9,13 @@ public static class TestUtil
 	public static string TestFileMetadataDir = Path.Combine("test", "metadata");
 	public static List<TestFile> TestFiles = [];
 	private static bool TestFilesLoaded = false;
+
+	private static int ErrorCount = 0;
+	public static void ErrorHandler(VFileError err)
+	{
+		ErrorCount++;
+		WriteLine(err.ToString());
+	}
 
 	private static void WriteTestResult(TestContext context)
 	{
@@ -529,10 +517,12 @@ public static class TestUtil
 
 			// dupe test
 			test = "Dupe request";
+			var errorCount = ErrorCount;
 			requests.Add(request with { });
 			results = vfile.GetOrStore(requests);
 			var dupeCases = new CacheTestCase(results[1], true, false, content);
 			AssertCacheResults(requests, [@case, dupeCases], test);
+			ctx.Assert(ErrorCount == errorCount + 1, "dupe test ErrorCount");
 
 			// bulk tests
 			test = "Bulk test";

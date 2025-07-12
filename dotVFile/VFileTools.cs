@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using Newtonsoft.Json;
 
 namespace dotVFile;
 
@@ -8,28 +9,24 @@ namespace dotVFile;
 /// It also implements IVFileHooks so that it can wrap VFile.Debug.
 /// Most things in here only do work if VFile.Debug = true, for performance reasons.
 /// </summary>
-internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
+internal class VFileTools(Action<VFileError> errorHandler)
 {
-	private readonly VFile VFile = vfile;
-
-	public IVFileHooks Hooks { get; } = hooks;
+	public Action<VFileError> ErrorHandler { get; } = errorHandler;
+	public bool MetricsEnabled { get; set; }
+	public bool DebugEnabled { get; set; }
+	public Action<string>? DebugLogFn { get; set; }
 	public Metrics Metrics { get; } = new Metrics();
-
-	public void ErrorHandler(VFileError error)
-	{
-		Hooks.ErrorHandler(error);
-	}
 
 	public void DebugLog(string msg)
 	{
-		if (VFile.Debug)
-			Hooks.DebugLog(msg);
+		if (DebugEnabled)
+			DebugLogFn?.Invoke(msg);
 	}
 
 	public Timer TimerStart(string name)
 	{
-		if (!VFile.Debug)
-			return Timer.Default();
+		if (!MetricsEnabled)
+			return Timer.Default;
 
 		var timer = new Timer(name);
 
@@ -41,29 +38,30 @@ internal class VFileTools(VFile vfile, IVFileHooks hooks) : IVFileHooks
 
 	public void TimerEnd(Timer timer)
 	{
-		if (!VFile.Debug) return;
+		if (!MetricsEnabled) return;
 
 		timer.Stop();
 	}
 
 	public void LogTimerEnd(Timer timer)
 	{
+		if (!MetricsEnabled) return;
+
 		TimerEnd(timer);
 		DebugLog(timer.ToString());
 	}
 
 	public void LogMetrics()
 	{
-		if (!VFile.Debug) return;
+		if (!MetricsEnabled) return;
 
-		DebugLog("Stats: " + VFile.GetStats().ToJson(true)!);
-		DebugLog("Metrics: " + Metrics.GetMetrics().ToJson(true)!);
+		DebugLog("Metrics: " + Metrics.GetMetrics().GetDisplay().ToJson(true)!);
 	}
 }
 
 internal class Timer(string Name)
 {
-	public static Timer Default() => new("__default__");
+	public static Timer Default = new("__default__");
 
 	public string Name { get; } = Name;
 	public Stopwatch Stopwatch { get; } = new Stopwatch();
@@ -99,6 +97,8 @@ internal record GetOrStoreMetrics
 
 public record Stats<T>(string Name, int Count, T Sum, T Avg, T Min, T Max, Func<T, string> ToStringFn)
 {
+	[JsonIgnore]
+	private readonly Func<T, string> ToStringFn = ToStringFn;
 	public string SumString => ToStringFn(Sum);
 	public string AvgString => ToStringFn(Avg);
 	public string MinString => ToStringFn(Min);
@@ -119,7 +119,16 @@ public record MetricsResult(
 	List<Stats<TimeSpan>> Timers,
 	Stats<int> StoreContentCount,
 	Stats<long> StoreContentSizes,
-	Stats<int> GetOrStoreCount);
+	Stats<int> GetOrStoreCount)
+{
+	public object GetDisplay() => new
+	{
+		Timers = Timers.Select(x => x.GetDisplay()).ToList(),
+		StoreContentCount = StoreContentCount.GetDisplay(),
+		StoreContentSizes = StoreContentSizes.GetDisplay(),
+		GetOrStoreCount = GetOrStoreCount.GetDisplay()
+	};
+}
 
 internal class Metrics
 {

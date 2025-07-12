@@ -3,25 +3,6 @@ using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
 
-public interface IVFileHooks
-{
-	void ErrorHandler(VFileError error);
-	void DebugLog(string msg);
-}
-
-public class NotImplementedVFileHooks : IVFileHooks
-{
-	public void ErrorHandler(VFileError error)
-	{
-		// no impl
-	}
-
-	public void DebugLog(string msg)
-	{
-		// no impl
-	}
-}
-
 public static class VFileErrorCodes
 {
 	public const string DuplicateRequest = "DUPLICATE_REQUEST";
@@ -50,9 +31,8 @@ public record VFileError(
 public record VFileOptions(
 	string? Name,
 	string Directory,
-	IVFileHooks? Hooks = null,
-	StoreOptions? DefaultStoreOptions = null,
-	bool Debug = false)
+	Action<VFileError>? ErrorHandler = null,
+	StoreOptions? DefaultStoreOptions = null)
 {
 	/// <summary>
 	/// Name of the VFile instance
@@ -65,11 +45,13 @@ public record VFileOptions(
 	public string Directory { get; set; } = Directory;
 
 	/// <summary>
-	/// User's IVFileHooks implementation (pass null to ignore).
-	/// Hooks allow you to handle errors and hook into debug logging.
+	/// User's ErrorHandler for common, known error states.
+	/// The return values of functions still indicate success/error but
+	/// without any details.
+	/// Pass null to ignore. 
 	/// </summary>
-	public IVFileHooks Hooks { get; set; } =
-		Hooks ?? new NotImplementedVFileHooks();
+	public Action<VFileError> ErrorHandler { get; set; } =
+		ErrorHandler ?? VFile.NotImplErrorHandler;
 
 	/// <summary>
 	/// Default Store options
@@ -78,18 +60,11 @@ public record VFileOptions(
 	public StoreOptions DefaultStoreOptions { get; set; } =
 		DefaultStoreOptions ?? StoreOptions.Default();
 
-	/// <summary>
-	/// Debug flag enables Hooks.DebugLog. 
-	/// This mostly for internal development and testing.
-	/// </summary>
-	public bool Debug { get; set; } = Debug;
-
 	public static VFileOptions Default() =>
 		new(null,
 			Environment.CurrentDirectory,
-			new NotImplementedVFileHooks(),
-			StoreOptions.Default(),
-			false);
+			VFile.NotImplErrorHandler,
+			StoreOptions.Default());
 }
 
 public record VFileInfo

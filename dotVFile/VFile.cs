@@ -2,13 +2,15 @@
 
 public class VFile
 {
-	public const string Version = "1.0.0";
+	public const string Version = "0.0.1";
 
 	private static string Context(string ctx) => $"{ctx}"; // placeholder in case I want to add something
 	private static string FunctionContext(string fnName) => Context($"{fnName}()");
 	private static string FunctionContext(string fnName, string ctx) => Context($"{fnName}() {ctx}");
 
 	private readonly Mutex Mutex = new();
+
+	public static void NotImplErrorHandler(VFileError _) { }
 
 	public VFile(VFileOptions opts) : this(_ => opts) { }
 	public VFile(Func<VFileOptions, VFileOptions> configure)
@@ -21,10 +23,9 @@ public class VFile
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
-		Tools = new VFileTools(this, opts.Hooks);
+		Tools = new VFileTools(opts.ErrorHandler);
 		Database = new VFileDatabase(new(Name, Directory, Version, Tools));
 		DefaultStoreOptions = opts.DefaultStoreOptions;
-		Debug = opts.Debug;
 
 		Clean();
 	}
@@ -33,9 +34,7 @@ public class VFile
 	internal VFileTools Tools { get; private set; }
 	public string Name { get; private set; }
 	public string Directory { get; private set; }
-	public IVFileHooks Hooks => Tools.Hooks;
 	public StoreOptions DefaultStoreOptions { get; private set; }
-	public bool Debug { get; set; }
 	public DateTimeOffset LastClean { get; internal set; }
 	public DateTimeOffset NextClean { get; internal set; }
 
@@ -61,6 +60,26 @@ public class VFile
 	{
 		Database.DropDatabase();
 		Database.CreateDatabase();
+	}
+
+	/// <summary>
+	/// Toggle recording of metrics for the currently running process.
+	/// Get metrics via <see cref="GetMetrics"/>.<br/>
+	/// Disabled by default as it causes a performance hit.
+	/// </summary>
+	public void SetMetricsMode(bool enabled)
+	{
+		Tools.MetricsEnabled = enabled;
+	}
+
+	/// <summary>
+	/// Toggle debug logging. 
+	/// Used primarily for local development.
+	/// </summary>
+	public void SetDebugMode(bool enabled, Action<string>? log)
+	{
+		Tools.DebugEnabled = enabled;
+		Tools.DebugLogFn = log;
 	}
 
 	/// <summary>
@@ -279,7 +298,7 @@ public class VFile
 	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
 	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
-	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
 	/// <param name="cacheKey">Value that will be hashed and checked against the existing cached content at <paramref name="path"/></param>
 	/// <param name="path">VFilePath to content genereated by <paramref name="contentFn"/></param>
@@ -302,7 +321,7 @@ public class VFile
 	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
 	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
-	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
 	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
 		GetOrStore(request.AsList(), bypassCache).Single();
@@ -312,7 +331,7 @@ public class VFile
 	/// Ideal for content that requires an expensive process to get, but the same input always results in the same output.<br/>
 	/// e.g. Fetching static content from a url. The url or file name would be the <paramref name="cacheKey"/>, get from url in <paramref name="contentFn"/>. Can set <paramref name="ttl"/> if the content behind the url can change.<br/>
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
-	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in the <paramref name="contentFn"/>.
+	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
 	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
@@ -328,7 +347,7 @@ public class VFile
 		var cachePaths = new List<VFilePath>();
 		var cacheDir = new VDirectory("__vfile-cache-lookup__");
 
-		var tState = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "build-state"));
+		var tState = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Preprocess Requests"));
 		for (var i = 0; i < requests.Count; i++)
 		{
 			var request = requests[i];
@@ -337,14 +356,13 @@ public class VFile
 
 			if (!stateFilePathMap.TryAdd(filePath, state))
 			{
-				Hooks.ErrorHandler(new(
+				Tools.ErrorHandler(new(
 					VFileErrorCodes.DuplicateRequest,
 					$"Duplicate CacheRequest detected: {filePath}",
 					request.Path));
 			}
 			else
 			{
-
 				state.Hash = Hash(request.CacheKey);
 				state.CachePath = VFilePath.Combine(cacheDir, request.Path);
 				cachePaths.Add(state.CachePath);
@@ -355,24 +373,25 @@ public class VFile
 		}
 		Tools.TimerEnd(tState);
 
-		var tCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "get-from-cache"));
 		if (!bypassCache)
 		{
-			var tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check-cache"));
+			var tCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Cache TryGet"));
+
+			var tCacheLookup = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Cache Lookup"));
 
 			var cachedInfos = Get(cachePaths);
 
-			Tools.TimerEnd(tCheckCache);
+			Tools.TimerEnd(tCacheLookup);
 
 			var cachedPaths = new List<VFilePath>();
 			foreach (var cachedInfo in cachedInfos)
 			{
-				tCheckCache = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "check-cache"));
+				tCacheLookup = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Cache Lookup"));
 
 				var hash = Util.GetString(GetBytes(cachedInfo));
 				var info = stateCacheFilePathMap[cachedInfo.FilePath];
 
-				Tools.TimerEnd(tCheckCache);
+				Tools.TimerEnd(tCacheLookup);
 
 				if (info.Hash == hash)
 				{
@@ -398,12 +417,13 @@ public class VFile
 				// and stateFilePathMap serves as the "remaining-to-be-found" list.
 				stateFilePathMap.Remove(info.FilePath);
 			}
+
+			Tools.TimerEnd(tCache);
 		}
-		Tools.TimerEnd(tCache);
 
 		if (stateFilePathMap.Count > 0)
 		{
-			var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Store"));
+			var tStore = Tools.TimerStart(FunctionContext(nameof(GetOrStore), "Cache Miss"));
 			var storeRequests = new List<StoreRequest>();
 			foreach (var (filePath, info) in stateFilePathMap)
 			{
@@ -644,7 +664,7 @@ public class VFile
 		// New Content is also saved in bulk at the very end.
 
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
-		var timer = Timer.Default(); // re-usable timer
+		var timer = Timer.Default; // re-usable timer
 		var metrics = new StoreMetrics();
 		var results = new List<VFileInfo>();
 		var errors = new List<StoreRequest>();
@@ -667,7 +687,7 @@ public class VFile
 
 			if (uniqueFilePaths.ContainsKey(path.FilePath))
 			{
-				Hooks.ErrorHandler(new(
+				Tools.ErrorHandler(new(
 					VFileErrorCodes.DuplicateRequest,
 					$"Duplicate StoreRequest detected: {path.FilePath}",
 					request));
@@ -782,7 +802,7 @@ public class VFile
 						{
 							if (contentDifference)
 							{
-								Hooks.ErrorHandler(new(
+								Tools.ErrorHandler(new(
 									VFileErrorCodes.OverwriteNotAllowed,
 									$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
 									request));
@@ -868,7 +888,7 @@ public class VFile
 
 	public List<string> ExportDirectory(
 		VDirectory fromDirectory,
-		VDirectory toDirectory,
+		string toDirectoryPath,
 		VDirectory? removeRootDirectory = null,
 		bool recursive = true,
 		Func<string, string>? modifyFileName = null,
@@ -886,11 +906,10 @@ public class VFile
 				? VDirectory.RemoveRootPath(vfile.VDirectory, removeRootDirectory)
 				: vfile.VDirectory;
 
-			var dir = new VDirectory(toDirectory.Path, relativeDir.Path);
+			var systemDir = new VDirectory(toDirectoryPath, relativeDir.Path).SystemPath;
+			var dir = modifyDirectoryPath?.Invoke(systemDir) ?? systemDir;
 
-			dir = new VDirectory(modifyDirectoryPath?.Invoke(dir.Path) ?? dir.Path);
 			var fileName = modifyFileName?.Invoke(vfile.FileName) ?? vfile.FileName;
-
 			var path = new VFilePath(dir, fileName);
 
 			var bytes = GetBytes(vfile)!;
@@ -995,7 +1014,7 @@ public class VFile
 	{
 		if (fileName.IsEmpty())
 		{
-			Hooks.ErrorHandler(new(
+			Tools.ErrorHandler(new(
 				VFileErrorCodes.InvalidParameter,
 				$"{context}: Invalid FileName - must have a value",
 				"FileName"));
