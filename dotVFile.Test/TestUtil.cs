@@ -72,10 +72,22 @@ public static class TestUtil
 		TestFilesLoaded = true;
 	}
 
-	public static void RunTests(VFile vfile)
+	public static void RunTests()
 	{
 		Util.DeleteDirectoryContent(ResultsDir, true);
 		LoadTestFiles();
+
+		var vfile = new VFile(opts =>
+		{
+			opts.Name = "RunTests";
+			opts.Directory = Path.Combine(Environment.CurrentDirectory, "vfile");
+			opts.ErrorHandler = ErrorHandler;
+			// default store opts
+			return opts;
+		});
+
+		vfile.SetMetricsMode(true);
+		vfile.SetDebugMode(true, WriteLine);
 
 		var results = new List<TestContext>();
 
@@ -142,14 +154,18 @@ public static class TestUtil
 	{
 		var results = new List<TestContext>();
 
+		StoreOptions Opts() => vfile.GetDefaultStoreOptions();
+
 		var cases = new List<TestCase>()
 		{
-			new("Default", StoreOptions.Default()),
-			new("Compression", new(VFileCompression.Compress, null, VersionOptions.Default())),
-			new("TTL", new(VFileCompression.None, TimeSpan.FromMinutes(1), VersionOptions.Default())),
-			new("VersionBehavior.Error", StoreOptions.Default().SetVersionOpts(new(VFileExistsBehavior.Error, null, null))),
-			new("VersionBehavior.Version", StoreOptions.Default().SetVersionOpts(new(VFileExistsBehavior.Version, null, null))),
-			new("VersionBehavior.Version2", StoreOptions.Default().SetVersionOpts(new(VFileExistsBehavior.Version, 3, TimeSpan.FromMinutes(1)))),
+			new("Default", Opts()),
+			new("Compression", Opts().SetCompression(VFileCompression.Compress)),
+			new("TTL", Opts().SetTTL(TimeSpan.FromMinutes(1))),
+			new("VersionBehavior.Error", Opts().SetExistsBehavior(VFileExistsBehavior.Error)),
+			new("VersionBehavior.Version", Opts().SetExistsBehavior(VFileExistsBehavior.Version)),
+			new("VersionBehavior.Version2", Opts().SetExistsBehavior(VFileExistsBehavior.Version)
+				.SetMaxVersionsRetained(3)
+				.SetVersionTTL(TimeSpan.FromMinutes(1))),
 		};
 
 		foreach (var @case in cases)

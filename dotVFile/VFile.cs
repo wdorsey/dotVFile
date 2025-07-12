@@ -39,6 +39,11 @@ public class VFile
 	public DateTimeOffset NextClean { get; internal set; }
 
 	/// <summary>
+	/// Gets a copy of the <see cref="DefaultStoreOptions"/>
+	/// </summary>
+	public StoreOptions GetDefaultStoreOptions() => DefaultStoreOptions with { };
+
+	/// <summary>
 	/// FilePath for the single database file that is the entire virtual file system.<br/>
 	/// This file most likely cannot be directly read outside of this library, it is fully locked.
 	/// If you want to create a backup programatically, use File.Copy(SingleFilePath, [dest]).
@@ -865,6 +870,7 @@ public class VFile
 
 			Tools.TimerEnd(timer);
 
+			// if vfiles were versioned, check to see if NextClean needs to change.
 			if (optsTTLIsSet && (state.NewVFiles.Count > 0 || state.UpdateVFiles.Count > 0))
 				SetNextClean();
 

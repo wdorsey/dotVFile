@@ -60,4 +60,4 @@ using (FileStream fs = File.OpenRead(file.FilePath))
 	bytes = vfile.GetBytes(result.VFiles.Single());
 }
 
-TestUtil.RunTests(vfile);
+TestUtil.RunTests();
