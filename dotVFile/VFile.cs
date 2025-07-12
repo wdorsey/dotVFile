@@ -409,10 +409,6 @@ public class VFile
 		return results;
 	}
 
-	/// <summary>
-	/// Get <see cref="DirectoryStats"/> for this VFile instance.
-	/// </summary>
-	public DirectoryStats GetStats() => GetDirectory(VDirectory.RootDirectory())!.RecursiveStats;
 	public VDirectoryInfo? GetDirectory(VDirectory directory)
 	{
 		var t = Tools.TimerStart(Context("GetDirectory(directory)"));
@@ -444,7 +440,7 @@ public class VFile
 				dbInfo.RecursiveVersionedSizeTotal,
 				dbInfo.RecursiveVersionedSizeContentTotal);
 
-			info = new(dbInfo.Directory, dirStats, recursiveStats);
+			info = new(dbInfo.Directory);
 		}
 
 		Tools.TimerEnd(t);
@@ -946,6 +942,21 @@ public class VFile
 		Tools.TimerEnd(t);
 
 		return results;
+	}
+
+	/// <summary>
+	/// Get <see cref="VFileStats"/> for this VFile instance.
+	/// </summary>
+	public VFileStats GetStats()
+	{
+		//var virtualStats = GetDirectory(VDirectory.RootDirectory())!.RecursiveStats;
+		var dbSize = new FileInfo(SingleFilePath).Length;
+		return new(dbSize);
+	}
+
+	public Dictionary<string, object> GetMetrics()
+	{
+		return Tools.Metrics.GetMetrics();
 	}
 
 	private static List<VFileInfo> ConvertDbVFile(List<Db.VFileModel> vfiles)

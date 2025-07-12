@@ -156,7 +156,7 @@ internal class Metrics
 		return new Stats<TimeSpan>(
 			timespans.Count,
 			new TimeSpan(timespans.Sum(x => x.Ticks)),
-			new TimeSpan(timespans.Sum(x => x.Ticks) / timespans.Count),
+			new TimeSpan(Util.DivideLong(timespans.Sum(x => x.Ticks), timespans.Count)),
 			new TimeSpan(timespans.Min(x => x.Ticks)),
 			new TimeSpan(timespans.Max(x => x.Ticks)),
 			x => x.TimeString());
@@ -167,9 +167,9 @@ internal class Metrics
 		return new Stats<int>(
 			values.Count,
 			values.Sum(),
-			values.Sum() / values.Count,
-			values.Min(),
-			values.Max(),
+			Util.DivideInt(values.Sum(), values.Count),
+			values.MinSafe(0),
+			values.MaxSafe(0),
 			x => x.ToString());
 	}
 
@@ -178,9 +178,9 @@ internal class Metrics
 		return new Stats<long>(
 			values.Count,
 			values.Sum(),
-			values.Sum() / values.Count,
-			values.Min(),
-			values.Max(),
+			Util.DivideLong(values.Sum(), values.Count),
+			values.MinSafe(0),
+			values.MaxSafe(0),
 			x => x.ToString());
 	}
 
@@ -189,9 +189,9 @@ internal class Metrics
 		return new Stats<long>(
 			values.Count,
 			values.Sum(),
-			values.Sum() / values.Count,
-			values.Min(),
-			values.Max(),
+			Util.DivideLong(values.Sum(), values.Count),
+			values.MinSafe(0),
+			values.MaxSafe(0),
 			Util.SizeString);
 	}
 }

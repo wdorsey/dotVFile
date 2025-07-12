@@ -140,16 +140,16 @@ public record VFileInfo
 
 public record VDirectoryInfo
 {
+	// @TODO: DirectoryStats currently aren't correct or good.
+	// removing them for now until it can be fixed.
 	internal VDirectoryInfo(
-		Db.Directory dir,
-		DirectoryStats dirStats,
-		DirectoryStats recursiveStats)
+		Db.Directory dir)
 	{
 		Id = dir.Id;
 		VDirectory = new(dir.Path);
 		CreationTime = dir.CreateTimestamp;
-		DirectoryStats = dirStats;
-		RecursiveStats = recursiveStats;
+		//DirectoryStats = dirStats;
+		//RecursiveStats = recursiveStats;
 	}
 
 	public Guid Id { get; }
@@ -160,11 +160,11 @@ public record VDirectoryInfo
 	/// <summary>
 	/// Stats for files, dirs, and content in this Directory.
 	/// </summary>
-	public DirectoryStats DirectoryStats { get; internal set; }
+	//public DirectoryStats DirectoryStats { get; internal set; }
 	/// <summary>
 	/// Stats for files, dirs, and content in this Directory and all subdirectories.
 	/// </summary>
-	public DirectoryStats RecursiveStats { get; internal set; }
+	//public DirectoryStats RecursiveStats { get; internal set; }
 }
 
 public record DirectoryStats(
@@ -186,6 +186,12 @@ public record DirectoryStats(
 	public string SizeStoredVersionsString => Util.SizeString(SizeStoredVersions);
 	public string SizeAllString => Util.SizeString(SizeAll);
 	public string SizeStoredAllString => Util.SizeString(SizeStoredAll);
+}
+
+public record VFileStats(
+	long DatabaseFileSize)
+{
+	public string DatabaseFileSizeString => Util.SizeString(DatabaseFileSize);
 }
 
 public record StoreRequest(

@@ -89,6 +89,36 @@ internal static class Util
 		return count == 1 ? one : plural;
 	}
 
+	/// <summary>
+	/// Always rounds up.
+	/// </summary>
+	public static int DivideInt(int numerator, int denominator)
+	{
+		return denominator == 0 ? 0
+			: numerator / denominator
+			+ (numerator % denominator == 0 ? 0 : 1);
+	}
+
+	/// <summary>
+	/// Always rounds up.
+	/// </summary>
+	public static long DivideLong(long numerator, long denominator)
+	{
+		return denominator == 0 ? 0
+			: numerator / denominator
+			+ (numerator % denominator == 0 ? 0 : 1);
+	}
+
+	public static T MinSafe<T>(this IEnumerable<T> list, T @default)
+	{
+		return list.AnySafe() ? list.Min() ?? @default : @default;
+	}
+
+	public static T MaxSafe<T>(this IEnumerable<T> list, T @default)
+	{
+		return list.AnySafe() ? list.Max() ?? @default : @default;
+	}
+
 	public static string FileExtension(string? fileName)
 	{
 		return fileName.IsEmpty()
