@@ -12,7 +12,7 @@ var versionOpts = new VersionOptions(
 	null,  // MaxVersionsRetained: max number of versions to keep. default is null (unlimited)
 	null); // TTL: time-to-live for versioned vfiles. default is null (no TTL)
 
-// VFileStoreOptions can be passed in for each individual file that is Stored, if desired.
+// StoreOptions can be passed in for each individual file that is Stored, if desired.
 // But usually the vast majority of Store operations can use the same standard set of options,
 // so a default set of options is given to the VFile instance at startup.
 // Can also pass in null StoreOptions at startup to use
@@ -24,7 +24,7 @@ var storeOpts = new StoreOptions(
 	//   Default is None
 	VFileCompression.None,
 	null,         // TTL: time-to-live for vfiles. default is null (no TTL)
-	versionOpts); // VFileVersionOptions, see above
+	versionOpts); // VersionOptions, see above
 
 var vfilePath = Path.Combine(Environment.CurrentDirectory, "vfile");
 

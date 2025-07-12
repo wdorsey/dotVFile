@@ -6,8 +6,7 @@ namespace dotVFile;
 
 /// <summary>
 /// Tools/Utilities for internal usage.
-/// It also implements IVFileHooks so that it can wrap VFile.Debug.
-/// Most things in here only do work if VFile.Debug = true, for performance reasons.
+/// Things in here only do work if the appropriate flag is enabled.
 /// </summary>
 internal class VFileTools(Action<VFileError> errorHandler)
 {
@@ -121,14 +120,18 @@ public record MetricsResult(
 	Stats<long> StoreContentSizes,
 	Stats<int> GetOrStoreCount)
 {
-	public object GetDisplay() => new
-	{
-		Timers = Timers.Select(x => x.GetDisplay()).ToList(),
-		StoreContentCount = StoreContentCount.GetDisplay(),
-		StoreContentSizes = StoreContentSizes.GetDisplay(),
-		GetOrStoreCount = GetOrStoreCount.GetDisplay()
-	};
+	public MetricsDisplay GetDisplay() => new(
+		[.. Timers.Select(x => x.GetDisplay())],
+		StoreContentCount.GetDisplay(),
+		StoreContentSizes.GetDisplay(),
+		GetOrStoreCount.GetDisplay());
 }
+
+public record MetricsDisplay(
+	List<StatsDisplay> Timers,
+	StatsDisplay StoreContentCount,
+	StatsDisplay StoreContentSizes,
+	StatsDisplay GetOrStoreCount);
 
 internal class Metrics
 {
