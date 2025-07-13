@@ -28,6 +28,7 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
     - [StoreOptions](#storeoptions)
 - [API](#api)
     - [Error Handling](#error-handling)
+    - [Initialization](#initialization)
 
 ## Core Types
 
@@ -194,3 +195,46 @@ using (FileStream fs = File.OpenRead(filePath))
 ### Error Handling
 - Any error that occurs will result in an exception being thrown. This includes both known error states and unhandled exceptions.
 - VFile API function documentation specifies all exceptions they will throw for known error states.
+
+### Initialization
+A `VFile` instance is created with user-specified `VFileOptions`
+
+```JSON
+{
+  "VFileOptions": {
+    "Name": "dotVFile.Test",
+    "Directory": "C:\\vfile",
+    "DefaultStoreOptions": {
+      "Compression": "None",
+      "TTL": null,
+      "VersionOpts": {
+        "ExistsBehavior": "Overwrite",
+        "MaxVersionsRetained": null,
+        "TTL": null
+      }
+    }
+  }
+}
+```
+
+- `Name` is the name of the `VFile` instance and will be used to name the database file. It can be left null and the default name "dotVFile" will be used.
+- `Directory` is the directory path where `VFile` database file will be created.
+- `DefaultStoreOptions` is the default `StoreOptions`. See [StoreOptions](#storeoptions) for details.
+
+Example:
+```C#
+var opts = new VFileOptions(
+	"dotVFile.Test", // Name of the VFile instance. null to use default name.
+	"C:\\vfile",     // Directory to store VFile's single-file
+	storeOpts);      // Default Store options, null will use StoreOptions.Default()
+
+var vfile = new VFile(opts);
+
+// Configuring via a func is also available. Passed-in opts is StoreOptions.Default()
+var vfile = new VFile(opts =>
+{
+	opts.Name = "dotVFile.Test";
+	opts.Directory = "C:\\vfile";
+	return opts;
+});
+```
