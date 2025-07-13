@@ -57,7 +57,7 @@ Some notes on `VDirectory` paths:
 - The Root directory of every VFile system is '/'. `VDirectory.IsRoot` indicates that you've reached the root.
 - `VDirectory.ParentDirectory()` will let you traverse up the directory path.
 
-But you don't need to worry about fiddling with precisely formatted paths, `VDirectory` will accept a wide variety of paths and handle converting them to VFile's standard path.
+But you don't need to worry about fiddling with precisely formatted paths, `VDirectory` will accept a wide variety of paths and handle converting them to VFile's standard path:
 ```C#
 // all of these result in a VDirectory.Path of "/a/b/c/"
 vdir = new VDirectory("/a/b/c/");
@@ -88,11 +88,10 @@ vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 }
 ```
 
-- `FilePath` is the unique identifier of each vfile, standardized through [VDirectory](#vdirectory).
+- `FilePath` is the unique identifier of each vfile. The path is standardized through [VDirectory](#vdirectory).
 - `SystemFilePath` is the operating system representation of the `FilePath`. Handy for exporting files.
 
-As with [VDirectory](#vdirectory), for the most part you don't need to worry about fiddling with filepath formatting, you can create a `VFilePath` in many different ways.
-
+As with [VDirectory](#vdirectory), for the most part you don't need to worry about fiddling with filepath formatting, you can create a `VFilePath` in a few different ways:
 ```C#
 // all of these result in a VFilePath of "/a/b/c/file.txt"
 vfilePath = new VFilePath(new VDirectory("/a/b/c"), "file.txt");
