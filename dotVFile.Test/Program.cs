@@ -36,7 +36,6 @@ var path = Path.Combine(Environment.CurrentDirectory, "vfile");
 var opts = new VFileOptions(
 	"dotVFile.Test",       // Name of the VFile instance. null to use default name.
 	path,                  // Directory to store VFile's single-file
-	TestUtil.ErrorHandler, // Error handler function, pass null to ignore
 	storeOpts);            // Default Store options, null will use StoreOptions.Default()
 
 var vfile = new VFile(opts);
@@ -88,9 +87,6 @@ using (FileStream fs = File.OpenRead(filePath))
 	vcontent = new VFileContent(fs);
 }
 
-//vfilePath = new VFilePath("/a/b/c/file.txt");
-//vcontent = new VFileContent(filePath);
-//var result = vfile.Store(vfilePath, vcontent);
-//var vfileInfo = result.VFiles.Single();
 
+/* TESTS */
 TestUtil.RunTests();

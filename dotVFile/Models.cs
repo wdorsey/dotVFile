@@ -3,65 +3,15 @@ using Newtonsoft.Json.Converters;
 
 namespace dotVFile;
 
-public static class VFileErrorCodes
+internal static class VFileErrors
 {
-	public const string DuplicateRequest = "DUPLICATE_REQUEST";
-	public const string InvalidParameter = "INVALID_PARAMETER";
-	public const string NotFound = "NOT_FOUND";
-	public const string OverwriteNotAllowed = "OVERWRITE_NOT_ALLOWED";
-	public const string MultipleApplicationInstances = "MULTIPLE_APPLICATION_INSTANCES";
-}
-
-public record VFileError : VFileError<object>
-{
-	internal VFileError(
-		string errorCode,
-		string message,
-		object? data) : base(errorCode, message, data) { }
-
-	internal static VFileError FromTypedError<T>(VFileError<T> error) => new(error.ErrorCode, error.Message, error.Data);
-}
-
-public record VFileError<T>
-{
-	internal VFileError(
-		string errorCode,
-		string message,
-		T? data)
-	{
-		ErrorCode = errorCode;
-		Message = message;
-		Data = data;
-	}
-
-	public string ErrorCode { get; }
-	public string Message { get; }
-	public T? Data { get; }
-
-	public override string ToString()
-	{
-		return $@"
-=== VFileError {ErrorCode} ===
-{Message}
-{Data.ToJson(true)}
-==================
-";
-	}
-}
-
-public record VFileResult<TRequest, TResult>(TRequest Request)
-{
-	public TRequest Request { get; } = Request;
-	public TResult? Result { get; set; }
-	public VFileError<TRequest>? Error { get; set; }
-	public bool HasResult => Result != null;
-	public bool HasError => Error != null;
+	public static ArgumentException Duplicate(string type, string context) =>
+		new($"Duplicate {type} detected: {context}");
 }
 
 public record VFileOptions(
 	string? Name,
 	string Directory,
-	Action<VFileError>? ErrorHandler = null,
 	StoreOptions? DefaultStoreOptions = null)
 {
 	/// <summary>
@@ -75,15 +25,6 @@ public record VFileOptions(
 	public string Directory { get; set; } = Directory;
 
 	/// <summary>
-	/// User's ErrorHandler for common, known error states.
-	/// The return values of functions still indicate success/error but
-	/// without any details.
-	/// Pass null to ignore. 
-	/// </summary>
-	public Action<VFileError> ErrorHandler { get; set; } =
-		ErrorHandler ?? VFile.NotImplErrorHandler;
-
-	/// <summary>
 	/// Default Store options
 	/// null will use VFileSystem.GetDefaultStoreOptions()
 	/// </summary>
@@ -93,7 +34,6 @@ public record VFileOptions(
 	public static VFileOptions Default() =>
 		new(null,
 			Environment.CurrentDirectory,
-			VFile.NotImplErrorHandler,
 			StoreOptions.Default());
 }
 
@@ -202,8 +142,8 @@ public record CopyRequest(
 }
 
 public record MoveResult(
-	List<VFileResult<StoreRequest, VFileInfo>> NewVFileInfos,
-	List<VFileInfo> DeletedVFileInfos);
+	List<VFileInfo> NewVFiles,
+	List<VFileInfo> DeletedVFiles);
 
 public record CacheRequest(
 	byte[] CacheKey,
@@ -223,7 +163,7 @@ public record CacheRequest(
 	public StoreOptions? StoreOptions { get; set; } = StoreOptions;
 }
 
-public record CacheResult
+public record CacheResult(CacheRequest Request)
 {
 	public VFileInfo? VFileInfo { get; set; }
 	public byte[]? Bytes { get; set; }
@@ -239,7 +179,7 @@ internal record CacheRequestState(
 	public string Id => CacheRequest.Path.FilePath;
 	public string? Hash;
 	public VFilePath? CachePath;
-	public CacheResult Result = new();
+	public CacheResult Result = new(CacheRequest);
 }
 
 public record StoreOptions(

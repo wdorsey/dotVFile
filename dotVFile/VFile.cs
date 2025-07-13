@@ -10,8 +10,6 @@ public class VFile
 
 	private readonly Mutex Mutex = new();
 
-	public static void NotImplErrorHandler(VFileError _) { }
-
 	public VFile(VFileOptions opts) : this(_ => opts) { }
 	public VFile(Func<VFileOptions, VFileOptions> configure)
 	{
@@ -23,7 +21,7 @@ public class VFile
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
-		Tools = new VFileTools(opts.ErrorHandler);
+		Tools = new();
 		Database = new VFileDatabase(new(Name, Directory, Version, Tools));
 		DefaultStoreOptions = opts.DefaultStoreOptions;
 
@@ -41,7 +39,8 @@ public class VFile
 	/// <summary>
 	/// Gets a copy of the <see cref="DefaultStoreOptions"/>
 	/// </summary>
-	public StoreOptions GetDefaultStoreOptions() => DefaultStoreOptions with { };
+	public StoreOptions GetDefaultStoreOptions() =>
+		DefaultStoreOptions with { VersionOpts = DefaultStoreOptions.VersionOpts with { } };
 
 	/// <summary>
 	/// FilePath for the single database file that is the entire virtual file system.<br/>
@@ -310,7 +309,7 @@ public class VFile
 	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
 	/// <param name="ttl">Optional time-to-live for the content.</param>
 	/// <param name="bypassCache">Bypass cache and run contentFn.</param>
-	public VFileResult<CacheRequest, CacheResult> GetOrStore(
+	public CacheResult GetOrStore(
 		byte[] cacheKey,
 		VFilePath path,
 		Func<VFileContent> contentFn,
@@ -328,7 +327,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
-	public VFileResult<CacheRequest, CacheResult> GetOrStore(CacheRequest request, bool bypassCache = false) =>
+	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
 		GetOrStore(request.AsList(), bypassCache).Single();
 
 	/// <summary>
@@ -338,7 +337,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
-	public List<VFileResult<CacheRequest, CacheResult>> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
+	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
 		var metrics = new GetOrStoreMetrics { RequestCount = requests.Count };
@@ -346,7 +345,7 @@ public class VFile
 		CleanCheck();
 
 		// key is FilePath
-		var results = new List<VFileResult<CacheRequest, CacheResult>>();
+		var results = new List<CacheResult>();
 		var stateFilePathMap = new Dictionary<string, CacheRequestState>();
 		var stateCacheFilePathMap = new Dictionary<string, CacheRequestState>();
 		var cachePaths = new List<VFilePath>();
@@ -366,12 +365,7 @@ public class VFile
 			// and thus will be ignored by the rest of this function.
 			if (!stateFilePathMap.TryAdd(filePath, state))
 			{
-				var err = new VFileError<CacheRequest>(
-					VFileErrorCodes.DuplicateRequest,
-					$"Duplicate CacheRequest detected: {filePath}",
-					request);
-				Tools.ErrorHandler(VFileError.FromTypedError(err));
-				results.Add(new(request) { Error = err });
+				throw VFileErrors.Duplicate(nameof(CacheRequest), filePath);
 			}
 			else
 			{
@@ -379,17 +373,10 @@ public class VFile
 				state.CachePath = VFilePath.Combine(cacheDir, request.Path);
 				cachePaths.Add(state.CachePath);
 				stateCacheFilePathMap.Add(state.CachePath.FilePath, state);
-				results.Add(new(request) { Result = state.Result });
+				results.Add(state.Result);
 			}
 		}
 		Tools.TimerEnd(tState);
-
-		// if any errors occurred in preprocessing, abort operation
-		if (results.Any(x => x.HasError))
-		{
-			Tools.TimerEnd(t);
-			return results;
-		}
 
 		if (!bypassCache)
 		{
@@ -458,12 +445,12 @@ public class VFile
 				storeRequests.Add(new(info.CacheRequest.Path, new(info.Result.Bytes), info.CacheRequest.StoreOptions));
 			}
 
-			var storeResult = Store(storeRequests);
-			foreach (var result in storeResult.ResultsOrThrow())
+			var vfiles = Store(storeRequests);
+			foreach (var vfile in vfiles)
 			{
 				// TryGetValue becaues storeResult will contain the cache hash vfiles too.
-				if (stateFilePathMap.TryGetValue(result.FilePath, out var file))
-					file.Result.VFileInfo = result;
+				if (stateFilePathMap.TryGetValue(vfile.FilePath, out var file))
+					file.Result.VFileInfo = vfile;
 			}
 			Tools.TimerEnd(tStore);
 		}
@@ -475,11 +462,9 @@ public class VFile
 	}
 
 	/// <summary>
-	/// Returns copied VFileInfo. If null, VFile was not found at request.From.
+	/// Returns copied VFileInfo. If null, VFile was not found for request.From path.
 	/// </summary>
-	/// <param name="request"></param>
-	/// <returns></returns>
-	public VFileResult<StoreRequest, VFileInfo>? Copy(
+	public VFileInfo? Copy(
 		CopyRequest request,
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null) =>
@@ -488,7 +473,7 @@ public class VFile
 	/// <summary>
 	/// Returns copied VFileInfos.
 	/// </summary>
-	public List<VFileResult<StoreRequest, VFileInfo>> Copy(
+	public List<VFileInfo> Copy(
 		List<CopyRequest> requests,
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null)
@@ -518,10 +503,10 @@ public class VFile
 
 	/// <summary>
 	/// Copy every vfile in a given Directory.<br/>
-	/// recursive will copy all vfiles in every subdirectory.<br/>
+	/// recursive will copy all vfiles in every subdirectory too.<br/>
 	/// Returns copied VFileInfos.
 	/// </summary>
-	public List<VFileResult<StoreRequest, VFileInfo>> Copy(
+	public List<VFileInfo> Copy(
 		VDirectory directory,
 		VDirectory to,
 		bool recursive = false,
@@ -667,15 +652,12 @@ public class VFile
 		return files;
 	}
 
-	public VFileResult<StoreRequest, VFileInfo> Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
+	public VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
 		Store(new StoreRequest(path, content, opts));
 
-	public VFileResult<StoreRequest, VFileInfo> Store(StoreRequest request)
-	{
-		return Store(request.AsList()).Single();
-	}
+	public VFileInfo Store(StoreRequest request) => Store(request.AsList()).Single();
 
-	public List<VFileResult<StoreRequest, VFileInfo>> Store(List<StoreRequest> requests)
+	public List<VFileInfo> Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
 		// a StoreState object that is saved at the very end.
@@ -686,8 +668,7 @@ public class VFile
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default; // re-usable timer
 		var metrics = new StoreMetrics();
-		// key is request.Path.FilePath
-		var results = new List<VFileResult<StoreRequest, VFileInfo>>();
+		var results = new List<VFileInfo>();
 		var state = new StoreState();
 		var saveHashContentMap = new Dictionary<string, (VFileInfo Info, byte[] Bytes)>();
 		var filePaths = new List<VFilePath>();
@@ -701,29 +682,18 @@ public class VFile
 		foreach (var request in requests)
 		{
 			var path = request.Path;
+
+			ArgumentException.ThrowIfNullOrEmpty(path.FileName, "FileName");
+
 			if (uniqueFilePaths.Contains(path.FilePath))
 			{
-				var err = new VFileError<StoreRequest>(
-					VFileErrorCodes.DuplicateRequest,
-					$"Duplicate StoreRequest detected: {path.FilePath}",
-					request);
-				Tools.ErrorHandler(VFileError.FromTypedError(err));
-				results.Add(new(request) { Error = err });
+				throw VFileErrors.Duplicate(nameof(StoreRequest), path.FilePath);
 			}
-			else
-			{
-				results.Add(new(request));
-			}
+
 			filePaths.Add(path);
 			uniqueFilePaths.Add(path.FilePath);
 		}
 		Tools.TimerEnd(timer);
-
-		if (results.Any(x => x.HasError))
-		{
-			Tools.TimerEnd(t);
-			return results;
-		}
 
 		// Clean does a Mutex lock, so make sure it is not within the lock below.
 		CleanCheck();
@@ -741,23 +711,11 @@ public class VFile
 
 			Tools.TimerEnd(timer);
 
-			foreach (var result in results)
+			foreach (var request in requests)
 			{
 				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Request"));
 
-				var request = result.Request;
 				var path = request.Path;
-
-				if (path.FileName.IsEmpty())
-				{
-					result.Error = new(
-						VFileErrorCodes.InvalidParameter,
-						"FileName must have a value.",
-						request);
-					Tools.ErrorHandler(VFileError.FromTypedError(result.Error));
-					Tools.TimerEnd(rqt);
-					continue;
-				}
 
 				var now = DateTimeOffset.Now;
 				var opts = request.Opts ?? DefaultStoreOptions;
@@ -816,13 +774,13 @@ public class VFile
 				if (existingVFile == null)
 				{
 					state.NewVFiles.Add(newVFile);
-					result.Result = newVFile;
+					results.Add(newVFile);
 				}
 				else
 				{
 					// previous VFileInfo exists but content is different.
 					var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-					result.Result = contentDifference ? newVFile : new VFileInfo(existingVFile);
+					results.Add(contentDifference ? newVFile : new VFileInfo(existingVFile));
 
 					switch (opts.VersionOpts.ExistsBehavior)
 					{
@@ -840,12 +798,8 @@ public class VFile
 						{
 							if (contentDifference)
 							{
-								result.Result = null;
-								result.Error = new(
-									VFileErrorCodes.OverwriteNotAllowed,
-									$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
-									request);
-								Tools.ErrorHandler(VFileError.FromTypedError(result.Error));
+								var msg = $"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}";
+								throw new InvalidOperationException(msg);
 							}
 							break;
 						}

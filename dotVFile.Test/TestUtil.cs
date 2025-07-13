@@ -5,17 +5,9 @@ public static class TestUtil
 	public static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "test-log.txt");
 	public static readonly Random Rand = new();
 	public static string TestFilesDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
-	public static string ResultsDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestResults");
 	public static string TestFileMetadataDir = Path.Combine("test", "metadata");
 	public static List<TestFile> TestFiles = [];
 	private static bool TestFilesLoaded = false;
-
-	private static int ErrorCount = 0;
-	public static void ErrorHandler(VFileError err)
-	{
-		ErrorCount++;
-		WriteLine(err.ToString());
-	}
 
 	private static void WriteTestResult(TestContext context)
 	{
@@ -74,14 +66,13 @@ public static class TestUtil
 
 	public static void RunTests()
 	{
-		Util.DeleteDirectoryContent(ResultsDir, true);
+		Util.DeleteFile(LogFilePath);
 		LoadTestFiles();
 
 		var vfile = new VFile(opts =>
 		{
 			opts.Name = "RunTests";
 			opts.Directory = Path.Combine(Environment.CurrentDirectory, "vfile");
-			opts.ErrorHandler = ErrorHandler;
 			// default store opts
 			return opts;
 		});
@@ -173,6 +164,8 @@ public static class TestUtil
 			vfile.DANGER_WipeData();
 			var opts = @case.Opts;
 
+			WriteLine(opts.ToJson()!);
+
 			string TestName(string name) => $"{@case.Name} - {name}";
 
 			results.Add(RunTest(TestName("StoreVFiles/GetBytes"), ctx =>
@@ -183,12 +176,11 @@ public static class TestUtil
 				var requests = TestFiles.Select(x => new StoreRequest(x.VFilePath, new(x.FilePath), opts)).ToList();
 				for (var i = 0; i < 2; i++)
 				{
-					var result = vfile.Store(requests);
-					var results = result.ResultsOrThrow();
-					for (var k = 0; k < results.Count; k++)
+					var vfiles = vfile.Store(requests);
+					for (var k = 0; k < vfiles.Count; k++)
 					{
 						// order of infos should mirror TestFiles
-						var info = results[k];
+						var info = vfiles[k];
 						var file = TestFiles[k];
 						var bytes = vfile.GetBytes(info) ?? throw new Exception($"null vfile: {info.VFilePath.FilePath}");
 						// write files for debugging
@@ -245,13 +237,19 @@ public static class TestUtil
 					// store files at same path with same content, should not error.
 					requests = GenerateMetadataRequests(opts, false);
 					var result = vfile.Store(requests);
-					ctx.Assert(result.ResultsOrThrow().Count == requests.Count, "result.VFiles.Count == requests.Count");
-					ctx.Assert(result.Errors().Count == 0, "result.Errors.Count == 0");
+					ctx.Assert(result.Count == requests.Count, "result.VFiles.Count == requests.Count");
+
 					// try to store files at same path but with different content, should error
-					requests = GenerateMetadataRequests(opts, true);
-					result = vfile.Store(requests);
-					ctx.Assert(result.All(x => !x.HasResult), "Duplicate VFiles stored w/ Error behavior");
-					ctx.Assert(result.Errors().Count == requests.Count, "result.Errors.Count == requests.Count");
+					try
+					{
+						requests = GenerateMetadataRequests(opts, true);
+						vfile.Store(requests);
+						ctx.Assert(false, "Store did not throw exception");
+					}
+					catch (Exception ex)
+					{
+						WriteLine(ex.ToString());
+					}
 				}));
 			}
 			else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Version)
@@ -262,7 +260,7 @@ public static class TestUtil
 					requests = GenerateMetadataRequests(opts, true);
 					var result = vfile.Store(requests);
 					var versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-					ctx.Assert(versions.Count == result.ResultsOrThrow().Count, $"Version count mismatch: versions.Count={versions.Count}");
+					ctx.Assert(versions.Count == result.Count, $"Version count mismatch: versions.Count={versions.Count}");
 
 					if (opts.VersionOpts.MaxVersionsRetained.HasValue)
 					{
@@ -274,7 +272,7 @@ public static class TestUtil
 							vfile.Store(requests);
 						}
 						versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-						var expected = max * result.ResultsOrThrow().Count;
+						var expected = max * result.Count;
 						ctx.Assert(versions.Count == expected, $"MaxVersionsRetained: Expected {expected} versions, got {versions.Count}");
 					}
 
@@ -375,8 +373,8 @@ public static class TestUtil
 			var path = new VFilePath(to, rq.Path.FileName);
 			var info = vfile.Get(rq.Path)!;
 			var copy = vfile.Copy(new CopyRequest(info, path), opts: opts);
-			AssertRequestFileInfo(rq with { Path = path }, copy?.Result, false, ctx, context);
-			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!.Result!)!, ctx, context);
+			AssertRequestFileInfo(rq with { Path = path }, copy, false, ctx, context);
+			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!), ctx, context);
 
 			// copy all requests
 			var infos = vfile.Get([.. requests.Select(x => x.Path)]);
@@ -384,14 +382,14 @@ public static class TestUtil
 			var copies = vfile.Copy([.. copyRequests], opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies.ResultsOrThrow(), false, ctx, $"{context} copy all requests");
+				copies, false, ctx, $"{context} copy all requests");
 
 			// copy by directory
 			to = new VDirectory("copy/by/directory");
 			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies.ResultsOrThrow(), false, ctx, $"{context} copy by directory");
+				copies, false, ctx, $"{context} copy by directory");
 
 			// copy by directory recursive
 			var from = new VDirectory("recursive");
@@ -415,7 +413,7 @@ public static class TestUtil
 			copies = vfile.Copy(from, to, true, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.VDirectory), x.Path.FileName) })],
-				copies.ResultsOrThrow(), false, ctx, $"{context} copy by directory recursive");
+				copies, false, ctx, $"{context} copy by directory recursive");
 		}));
 
 		context = "DeleteVFiles";
@@ -462,7 +460,7 @@ public static class TestUtil
 
 			// delete directory, copy everything to a new directory for testing
 			var to = new VDirectory("delete-by-directory");
-			result = vfile.Copy(new VDirectory("/"), to, true, opts: opts).ResultsOrThrow();
+			result = vfile.Copy(new VDirectory("/"), to, true, opts: opts);
 			ctx.Assert(result.Count > 0, $"{result.Count} > 0"); // sanity
 			var deleteResult = vfile.Delete(to);
 			ctx.Assert(result.Count == deleteResult.Count, $"{result.Count} == {deleteResult.Count}");
@@ -484,19 +482,10 @@ public static class TestUtil
 					var request = requests[i];
 					var @case = testCases[i];
 					ctx.Assert(request.Path.Equals(@case.Result.Request.Path), $"{test}: Results order check, Path.Equals");
-					if (@case.ExpectedError)
-					{
-						ctx.Assert(@case.Result.HasError, $"{test}: ExpectedError - HasError");
-						ctx.Assert(@case.CacheResult?.VFileInfo == null, $"{test}: ExpectedError - VFileInfo == null");
-						ctx.Assert(@case.CacheResult?.Bytes == null, $"{test}: ExpectedError - Bytes == null");
-					}
-					else
-					{
-						ctx.Assert(@case.CacheResult!.VFileInfo != null, $"{test}: VFileInfo != null");
-						ctx.Assert(@case.CacheResult!.Bytes != null, $"{test}: Bytes != null");
-						ctx.Assert(@case.CacheResult!.CacheHit == @case.ExpectedCacheHit, $"{test}: ExpectedCacheHit");
-						ctx.Assert(Util.GetString(@case.CacheResult!.Bytes) == Util.GetString(@case.ExpectedContent), $"{test}: ExpectedContent");
-					}
+					ctx.Assert(@case.Result.VFileInfo != null, $"{test}: VFileInfo != null");
+					ctx.Assert(@case.Result.Bytes != null, $"{test}: Bytes != null");
+					ctx.Assert(@case.Result.CacheHit == @case.ExpectedCacheHit, $"{test}: ExpectedCacheHit");
+					ctx.Assert(Util.GetString(@case.Result.Bytes) == Util.GetString(@case.ExpectedContent), $"{test}: ExpectedContent");
 				}
 			}
 
@@ -516,7 +505,7 @@ public static class TestUtil
 			// first time through should be a cache miss and store the value via getContent
 			var test = "Single, Cache Miss";
 			var results = vfile.GetOrStore(requests);
-			var @case = new CacheTestCase(results.Single(), false, false, content);
+			var @case = new CacheTestCase(results.Single(), false, content);
 			AssertCacheResults(requests, [@case], test);
 
 			// now we expect it to pull from cache
@@ -534,12 +523,16 @@ public static class TestUtil
 
 			// dupe test
 			test = "Dupe request";
-			var errorCount = ErrorCount;
 			requests.Add(request with { });
-			results = vfile.GetOrStore(requests);
-			var dupeCases = new CacheTestCase(results[1], true, false, content);
-			AssertCacheResults(requests, [@case, dupeCases], test);
-			ctx.Assert(ErrorCount == errorCount + 1, "dupe test ErrorCount");
+			try
+			{
+				vfile.GetOrStore(requests);
+				ctx.Assert(false, "GetOrStore did not throw exception for duplicate request");
+			}
+			catch (Exception ex)
+			{
+				WriteLine(ex.ToString());
+			}
 
 			// bulk tests
 			test = "Bulk test";
@@ -550,12 +543,12 @@ public static class TestUtil
 					VFilePath.Combine(dir, x.Path),
 					() => x.Content))];
 			results = vfile.GetOrStore(requests);
-			var cases = results.Select(x => new CacheTestCase(x, false, false, x.Request.ContentFn().GetContent())).ToList();
+			var cases = results.Select(x => new CacheTestCase(x, false, x.Request.ContentFn().GetContent())).ToList();
 			AssertCacheResults(requests, cases, test);
 
 			test = "Bulk test, Cache Hit";
 			results = vfile.GetOrStore(requests);
-			cases = [.. results.Select(x => new CacheTestCase(x, false, true, x.Request.ContentFn().GetContent()))];
+			cases = [.. results.Select(x => new CacheTestCase(x, true, x.Request.ContentFn().GetContent()))];
 			AssertCacheResults(requests, cases, test);
 		}));
 
@@ -628,20 +621,6 @@ public static class TestUtil
 		ctx.Assert(info != null, $"{context}: info is null");
 		ctx.Assert(request.Path.FilePath == info!.VFilePath.FilePath, $"{context}: {request.Path.FilePath} == {info.VFilePath.FilePath}");
 		ctx.Assert(expectVersioned ? info.Versioned != null : info.Versioned == null, $"{context}: incorrect Versioned");
-	}
-
-	public static void WriteFiles(TestFile file, VFileInfo info, byte[] bytes, string testName)
-	{
-		var dir = Path.Combine(ResultsDir, testName);
-		var (name, _) = Util.FileNameAndExtension(file.FileName);
-
-		var filePath = Path.Combine(dir, file.FileName);
-		var vfilePath = Path.Combine(dir, $"vfile_{file.FileName}");
-		var vfileInfoPath = Path.Combine(dir, $"VFileInfo_{name}.json");
-
-		Util.WriteFile(filePath, new VFileContent(file.FilePath).GetContent());
-		Util.WriteFile(vfilePath, bytes);
-		Util.WriteFile(vfileInfoPath, Util.GetBytes(info, true, false));
 	}
 
 	public static T ChooseOne<T>(this List<T> list)

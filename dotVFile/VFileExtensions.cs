@@ -55,44 +55,4 @@ public static class VFileExtensions
 		options.TTL = ttl;
 		return options;
 	}
-
-	public static TResult ResultOrThrow<TRequest, TResult>(this VFileResult<TRequest, TResult> result)
-	{
-		if (result.HasError || !result.HasResult)
-		{
-			throw new Exception("VFileResult has error or has null Result");
-		}
-
-		return result.Result!;
-	}
-
-	public static List<TResult> ResultsOrThrow<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
-	{
-		if (results.HasErrors() || !results.AllHasResult())
-		{
-			throw new Exception("VFileResults have errors or null Results");
-		}
-
-		return [.. results.Select(x => x.Result!)];
-	}
-
-	public static List<TResult?> Results<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
-	{
-		return [.. results.Select(x => x.Result)];
-	}
-
-	public static List<VFileError<TRequest>?> Errors<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
-	{
-		return [.. results.Select(x => x.Error)];
-	}
-
-	public static bool AllHasResult<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
-	{
-		return results.All(x => x.HasResult);
-	}
-
-	public static bool HasErrors<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
-	{
-		return results.Any(x => x.HasError);
-	}
 }

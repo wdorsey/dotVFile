@@ -8,9 +8,8 @@ namespace dotVFile;
 /// Tools/Utilities for internal usage.
 /// Things in here only do work if the appropriate flag is enabled.
 /// </summary>
-internal class VFileTools(Action<VFileError> errorHandler)
+internal class VFileTools
 {
-	public Action<VFileError> ErrorHandler { get; } = errorHandler;
 	public bool MetricsEnabled { get; set; }
 	public bool DebugEnabled { get; set; }
 	public Action<string>? DebugLogFn { get; set; }

@@ -42,14 +42,11 @@ public class TestContext(string testName)
 }
 
 public record CacheTestCase(
-	VFileResult<CacheRequest, CacheResult> Result,
-	bool ExpectedError,
+	CacheResult Result,
 	bool ExpectedCacheHit,
 	byte[] ExpectedContent)
 {
-	public VFileResult<CacheRequest, CacheResult> Result { get; set; } = Result;
-	public CacheResult? CacheResult => Result.Result;
-	public bool ExpectedError { get; set; } = ExpectedError;
+	public CacheResult Result { get; set; } = Result;
 	public bool ExpectedCacheHit { get; set; } = ExpectedCacheHit;
 	public byte[] ExpectedContent { get; set; } = ExpectedContent;
 }
