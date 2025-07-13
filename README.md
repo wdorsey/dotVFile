@@ -51,10 +51,11 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 - `SystemPath` is the operating system representation of the `Path`. Handy for exporting files.
 - `DirectoryNames` holds the names of each individual directory in the `Path`, in order. Useful for lots of various functionality.
 
-Some notes on VFile paths:
+Some notes on `VDirectory` paths:
 - `Path` effectively acts as a unique directory identifier.
 - A `VDirectory` path uses '/' to divide directories and always has both a leading and trailing divider. 
 - The Root directory of every VFile system is '/'. `VDirectory.IsRoot` indicates that you've reached the root.
+- `VDirectory.ParentDirectory()` will let you traverse up the directory path.
 
 But you don't need to worry about fiddling with precisely formatted paths, `VDirectory` will accept a wide variety of paths and handle converting them to VFile's standard path.
 ```C#
