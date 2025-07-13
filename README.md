@@ -18,7 +18,7 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 	- [VDirectory](#vdirectory)
     - [VFilePath](#vfilepath)
     - [VFileContent](#vfilecontent)
-    - [VFileInfo](vfileinfo)
+    - [VFileInfo](#vfileinfo)
 
 ## Core Types
 
