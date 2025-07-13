@@ -160,6 +160,32 @@ using (FileStream fs = File.OpenRead(filePath))
 - `Compression` indicates if compression was used or not.
 
 ### StoreOptions
+`StoreOptions` specify how to store each individual vfile.
+
+- A default `StoreOptions` is defined during VFile initialization as the majority of use-cases will use the same settings.
+- Each individual vfile `StoreRequest` can have it's own custom `StoreOptions`, but if none are provided the default is used.
+- VFile recommended default is available via `StoreOptions.Default()`
+
+```JSON
+{
+  "StoreOptions": {
+    "Compression": "None",
+    "TTL": null,
+    "VersionOpts": {
+      "ExistsBehavior": "Overwrite",
+      "MaxVersionsRetained": null,
+      "TTL": null
+    }
+  }
+}
+```
+
+- `Compression` specifies if the file contents should be compressed or not.
+- `TTL` is a `TimeSpan?` that specifies the time-to-live for the vfile. null means no TTL.
+- `VersionOpts` specifies how to handle situations where a store operation is requested for a vfile that already exists.
+- `VersionOpts.ExistsBehavior` defines the overall behavior. Values are `Overwrite`, `Version`, and `Error`.
+- `VersionOpts.MaxVersionsRetained` is the maximum number of versions retained. Only applies when `VersionOpts.ExistsBehavior` is `Version`.
+- `VersionOpts.TTL` is the time-to-live for versions. Only applies when `VersionOpts.ExistsBehavior` is `Version`.
 
 ## API
 

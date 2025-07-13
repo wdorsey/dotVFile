@@ -31,6 +31,9 @@ var storeOpts = new StoreOptions(
 	null,         // TTL: time-to-live for vfiles. default is null (no TTL)
 	versionOpts); // VersionOptions, see above
 
+Console.WriteLine(new { StoreOptions = storeOpts }.ToJson(true));
+return;
+
 var path = Path.Combine(Environment.CurrentDirectory, "vfile");
 
 var opts = new VFileOptions(
