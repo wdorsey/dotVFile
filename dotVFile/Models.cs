@@ -12,11 +12,32 @@ public static class VFileErrorCodes
 	public const string MultipleApplicationInstances = "MULTIPLE_APPLICATION_INSTANCES";
 }
 
-public record VFileError(
-	string ErrorCode,
-	string Message,
-	object? Data)
+public record VFileError : VFileError<object>
 {
+	internal VFileError(
+		string errorCode,
+		string message,
+		object? data) : base(errorCode, message, data) { }
+
+	internal static VFileError FromTypedError<T>(VFileError<T> error) => new(error.ErrorCode, error.Message, error.Data);
+}
+
+public record VFileError<T>
+{
+	internal VFileError(
+		string errorCode,
+		string message,
+		T? data)
+	{
+		ErrorCode = errorCode;
+		Message = message;
+		Data = data;
+	}
+
+	public string ErrorCode { get; }
+	public string Message { get; }
+	public T? Data { get; }
+
 	public override string ToString()
 	{
 		return $@"
@@ -26,6 +47,15 @@ public record VFileError(
 ==================
 ";
 	}
+}
+
+public record VFileResult<TRequest, TResult>(TRequest Request)
+{
+	public TRequest Request { get; } = Request;
+	public TResult? Result { get; set; }
+	public VFileError<TRequest>? Error { get; set; }
+	public bool HasResult => Result != null;
+	public bool HasError => Error != null;
 }
 
 public record VFileOptions(
@@ -161,10 +191,6 @@ public record StoreRequest(
 	internal string? CopyHash { get; set; }
 }
 
-public record StoreResult(
-	List<VFileInfo> VFiles,
-	List<StoreRequest> Errors);
-
 public record CopyRequest(
 	VFilePath From,
 	VFilePath To)
@@ -176,7 +202,7 @@ public record CopyRequest(
 }
 
 public record MoveResult(
-	List<VFileInfo> NewVFileInfos,
+	List<VFileResult<StoreRequest, VFileInfo>> NewVFileInfos,
 	List<VFileInfo> DeletedVFileInfos);
 
 public record CacheRequest(
@@ -192,15 +218,15 @@ public record CacheRequest(
 	/// </summary>
 	public VFilePath Path { get; set; } = Path;
 
+	[JsonIgnore]
 	public Func<VFileContent> ContentFn { get; set; } = ContentFn;
 	public StoreOptions? StoreOptions { get; set; } = StoreOptions;
 }
 
-public record CacheResult(CacheRequest CacheRequest)
+public record CacheResult
 {
-	public VFileInfo? VFileInfo { get; internal set; }
-	public bool ErrorOccurred => VFileInfo == null;
-	public byte[]? Bytes { get; internal set; }
+	public VFileInfo? VFileInfo { get; set; }
+	public byte[]? Bytes { get; set; }
 	public bool CacheHit = false;
 }
 
@@ -213,7 +239,7 @@ internal record CacheRequestState(
 	public string Id => CacheRequest.Path.FilePath;
 	public string? Hash;
 	public VFilePath? CachePath;
-	public CacheResult Result = new(CacheRequest);
+	public CacheResult Result = new();
 }
 
 public record StoreOptions(

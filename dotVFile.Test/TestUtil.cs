@@ -184,10 +184,11 @@ public static class TestUtil
 				for (var i = 0; i < 2; i++)
 				{
 					var result = vfile.Store(requests);
-					for (var k = 0; k < result.VFiles.Count; k++)
+					var results = result.ResultsOrThrow();
+					for (var k = 0; k < results.Count; k++)
 					{
 						// order of infos should mirror TestFiles
-						var info = result.VFiles[k];
+						var info = results[k];
 						var file = TestFiles[k];
 						var bytes = vfile.GetBytes(info) ?? throw new Exception($"null vfile: {info.VFilePath.FilePath}");
 						// write files for debugging
@@ -244,13 +245,13 @@ public static class TestUtil
 					// store files at same path with same content, should not error.
 					requests = GenerateMetadataRequests(opts, false);
 					var result = vfile.Store(requests);
-					ctx.Assert(result.VFiles.Count == requests.Count, "result.VFiles.Count == requests.Count");
-					ctx.Assert(result.Errors.Count == 0, "result.Errors.Count == 0");
+					ctx.Assert(result.ResultsOrThrow().Count == requests.Count, "result.VFiles.Count == requests.Count");
+					ctx.Assert(result.Errors().Count == 0, "result.Errors.Count == 0");
 					// try to store files at same path but with different content, should error
 					requests = GenerateMetadataRequests(opts, true);
 					result = vfile.Store(requests);
-					ctx.Assert(result.VFiles.IsEmpty(), "Duplicate VFiles stored w/ Error behavior");
-					ctx.Assert(result.Errors.Count == requests.Count, "result.Errors.Count == requests.Count");
+					ctx.Assert(result.All(x => !x.HasResult), "Duplicate VFiles stored w/ Error behavior");
+					ctx.Assert(result.Errors().Count == requests.Count, "result.Errors.Count == requests.Count");
 				}));
 			}
 			else if (opts.VersionOpts.ExistsBehavior == VFileExistsBehavior.Version)
@@ -261,7 +262,7 @@ public static class TestUtil
 					requests = GenerateMetadataRequests(opts, true);
 					var result = vfile.Store(requests);
 					var versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-					ctx.Assert(versions.Count == result.VFiles.Count, $"Version count mismatch: versions.Count={versions.Count}");
+					ctx.Assert(versions.Count == result.ResultsOrThrow().Count, $"Version count mismatch: versions.Count={versions.Count}");
 
 					if (opts.VersionOpts.MaxVersionsRetained.HasValue)
 					{
@@ -273,7 +274,7 @@ public static class TestUtil
 							vfile.Store(requests);
 						}
 						versions = vfile.GetVersions(new VDirectory(TestFileMetadataDir));
-						var expected = max * result.VFiles.Count;
+						var expected = max * result.ResultsOrThrow().Count;
 						ctx.Assert(versions.Count == expected, $"MaxVersionsRetained: Expected {expected} versions, got {versions.Count}");
 					}
 
@@ -374,8 +375,8 @@ public static class TestUtil
 			var path = new VFilePath(to, rq.Path.FileName);
 			var info = vfile.Get(rq.Path)!;
 			var copy = vfile.Copy(new CopyRequest(info, path), opts: opts);
-			AssertRequestFileInfo(rq with { Path = path }, copy, false, ctx, context);
-			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!)!, ctx, context);
+			AssertRequestFileInfo(rq with { Path = path }, copy?.Result, false, ctx, context);
+			AssertContent(vfile.GetBytes(info)!, vfile.GetBytes(copy!.Result!)!, ctx, context);
 
 			// copy all requests
 			var infos = vfile.Get([.. requests.Select(x => x.Path)]);
@@ -383,14 +384,14 @@ public static class TestUtil
 			var copies = vfile.Copy([.. copyRequests], opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies, false, ctx, $"{context} copy all requests");
+				copies.ResultsOrThrow(), false, ctx, $"{context} copy all requests");
 
 			// copy by directory
 			to = new VDirectory("copy/by/directory");
 			copies = vfile.Copy(new VDirectory(TestFileMetadataDir), to, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. requests.Select(x => x with { Path = new(to, x.Path.FileName) })],
-				copies, false, ctx, $"{context} copy by directory");
+				copies.ResultsOrThrow(), false, ctx, $"{context} copy by directory");
 
 			// copy by directory recursive
 			var from = new VDirectory("recursive");
@@ -410,11 +411,11 @@ public static class TestUtil
 			};
 
 			var result = vfile.Store(recursiveRequests);
-			ctx.Assert(result.VFiles.Count == recursiveRequests.Count, "result.VFiles.Count == recursiveRequests.Count");
+			ctx.Assert(result.Count == recursiveRequests.Count, "result.VFiles.Count == recursiveRequests.Count");
 			copies = vfile.Copy(from, to, true, opts: opts);
 			AssertRequestsVFileInfos(
 				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.VDirectory), x.Path.FileName) })],
-				copies, false, ctx, $"{context} copy by directory recursive");
+				copies.ResultsOrThrow(), false, ctx, $"{context} copy by directory recursive");
 		}));
 
 		context = "DeleteVFiles";
@@ -461,7 +462,7 @@ public static class TestUtil
 
 			// delete directory, copy everything to a new directory for testing
 			var to = new VDirectory("delete-by-directory");
-			result = vfile.Copy(new VDirectory("/"), to, true, opts: opts);
+			result = vfile.Copy(new VDirectory("/"), to, true, opts: opts).ResultsOrThrow();
 			ctx.Assert(result.Count > 0, $"{result.Count} > 0"); // sanity
 			var deleteResult = vfile.Delete(to);
 			ctx.Assert(result.Count == deleteResult.Count, $"{result.Count} == {deleteResult.Count}");
@@ -474,27 +475,27 @@ public static class TestUtil
 		{
 			void AssertCacheResults(
 				List<CacheRequest> requests,
-				List<CacheTestCase> results,
+				List<CacheTestCase> testCases,
 				string test)
 			{
-				ctx.Assert(requests.Count == results.Count, $"{test}: requests.Count == results.Count");
+				ctx.Assert(requests.Count == testCases.Count, $"{test}: requests.Count == testCases.Count");
 				for (var i = 0; i < requests.Count; i++)
 				{
 					var request = requests[i];
-					var result = results[i];
-					ctx.Assert(request.Path.Equals(result.Result.CacheRequest.Path), $"{test}: Results order check, Path.Equals");
-					if (result.ExpectedError)
+					var @case = testCases[i];
+					ctx.Assert(request.Path.Equals(@case.Result.Request.Path), $"{test}: Results order check, Path.Equals");
+					if (@case.ExpectedError)
 					{
-						ctx.Assert(result.Result.ErrorOccurred, $"{test}: ExpectedError - ErrorOccurred");
-						ctx.Assert(result.Result.VFileInfo == null, $"{test}: ExpectedError - VFileInfo == null");
-						ctx.Assert(result.Result.Bytes == null, $"{test}: ExpectedError - Bytes == null");
+						ctx.Assert(@case.Result.HasError, $"{test}: ExpectedError - HasError");
+						ctx.Assert(@case.CacheResult?.VFileInfo == null, $"{test}: ExpectedError - VFileInfo == null");
+						ctx.Assert(@case.CacheResult?.Bytes == null, $"{test}: ExpectedError - Bytes == null");
 					}
 					else
 					{
-						ctx.Assert(result.Result.VFileInfo != null, $"{test}: VFileInfo != null");
-						ctx.Assert(result.Result.Bytes != null, $"{test}: Bytes != null");
-						ctx.Assert(result.Result.CacheHit == result.ExpectedCacheHit, $"{test}: ExpectedCacheHit");
-						ctx.Assert(Util.GetString(result.Result.Bytes) == Util.GetString(result.ExpectedContent), $"{test}: ExpectedContent");
+						ctx.Assert(@case.CacheResult!.VFileInfo != null, $"{test}: VFileInfo != null");
+						ctx.Assert(@case.CacheResult!.Bytes != null, $"{test}: Bytes != null");
+						ctx.Assert(@case.CacheResult!.CacheHit == @case.ExpectedCacheHit, $"{test}: ExpectedCacheHit");
+						ctx.Assert(Util.GetString(@case.CacheResult!.Bytes) == Util.GetString(@case.ExpectedContent), $"{test}: ExpectedContent");
 					}
 				}
 			}
@@ -549,12 +550,12 @@ public static class TestUtil
 					VFilePath.Combine(dir, x.Path),
 					() => x.Content))];
 			results = vfile.GetOrStore(requests);
-			var cases = results.Select(x => new CacheTestCase(x, false, false, x.CacheRequest.ContentFn().GetContent())).ToList();
+			var cases = results.Select(x => new CacheTestCase(x, false, false, x.Request.ContentFn().GetContent())).ToList();
 			AssertCacheResults(requests, cases, test);
 
 			test = "Bulk test, Cache Hit";
 			results = vfile.GetOrStore(requests);
-			cases = [.. results.Select(x => new CacheTestCase(x, false, true, x.CacheRequest.ContentFn().GetContent()))];
+			cases = [.. results.Select(x => new CacheTestCase(x, false, true, x.Request.ContentFn().GetContent()))];
 			AssertCacheResults(requests, cases, test);
 		}));
 

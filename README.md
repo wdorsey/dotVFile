@@ -161,3 +161,11 @@ using (FileStream fs = File.OpenRead(filePath))
 ## API
 
 ### Error Handling
+- VFile prefers to not throw exceptions when possible.
+- However, certain conditions or unhandled exceptions will still throw.
+- If you wish to always throw exceptions instead, simply throw in the function you pass to `VFileOptions.ErrorHandler`.
+- When a known error condition is hit, it will report the error details through the `VFileOptions.ErrorHandler`. The API will return a value that indicates the operation failed, but not the error details nor will it throw an exception.
+- Examples 
+    - `Store` returns a result object that contains an `Errors` property of type `List<StoreRequest>`. It reports the exact errors through the `VFileOptions.ErrorHandler`.
+    - If a `Get` operation does not find the requested item, it will return `null` or an empty list.
+- I'm honestly not sure if this system is _good_, but I don't like throwing exceptions if I can avoid it. I'd rather leave those decisions up to the caller.

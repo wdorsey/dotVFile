@@ -310,7 +310,7 @@ public class VFile
 	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
 	/// <param name="ttl">Optional time-to-live for the content.</param>
 	/// <param name="bypassCache">Bypass cache and run contentFn.</param>
-	public CacheResult GetOrStore(
+	public VFileResult<CacheRequest, CacheResult> GetOrStore(
 		byte[] cacheKey,
 		VFilePath path,
 		Func<VFileContent> contentFn,
@@ -328,7 +328,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
-	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
+	public VFileResult<CacheRequest, CacheResult> GetOrStore(CacheRequest request, bool bypassCache = false) =>
 		GetOrStore(request.AsList(), bypassCache).Single();
 
 	/// <summary>
@@ -338,7 +338,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
-	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
+	public List<VFileResult<CacheRequest, CacheResult>> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
 		var metrics = new GetOrStoreMetrics { RequestCount = requests.Count };
@@ -346,7 +346,7 @@ public class VFile
 		CleanCheck();
 
 		// key is FilePath
-		var results = new List<CacheResult>();
+		var results = new List<VFileResult<CacheRequest, CacheResult>>();
 		var stateFilePathMap = new Dictionary<string, CacheRequestState>();
 		var stateCacheFilePathMap = new Dictionary<string, CacheRequestState>();
 		var cachePaths = new List<VFilePath>();
@@ -359,12 +359,19 @@ public class VFile
 			var filePath = request.Path.FilePath;
 			var state = new CacheRequestState(i, request);
 
+			// all results created here, in order of requests
+
+			// if the filePath already exists, it is a duplicate.
+			// in that case it will fail to add to stateFilePathMap or cachePaths
+			// and thus will be ignored by the rest of this function.
 			if (!stateFilePathMap.TryAdd(filePath, state))
 			{
-				Tools.ErrorHandler(new(
+				var err = new VFileError<CacheRequest>(
 					VFileErrorCodes.DuplicateRequest,
 					$"Duplicate CacheRequest detected: {filePath}",
-					request.Path));
+					request);
+				Tools.ErrorHandler(VFileError.FromTypedError(err));
+				results.Add(new(request) { Error = err });
 			}
 			else
 			{
@@ -372,11 +379,17 @@ public class VFile
 				state.CachePath = VFilePath.Combine(cacheDir, request.Path);
 				cachePaths.Add(state.CachePath);
 				stateCacheFilePathMap.Add(state.CachePath.FilePath, state);
+				results.Add(new(request) { Result = state.Result });
 			}
-
-			results.Add(state.Result); // results created here, in order of requests
 		}
 		Tools.TimerEnd(tState);
+
+		// if any errors occurred in preprocessing, abort operation
+		if (results.Any(x => x.HasError))
+		{
+			Tools.TimerEnd(t);
+			return results;
+		}
 
 		if (!bypassCache)
 		{
@@ -446,7 +459,7 @@ public class VFile
 			}
 
 			var storeResult = Store(storeRequests);
-			foreach (var result in storeResult.VFiles)
+			foreach (var result in storeResult.ResultsOrThrow())
 			{
 				// TryGetValue becaues storeResult will contain the cache hash vfiles too.
 				if (stateFilePathMap.TryGetValue(result.FilePath, out var file))
@@ -466,7 +479,7 @@ public class VFile
 	/// </summary>
 	/// <param name="request"></param>
 	/// <returns></returns>
-	public VFileInfo? Copy(
+	public VFileResult<StoreRequest, VFileInfo>? Copy(
 		CopyRequest request,
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null) =>
@@ -475,7 +488,7 @@ public class VFile
 	/// <summary>
 	/// Returns copied VFileInfos.
 	/// </summary>
-	public List<VFileInfo> Copy(
+	public List<VFileResult<StoreRequest, VFileInfo>> Copy(
 		List<CopyRequest> requests,
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null)
@@ -500,7 +513,7 @@ public class VFile
 
 		Tools.TimerEnd(t);
 
-		return Store(storeRequests).VFiles;
+		return Store(storeRequests);
 	}
 
 	/// <summary>
@@ -508,7 +521,7 @@ public class VFile
 	/// recursive will copy all vfiles in every subdirectory.<br/>
 	/// Returns copied VFileInfos.
 	/// </summary>
-	public List<VFileInfo> Copy(
+	public List<VFileResult<StoreRequest, VFileInfo>> Copy(
 		VDirectory directory,
 		VDirectory to,
 		bool recursive = false,
@@ -654,25 +667,27 @@ public class VFile
 		return files;
 	}
 
-	public StoreResult Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
+	public VFileResult<StoreRequest, VFileInfo> Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
 		Store(new StoreRequest(path, content, opts));
 
-	public StoreResult Store(StoreRequest request)
+	public VFileResult<StoreRequest, VFileInfo> Store(StoreRequest request)
 	{
-		return Store(request.AsList());
+		return Store(request.AsList()).Single();
 	}
 
-	public StoreResult Store(List<StoreRequest> requests)
+	public List<VFileResult<StoreRequest, VFileInfo>> Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
 		// a StoreState object that is saved at the very end.
 		// New Content is also saved in bulk at the very end.
 
+		if (requests.IsEmpty()) return [];
+
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default; // re-usable timer
 		var metrics = new StoreMetrics();
-		var results = new List<VFileInfo>();
-		var errors = new List<StoreRequest>();
+		// key is request.Path.FilePath
+		var results = new List<VFileResult<StoreRequest, VFileInfo>>();
 		var state = new StoreState();
 		var saveHashContentMap = new Dictionary<string, (VFileInfo Info, byte[] Bytes)>();
 		var filePaths = new List<VFilePath>();
@@ -688,21 +703,26 @@ public class VFile
 			var path = request.Path;
 			if (uniqueFilePaths.Contains(path.FilePath))
 			{
-				Tools.ErrorHandler(new(
+				var err = new VFileError<StoreRequest>(
 					VFileErrorCodes.DuplicateRequest,
 					$"Duplicate StoreRequest detected: {path.FilePath}",
-					request));
-				errors.Add(request);
+					request);
+				Tools.ErrorHandler(VFileError.FromTypedError(err));
+				results.Add(new(request) { Error = err });
+			}
+			else
+			{
+				results.Add(new(request));
 			}
 			filePaths.Add(path);
 			uniqueFilePaths.Add(path.FilePath);
 		}
 		Tools.TimerEnd(timer);
 
-		if (errors.Count > 0)
+		if (results.Any(x => x.HasError))
 		{
 			Tools.TimerEnd(t);
-			return new([], errors);
+			return results;
 		}
 
 		// Clean does a Mutex lock, so make sure it is not within the lock below.
@@ -721,15 +741,21 @@ public class VFile
 
 			Tools.TimerEnd(timer);
 
-			foreach (var request in requests)
+			foreach (var result in results)
 			{
 				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Request"));
 
+				var request = result.Request;
 				var path = request.Path;
 
-				if (!Assert_ValidFileName(path.FileName, nameof(Store)))
+				if (path.FileName.IsEmpty())
 				{
-					errors.Add(request);
+					result.Error = new(
+						VFileErrorCodes.InvalidParameter,
+						"FileName must have a value.",
+						request);
+					Tools.ErrorHandler(VFileError.FromTypedError(result.Error));
+					Tools.TimerEnd(rqt);
 					continue;
 				}
 
@@ -790,13 +816,13 @@ public class VFile
 				if (existingVFile == null)
 				{
 					state.NewVFiles.Add(newVFile);
-					results.Add(newVFile);
+					result.Result = newVFile;
 				}
 				else
 				{
 					// previous VFileInfo exists but content is different.
 					var contentDifference = existingVFile.FileContent != null && existingVFile.FileContent.Hash != hash;
-					results.Add(contentDifference ? newVFile : new VFileInfo(existingVFile));
+					result.Result = contentDifference ? newVFile : new VFileInfo(existingVFile);
 
 					switch (opts.VersionOpts.ExistsBehavior)
 					{
@@ -814,12 +840,12 @@ public class VFile
 						{
 							if (contentDifference)
 							{
-								Tools.ErrorHandler(new(
+								result.Result = null;
+								result.Error = new(
 									VFileErrorCodes.OverwriteNotAllowed,
 									$"VFileVersionBehavior is set to Error. Request to overwrite existing file not allowed: {path.FilePath}",
-									request));
-								results.Remove(newVFile);
-								errors.Add(request);
+									request);
+								Tools.ErrorHandler(VFileError.FromTypedError(result.Error));
 							}
 							break;
 						}
@@ -896,7 +922,7 @@ public class VFile
 			Mutex.ReleaseMutex();
 		}
 
-		return new(results, errors);
+		return results;
 	}
 
 	public List<string> ExportDirectory(
@@ -1021,19 +1047,5 @@ public class VFile
 	private static string Hash(byte[] bytes)
 	{
 		return Util.HashSHA256(bytes);
-	}
-
-	private bool Assert_ValidFileName(string fileName, string context)
-	{
-		if (fileName.IsEmpty())
-		{
-			Tools.ErrorHandler(new(
-				VFileErrorCodes.InvalidParameter,
-				$"{context}: Invalid FileName - must have a value",
-				"FileName"));
-			return false;
-		}
-
-		return true;
 	}
 }
