@@ -157,3 +157,7 @@ using (FileStream fs = File.OpenRead(filePath))
 - `Size` of the [VFileContent](#vfilecontent) bytes.
 - `SizeStored` is the size of bytes stored in the database. Only different from `Size` when compression is used.
 - `Compression` indicates if compression was used or not.
+
+## API
+
+### Error Handling

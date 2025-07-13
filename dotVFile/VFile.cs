@@ -675,22 +675,18 @@ public class VFile
 		var errors = new List<StoreRequest>();
 		var state = new StoreState();
 		var saveHashContentMap = new Dictionary<string, (VFileInfo Info, byte[] Bytes)>();
-		var uniqueFilePaths = new Dictionary<string, VFilePath>();
+		var filePaths = new List<VFilePath>();
+		var uniqueFilePaths = new HashSet<string>();
 		var optsTTLIsSet = false;
 
-		CleanCheck();
-
-		// this validation loop also serves to gather unique VFilePaths.
-		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Validate"));
+		// We loop through all requests here to check for duplicates.
+		// Duplicates are strictly not allowed, so if any are found we abort the operation.
+		// We take advantage of looping here to store all the VFilePaths for a bulk query later on.
+		timer = Tools.TimerStart(FunctionContext(nameof(Store), "Duplicates"));
 		foreach (var request in requests)
 		{
 			var path = request.Path;
-			if (!Assert_ValidFileName(path.FileName, nameof(Store)))
-			{
-				errors.Add(request);
-			}
-
-			if (uniqueFilePaths.ContainsKey(path.FilePath))
+			if (uniqueFilePaths.Contains(path.FilePath))
 			{
 				Tools.ErrorHandler(new(
 					VFileErrorCodes.DuplicateRequest,
@@ -698,15 +694,19 @@ public class VFile
 					request));
 				errors.Add(request);
 			}
-			uniqueFilePaths.Add(path.FilePath, path);
+			filePaths.Add(path);
+			uniqueFilePaths.Add(path.FilePath);
 		}
 		Tools.TimerEnd(timer);
 
 		if (errors.Count > 0)
 		{
 			Tools.TimerEnd(t);
-			return new([], [.. errors]);
+			return new([], errors);
 		}
+
+		// Clean does a Mutex lock, so make sure it is not within the lock below.
+		CleanCheck();
 
 		// lock
 		Mutex.WaitOne();
@@ -715,7 +715,8 @@ public class VFile
 		{
 			timer = Tools.TimerStart(FunctionContext(nameof(Store), "GetVFilesByFilePath"));
 
-			var existingVFiles = Database.GetVFilesByFilePath([.. uniqueFilePaths.Values], VersionQuery.Latest)
+			// only call DB once to get all existing vfiles
+			var existingVFiles = Database.GetVFilesByFilePath(filePaths, VersionQuery.Latest)
 				.ToDictionary(x => x.Directory.Path + x.VFile.FileName);
 
 			Tools.TimerEnd(timer);
@@ -725,6 +726,12 @@ public class VFile
 				var rqt = Tools.TimerStart(FunctionContext(nameof(Store), "Request"));
 
 				var path = request.Path;
+
+				if (!Assert_ValidFileName(path.FileName, nameof(Store)))
+				{
+					errors.Add(request);
+					continue;
+				}
 
 				var now = DateTimeOffset.Now;
 				var opts = request.Opts ?? DefaultStoreOptions;
@@ -889,7 +896,7 @@ public class VFile
 			Mutex.ReleaseMutex();
 		}
 
-		return new([.. results], [.. errors]);
+		return new(results, errors);
 	}
 
 	public List<string> ExportDirectory(
