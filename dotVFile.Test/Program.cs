@@ -70,11 +70,11 @@ vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 // all of these result in a VFilePath of "/a/b/c/file.txt"
 vfilePath = new VFilePath(new VDirectory("/a/b/c"), "file.txt");
 vfilePath = new VFilePath("/a/b/c/file.txt"); // expects exact vfilepath, a system path will not work.
-vfilePath = new VFilePath("a/b/c", "file.txt"); // directory processed through VDirectory
+vfilePath = new VFilePath("a/b/c", "file.txt"); // directory is processed through VDirectory
 
 // VFilePath accepts a FileInfo, but as with VDirectory, 
-// remember that it will attach a drive root:
-// "/C:/.../a/b/c/file.txt"
+// remember that if you give it a relative path it will 
+// attach a drive root: "/C:/.../a/b/c/file.txt"
 vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 
 return;
