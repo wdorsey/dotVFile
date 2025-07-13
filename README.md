@@ -105,7 +105,7 @@ vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 ```
 
 ### VFileContent
-`VFileContent` holds the file bytes the user needs to store.
+`VFileContent` holds the file bytes the user requests to store.
 ```C#
 // byte[]
 vcontent = new VFileContent(File.ReadAllBytes(filePath));
@@ -121,7 +121,7 @@ using (FileStream fs = File.OpenRead(filePath))
 ```
 
 ### VFileInfo
-`VFileInfo` contains all data about a vfile except for the content bytes.
+`VFileInfo` contains all information about a vfile.
 
 - `VFileInfo` is the return value for most VFile API operations.
 - `VFileInfo` are created internally by VFile. Users do not directly create or modify `VFileInfo`.
