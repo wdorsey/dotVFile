@@ -193,4 +193,4 @@ using (FileStream fs = File.OpenRead(filePath))
 
 ### Error Handling
 - Any error that occurs will result in an exception being thrown. This includes both known error states and unhandled exceptions.
-- VFile API function documentation specifies all exceptions they will knowningly throw for known error states.
+- VFile API function documentation specifies all exceptions they will throw for known error states.
