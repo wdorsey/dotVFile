@@ -88,13 +88,9 @@ using (FileStream fs = File.OpenRead(filePath))
 	vcontent = new VFileContent(fs);
 }
 
-vfilePath = new VFilePath("/a/b/c/file.txt");
-vcontent = new VFileContent(filePath);
-var result = vfile.Store(vfilePath, vcontent);
-var vfileInfo = result.VFiles.Single();
-
-Console.WriteLine(new { VFileInfo = vfileInfo }.ToJson(true));
-
-return;
+//vfilePath = new VFilePath("/a/b/c/file.txt");
+//vcontent = new VFileContent(filePath);
+//var result = vfile.Store(vfilePath, vcontent);
+//var vfileInfo = result.VFiles.Single();
 
 TestUtil.RunTests();
