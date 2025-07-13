@@ -115,7 +115,7 @@ using (FileStream fs = File.OpenRead(filePath))
 ```
 
 ### VFileInfo
-`VFileInfo` contains all data about a vfile.
+`VFileInfo` contains all data about a vfile except for the content bytes.
 
 - `VFileInfo` is the return value for most VFile API operations.
 - `VFileInfo` are created internally by VFile.
