@@ -47,7 +47,7 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 ```
 
 - `Name` is the directory name.
-- `Path` is the internal VFile representation of the directory path
+- `Path` is the internally standardized VFile representation of the directory path.
 - `SystemPath` is the operating system representation of the `Path`. Handy for exporting files.
 - `DirectoryNames` holds the names of each individual directory in the `Path`, in order. Useful for lots of different operations.
 
@@ -90,7 +90,7 @@ vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 - `FilePath` is the unique identifier of each vfile, standardized through [VDirectory](#vdirectory).
 - `SystemFilePath` is the operating system representation of the `FilePath`. Handy for exporting files.
 
-As with `VDirectory`, for the most part you don't need to worry about fiddling with filepath formatting, you can create a `VFilePath` in many different ways.
+As with [VDirectory](#vdirectory), for the most part you don't need to worry about fiddling with filepath formatting, you can create a `VFilePath` in many different ways.
 
 ```C#
 // all of these result in a VFilePath of "/a/b/c/file.txt"
