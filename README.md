@@ -54,5 +54,12 @@ vdir = new VDirectory("/a/b/c/");
 vdir = new VDirectory("a/b/c");
 vdir = new VDirectory("a\\b\\c");
 vdir = new VDirectory("a", "b", "c");
+vdir = new VDirectory(Path.Combine("a", "b", "c"));
+
+// DirectoryInfo.Fullname and FileInfo.DirectoryName can be used
+// but remember that they do not accept relative paths and will
+// automatically get a drive root attached.
+// These Paths would be: "/C:/.../a/b/c/"
+vdir = new VDirectory(new DirectoryInfo("a\\b\\c").FullName);
 vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 ```
