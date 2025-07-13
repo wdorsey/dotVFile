@@ -38,14 +38,16 @@ A VDirectory represents a virtual directory path in the VFile system.
 ```
 
 - Name - The directory name.
-- Path - The internal VFile representation of the directory path. This effectively acts as a directory identifier.
+- Path - The internal VFile representation of the directory path
 - SystemPath - Operating system representation of the path. Handy for exporting files.
 - DirectoryNames - Names of each individual directory in the Path, in order. Useful for lots of different operations.
 
-The standard VDirectory path uses '/' to divide directories and always has both a leading and trailing divider. And the Root directory of every VFile system is '/'.
+Some notes on VFile paths:
+- Path effectively acts as a unique directory identifier.
+- The standard VDirectory path uses '/' to divide directories and always has both a leading and trailing divider. 
+- The Root directory of every VFile system is '/'. VDirectory.IsRoot indicates that you've reached the root.
 
-But you don't really need to worry about formatting your paths, VDirectory will accept a wide variety of paths and convert them to VFile's standard.
-
+But you don't need to worry about fiddling with precisely formatted paths, VDirectory will accept a wide variety of paths and handle converting them to VFile's standard path.
 ```C#
 // all of these result in a VDirectory.Path of "/a/b/c/"
 vdir = new VDirectory("/a/b/c/");
