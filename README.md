@@ -218,7 +218,7 @@ A `VFile` instance is created with user-specified `VFileOptions`
 ```
 
 - `Name` is the name of the `VFile` instance and will be used to name the database file. It can be left null and the default name "dotVFile" will be used.
-- `Directory` is the directory path where `VFile` database file will be created.
+- `Directory` is the directory where the `VFile` database file will be created.
 - `DefaultStoreOptions` is the default `StoreOptions`. See [StoreOptions](#storeoptions) for details.
 
 Example:
