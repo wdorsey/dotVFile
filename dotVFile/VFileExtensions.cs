@@ -56,11 +56,21 @@ public static class VFileExtensions
 		return options;
 	}
 
+	public static TResult ResultOrThrow<TRequest, TResult>(this VFileResult<TRequest, TResult> result)
+	{
+		if (result.HasError || !result.HasResult)
+		{
+			throw new Exception("VFileResult has error or has null Result");
+		}
+
+		return result.Result!;
+	}
+
 	public static List<TResult> ResultsOrThrow<TRequest, TResult>(this List<VFileResult<TRequest, TResult>> results)
 	{
 		if (results.HasErrors() || !results.AllHasResult())
 		{
-			throw new Exception("results contains errors or null Results");
+			throw new Exception("VFileResults have errors or null Results");
 		}
 
 		return [.. results.Select(x => x.Result!)];
