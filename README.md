@@ -119,7 +119,7 @@ using (FileStream fs = File.OpenRead(filePath))
 
 - `VFileInfo` is the return value for most VFile API operations.
 - `VFileInfo` are created internally by VFile. Users do not directly create or modify `VFileInfo`.
-- Many API functions take a `VFileInfo` as input for convenience. These functions expect that another API function, like `Get`, was called to get the `VFileInfo`. The user is not expected to create the `VFileInfo`.
+- Many API functions take `VFileInfo` as input for convenience. These functions expect that another API function, like `Get`, was called to get the `VFileInfo`. The user is not expected to create the `VFileInfo`.
 
 ```JSON
 {
