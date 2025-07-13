@@ -125,7 +125,7 @@ using (FileStream fs = File.OpenRead(filePath))
 
 - `VFileInfo` is the return value for most VFile API operations.
 - `VFileInfo` are created internally by VFile. Users do not directly create or modify `VFileInfo`.
-- Many API functions take `VFileInfo` as input for convenience. These functions expect that another API function, like `Get`, was called to get the `VFileInfo`. The user is not expected to create the `VFileInfo`.
+- Many API operations have functions that take `VFileInfo` as input for convenience. These functions expect that another API function, like `Get`, was called to get the `VFileInfo`. The user is not expected to create the `VFileInfo`.
 
 ```JSON
 {
@@ -151,7 +151,7 @@ using (FileStream fs = File.OpenRead(filePath))
 }
 ```
 
-- `Versioned` holds the versioned datetime. null if the `VFileInfo` is not versioned.
+- `Versioned` holds the versioned datetime. null if the vfile is not versioned.
 - `DeleteAt` is the datetime at which the vfile will be deleted. This is set via `StoreOptions.TTL` or `VersionOptions.TTL`. null if no TLL set.
 - `Hash` of the [VFileContent](#vfilecontent) bytes. Unique identifier for the content bytes.
 - `Size` of the [VFileContent](#vfilecontent) bytes.
