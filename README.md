@@ -27,7 +27,7 @@ A VDirectory represents a virtual directory path in the VFile system.
   "VDirectory": {
     "Name": "c",
     "Path": "/a/b/c/",
-    "SystemPath": "a\b\c",
+    "SystemPath": "a\\b\\c",
     "DirectoryNames": [
       "a",
       "b",
