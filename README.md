@@ -26,6 +26,8 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
     - [VFileContent](#vfilecontent)
     - [VFileInfo](#vfileinfo)
     - [StoreOptions](#storeoptions)
+- [API](#api)
+    - [Error Handling](#error-handling)
 
 ## Core Types
 
@@ -190,3 +192,5 @@ using (FileStream fs = File.OpenRead(filePath))
 ## API
 
 ### Error Handling
+- Any error that occurs will result in an exception being thrown. This includes both known error states and unhandled exceptions.
+- VFile API function documentation specifies all exceptions they will knowningly throw for known error states.

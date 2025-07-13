@@ -17,7 +17,7 @@ public class VFile
 		opts = configure(opts);
 
 		if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
-			throw new Exception($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
+			throw new ArgumentException($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
 
 		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
 		Directory = Util.CreateDir(opts.Directory);
@@ -309,6 +309,7 @@ public class VFile
 	/// <param name="contentFn">Function to generate the content should it not be cached.</param>
 	/// <param name="ttl">Optional time-to-live for the content.</param>
 	/// <param name="bypassCache">Bypass cache and run contentFn.</param>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public CacheResult GetOrStore(
 		byte[] cacheKey,
 		VFilePath path,
@@ -327,6 +328,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) =>
 		GetOrStore(request.AsList(), bypassCache).Single();
 
@@ -337,6 +339,7 @@ public class VFile
 	/// e.g. A build pipeline that processes raw files, like minifying html/css/js.
 	/// The raw file bytes would be the <paramref name="cacheKey"/>, and the processing would happen in <paramref name="contentFn"/>.
 	/// </summary>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
@@ -652,11 +655,26 @@ public class VFile
 		return files;
 	}
 
+	/// <summary>
+	/// Store vfiles.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">Overwriting existing VFile not allowed per StoreOptions.</exception>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null) =>
 		Store(new StoreRequest(path, content, opts));
 
+	/// <summary>
+	/// Store vfiles.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">Overwriting existing VFile not allowed per StoreOptions.</exception>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public VFileInfo Store(StoreRequest request) => Store(request.AsList()).Single();
 
+	/// <summary>
+	/// Store vfiles.
+	/// </summary>
+	/// <exception cref="InvalidOperationException">Overwriting existing VFile not allowed per StoreOptions.</exception>
+	/// <exception cref="ArgumentException">Duplicate FilePath requested.</exception>
 	public List<VFileInfo> Store(List<StoreRequest> requests)
 	{
 		// this function builds up all the VFileInfo changes within
