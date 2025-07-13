@@ -3,6 +3,10 @@ using dotVFile.Test;
 
 ConsoleUtil.InitializeConsole(height: 1000);
 
+// initialize some variables for use later
+var vdir = new VDirectory("a", "b", "c");
+var vpath = VFilePath.Default();
+
 var versionOpts = new VersionOptions(
 	// ExistsBehavior:
 	//   Determines what happens when a vfile is requested to be Stored, but already exists at VFilePath.
@@ -45,6 +49,16 @@ vfile.SetDebugMode(true, TestUtil.WriteLine);
 
 // Deletes entire file system. Use cautiously.
 vfile.DANGER_WipeData();
+
+/* Core Types */
+
+// VDirectory
+// all of these result in a VDirectory.Path of "/a/b/c/"
+vdir = new VDirectory("/a/b/c/");
+vdir = new VDirectory("a/b/c");
+vdir = new VDirectory("a\\b\\c");
+vdir = new VDirectory("a", "b", "c");
+vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 
 TestUtil.LoadTestFiles();
 var file = TestUtil.TestFiles.First();
