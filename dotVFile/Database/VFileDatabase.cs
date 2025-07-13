@@ -419,7 +419,7 @@ WHERE
 			SqliteType.Text,
 			paths.Select(x => new
 			{
-				x.Directory.Path,
+				x.VDirectory.Path,
 				x.FileName
 			}).ToJson());
 
@@ -748,7 +748,7 @@ WHERE
 	Directory.Path = q.Path;
 ";
 			cmd.AddParameter("@NewDirectories", SqliteType.Text,
-				state.NewVFiles.SelectMany(x => x.VFilePath.Directory.AllDirectoriesInPath())
+				state.NewVFiles.SelectMany(x => x.VFilePath.VDirectory.AllDirectoriesInPath())
 					.DistinctBy(x => x.Path)
 					.Select(dir =>
 					{
@@ -816,7 +816,7 @@ WHERE NOT EXISTS (
 					return new
 					{
 						Id = dbVFile.Id.ToString(),
-						info.VFilePath.Directory.Path,
+						info.VFilePath.VDirectory.Path,
 						info.Hash,
 						dbVFile.FileName,
 						dbVFile.FileExtension,

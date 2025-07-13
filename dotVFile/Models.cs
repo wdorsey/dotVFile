@@ -89,7 +89,7 @@ public record VFileInfo
 	public VFilePath VFilePath { get; internal set; } = VFilePath.Default();
 	public string FileName => VFilePath.FileName;
 	public string FilePath => VFilePath.FilePath;
-	public VDirectory VDirectory => VFilePath.Directory;
+	public VDirectory VDirectory => VFilePath.VDirectory;
 	public string DirectoryName => VDirectory.Name;
 	public string DirectoryPath => VDirectory.Path;
 	public DateTimeOffset? Versioned { get; internal set; }

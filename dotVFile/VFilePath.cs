@@ -6,11 +6,11 @@ public class VFilePath : IEquatable<VFilePath>
 
 	public VFilePath(VDirectory directory, string fileName)
 	{
-		Directory = directory;
+		VDirectory = directory;
 		FileName = fileName;
 		FileExtension = Util.FileExtension(FileName);
-		FilePath = $"{Directory.Path}{FileName}";
-		SystemFilePath = GetSystemFilePath(Directory, FileName);
+		FilePath = $"{VDirectory.Path}{FileName}";
+		SystemFilePath = GetSystemFilePath(VDirectory, FileName);
 	}
 
 	public VFilePath(string vfilePath)
@@ -19,11 +19,11 @@ public class VFilePath : IEquatable<VFilePath>
 		if (idx == -1)
 			throw new ArgumentException($"invalid vfilePath: {vfilePath}");
 
-		Directory = new VDirectory(vfilePath[..idx]);
+		VDirectory = new VDirectory(vfilePath[..idx]);
 		FileName = vfilePath[(idx + 1)..];
 		FileExtension = Util.FileExtension(FileName);
-		FilePath = $"{Directory.Path}{FileName}";
-		SystemFilePath = GetSystemFilePath(Directory, FileName);
+		FilePath = $"{VDirectory.Path}{FileName}";
+		SystemFilePath = GetSystemFilePath(VDirectory, FileName);
 	}
 
 	public VFilePath(string? directory, string fileName)
@@ -32,7 +32,7 @@ public class VFilePath : IEquatable<VFilePath>
 	public VFilePath(FileInfo fi)
 		: this(fi.DirectoryName, fi.Name) { }
 
-	public VDirectory Directory { get; }
+	public VDirectory VDirectory { get; }
 	public string FileName { get; }
 	public string FileExtension { get; }
 	public string FilePath { get; }
@@ -72,6 +72,6 @@ public class VFilePath : IEquatable<VFilePath>
 
 	public static VFilePath Combine(VDirectory root, VFilePath path)
 	{
-		return new(VDirectory.Join(root, path.Directory), path.FileName);
+		return new(VDirectory.Join(root, path.VDirectory), path.FileName);
 	}
 }

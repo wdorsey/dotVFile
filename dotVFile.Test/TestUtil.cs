@@ -334,7 +334,7 @@ public static class TestUtil
 		context = "GetVFileInfosByDirectory";
 		results.Add(RunTest(context, ctx =>
 		{
-			foreach (var rq in requests.GroupBy(x => x.Path.Directory.Path))
+			foreach (var rq in requests.GroupBy(x => x.Path.VDirectory.Path))
 			{
 				var infos = vfile.Get(new VDirectory(rq.Key));
 				AssertRequestsVFileInfos([.. rq], infos, false, ctx, context);
@@ -413,7 +413,7 @@ public static class TestUtil
 			ctx.Assert(result.VFiles.Count == recursiveRequests.Count, "result.VFiles.Count == recursiveRequests.Count");
 			copies = vfile.Copy(from, to, true, opts: opts);
 			AssertRequestsVFileInfos(
-				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.Directory), x.Path.FileName) })],
+				[.. recursiveRequests.Select(x => x with { Path = new(ToRecursiveDir(x.Path.VDirectory), x.Path.FileName) })],
 				copies, false, ctx, $"{context} copy by directory recursive");
 		}));
 

@@ -5,7 +5,7 @@ ConsoleUtil.InitializeConsole(height: 1000);
 
 // initialize some variables for use later
 var vdir = new VDirectory("a", "b", "c");
-var vpath = VFilePath.Default();
+var vfilePath = VFilePath.Default();
 
 var versionOpts = new VersionOptions(
 	// ExistsBehavior:
@@ -30,11 +30,11 @@ var storeOpts = new StoreOptions(
 	null,         // TTL: time-to-live for vfiles. default is null (no TTL)
 	versionOpts); // VersionOptions, see above
 
-var vfilePath = Path.Combine(Environment.CurrentDirectory, "vfile");
+var path = Path.Combine(Environment.CurrentDirectory, "vfile");
 
 var opts = new VFileOptions(
 	"dotVFile.Test",       // Name of the VFile instance. null to use default name.
-	vfilePath,             // Directory to store VFile's single-file
+	path,                  // Directory to store VFile's single-file
 	TestUtil.ErrorHandler, // Error handler function, pass null to ignore
 	storeOpts);            // Default Store options, null will use StoreOptions.Default()
 
@@ -60,14 +60,22 @@ vdir = new VDirectory("a\\b\\c");
 vdir = new VDirectory("a", "b", "c");
 vdir = new VDirectory(Path.Combine("a", "b", "c"));
 
-// DirectoryInfo.Fullname and FileInfo.DirectoryName can be used
-// but remember that they do not accept relative paths and will
-// automatically get a drive root attached.
-// These Paths would be something like this: 
-//	/C:/.../a/b/c/
+// DirectoryInfo.Fullname and FileInfo.DirectoryName can be used but remember 
+// that they do not accept relative paths and will automatically attach a drive root.
+// These Paths would be: "/C:/.../a/b/c/"
 vdir = new VDirectory(new DirectoryInfo("a\\b\\c").FullName);
 vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
-Console.WriteLine(vdir.Path);
+
+// VFilePath
+// all of these result in a VFilePath of "/a/b/c/file.txt"
+vfilePath = new VFilePath(new VDirectory("/a/b/c"), "file.txt");
+vfilePath = new VFilePath("/a/b/c/file.txt"); // expects exact vfilepath, a system path will not work.
+vfilePath = new VFilePath("a/b/c", "file.txt"); // directory processed through VDirectory
+
+// VFilePath accepts a FileInfo, but as with VDirectory, 
+// remember that it will attach a drive root:
+// "/C:/.../a/b/c/file.txt"
+vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 
 return;
 
@@ -77,11 +85,11 @@ var file = TestUtil.TestFiles.First();
 // use a stream to store file
 using (FileStream fs = File.OpenRead(file.FilePath))
 {
-	var path = new VFilePath("stream_directory", file.FileName);
+	vfilePath = new VFilePath("stream_directory", file.FileName);
 
-	var result = vfile.Store(new StoreRequest(path, new VFileContent(fs)));
+	var result = vfile.Store(new StoreRequest(vfilePath, new VFileContent(fs)));
 
-	var bytes = vfile.GetBytes(path);
+	var bytes = vfile.GetBytes(vfilePath);
 	bytes = vfile.GetBytes(result.VFiles.Single());
 }
 
