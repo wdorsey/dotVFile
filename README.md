@@ -17,6 +17,8 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 - [Core Types](#core-types)
 	- [VDirectory](#vdirectory)
     - [VFilePath](#vfilepath)
+    - [VFileContent](#vfilecontent)
+    - [VFileInfo](vfileinfo)
 
 ## Core Types
 
@@ -95,3 +97,58 @@ vfilePath = new VFilePath("a/b/c", "file.txt"); // directory is processed throug
 // attach a drive root: "/C:/.../a/b/c/file.txt"
 vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 ```
+
+### VFileContent
+A `VFileContent` holds the file bytes the user needs to store.
+```C#
+// byte[]
+vcontent = new VFileContent(File.ReadAllBytes(filePath));
+
+// filePath
+vcontent = new VFileContent(filePath);
+
+// Stream
+using (FileStream fs = File.OpenRead(filePath))
+{
+	vcontent = new VFileContent(fs);
+}
+```
+
+### VFileInfo
+A `VFileInfo` holds all the data about a vfile except for the file bytes.
+
+- `VFileInfo` is the typical return value for most VFile API operations.
+- `VFileInfo` are created internally by VFile.
+- Users do not directly create or modify `VFileInfo`. This is restricted by access modifiers.
+- Many API functions take a `VFileInfo` as input for convenience. These functions expect that another API function, like `Get`, was called to get the `VFileInfo`. The user is not expected to create the `VFileInfo`.
+
+```JSON
+{
+  "VFileInfo": {
+    "Id": "11733716-1623-4da8-8d4b-be41e95872fc",
+    "VFilePath": { /* see above */ },
+    "VDirectory": { /* see above */},
+    "FileName": "file.txt",
+    "FilePath": "/a/b/c/file.txt",
+    "DirectoryName": "c",
+    "DirectoryPath": "/a/b/c/",
+    "Versioned": null,
+    "IsVersion": false,
+    "DeleteAt": null,
+    "CreationTime": "2025-07-12T20:47:18.5930707-05:00",
+    "ContentId": "ce3ce101-0c93-41f5-a992-5c7ae1f9b235",
+    "Hash": "41E57BC093FE0249E8F51AE06A44AA3FB99998B609C028C85093F4992AD13291",
+    "Size": 7294,
+    "SizeStored": 7294,
+    "Compression": "None",
+    "ContentCreationTime": "2025-07-12T20:47:18.5930707-05:00"
+  }
+}
+```
+
+- `Versioned` holds the versioned datetime. null if the `VFileInfo` is not versioned.
+- `DeleteAt` is the datetime at which the vfile will be deleted. This is set via `StoreOptions.TTL` or `VersionOptions.TTL`. null if no TLL set.
+- `Hash` of the [VFileContent](#vfilecontent) bytes. Unique identifier for the content bytes.
+- `Size` of the [VFileContent](#vfilecontent) bytes.
+- `SizeStored` is the size of bytes stored in the database. Only different from `Size` when compression is used.
+- `Compression` indicates if compression was used or not.

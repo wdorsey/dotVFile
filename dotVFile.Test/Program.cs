@@ -4,8 +4,9 @@ using dotVFile.Test;
 ConsoleUtil.InitializeConsole(height: 1000);
 
 // initialize some variables for use later
-var vdir = new VDirectory("a", "b", "c");
+var vdir = VDirectory.Default();
 var vfilePath = VFilePath.Default();
+var vcontent = VFileContent.Default();
 
 var versionOpts = new VersionOptions(
 	// ExistsBehavior:
@@ -77,20 +78,23 @@ vfilePath = new VFilePath("a/b/c", "file.txt"); // directory is processed throug
 // attach a drive root: "/C:/.../a/b/c/file.txt"
 vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 
-return;
-
-TestUtil.LoadTestFiles();
-var file = TestUtil.TestFiles.First();
-
-// use a stream to store file
-using (FileStream fs = File.OpenRead(file.FilePath))
+// VContent
+// accepts byte[], filePath, or Stream
+var filePath = Path.Combine(TestUtil.TestFilesDir, "test-file-1.json");
+vcontent = new VFileContent(File.ReadAllBytes(filePath));
+vcontent = new VFileContent(filePath);
+using (FileStream fs = File.OpenRead(filePath))
 {
-	vfilePath = new VFilePath("stream_directory", file.FileName);
-
-	var result = vfile.Store(new StoreRequest(vfilePath, new VFileContent(fs)));
-
-	var bytes = vfile.GetBytes(vfilePath);
-	bytes = vfile.GetBytes(result.VFiles.Single());
+	vcontent = new VFileContent(fs);
 }
+
+vfilePath = new VFilePath("/a/b/c/file.txt");
+vcontent = new VFileContent(filePath);
+var result = vfile.Store(vfilePath, vcontent);
+var vfileInfo = result.VFiles.Single();
+
+Console.WriteLine(new { VFileInfo = vfileInfo }.ToJson(true));
+
+return;
 
 TestUtil.RunTests();
