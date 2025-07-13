@@ -70,7 +70,7 @@ vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 // VFilePath
 // all of these result in a VFilePath of "/a/b/c/file.txt"
 vfilePath = new VFilePath(new VDirectory("/a/b/c"), "file.txt");
-vfilePath = new VFilePath("/a/b/c/file.txt"); // expects exact vfilepath, a system path will not work.
+vfilePath = new VFilePath("/a/b/c/file.txt"); // expects vfilepath, a system path will not work.
 vfilePath = new VFilePath("a/b/c", "file.txt"); // directory is processed through VDirectory
 
 // VFilePath accepts a FileInfo, but as with VDirectory, 
