@@ -12,6 +12,11 @@
 
 For detailed examples, take a look at the [test project](https://github.com/wdorsey/dotVFile/blob/master/dotVFile.Test/Program.cs). It not only runs tests, but serves as a usage guide.
 
+### Core Concepts
+
+- The basic idea of a virtual file system is to internally separate file paths and file content but maintain a link between them.
+- This allows the file paths and content to be separately customized and optimized while still allowing the user to get the file bytes for a given file path, just like a normal file system.
+
 ## Documentation
 
 - [Core Types](#core-types)
