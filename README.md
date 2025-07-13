@@ -23,7 +23,7 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 ## Core Types
 
 ### VDirectory
-A `VDirectory` represents a virtual directory path in the VFile system.
+`VDirectory` represents a virtual directory path in the VFile system.
 
 ```JSON
 {
@@ -67,7 +67,7 @@ vdir = new VDirectory(new FileInfo("a\\b\\c\\file.txt").DirectoryName);
 ```
 
 ### VFilePath
-A `VFilePath` represents the full virtual file path of a vfile.
+`VFilePath` represents the full virtual file path of a vfile.
 
 ```JSON
 {
@@ -99,7 +99,7 @@ vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 ```
 
 ### VFileContent
-A `VFileContent` holds the file bytes the user needs to store.
+`VFileContent` holds the file bytes the user needs to store.
 ```C#
 // byte[]
 vcontent = new VFileContent(File.ReadAllBytes(filePath));
@@ -115,7 +115,7 @@ using (FileStream fs = File.OpenRead(filePath))
 ```
 
 ### VFileInfo
-A `VFileInfo` holds all the data about a vfile except for the file bytes.
+`VFileInfo` holds all the data about a vfile except for the file bytes.
 
 - `VFileInfo` is the typical return value for most VFile API operations.
 - `VFileInfo` are created internally by VFile.
