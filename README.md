@@ -49,7 +49,7 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
 - `Name` is the directory name.
 - `Path` is the internally standardized VFile representation of the directory path.
 - `SystemPath` is the operating system representation of the `Path`. Handy for exporting files.
-- `DirectoryNames` holds the names of each individual directory in the `Path`, in order. Useful for lots of different operations.
+- `DirectoryNames` holds the names of each individual directory in the `Path`, in order. Useful for lots of various functionality.
 
 Some notes on VFile paths:
 - `Path` effectively acts as a unique directory identifier.
