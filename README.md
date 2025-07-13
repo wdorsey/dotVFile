@@ -153,7 +153,7 @@ using (FileStream fs = File.OpenRead(filePath))
 
 - `Versioned` holds the versioned datetime. null if the vfile is not versioned.
 - `DeleteAt` is the datetime at which the vfile will be deleted. This is set via `StoreOptions.TTL` or `VersionOptions.TTL`. null if no TLL set.
-- `Hash` of the [VFileContent](#vfilecontent) bytes. Unique identifier for the content bytes.
+- `Hash` of the [VFileContent](#vfilecontent) bytes. Unique identifier for the file content.
 - `Size` of the [VFileContent](#vfilecontent) bytes.
 - `SizeStored` is the size of bytes stored in the database. Only different from `Size` when compression is used.
 - `Compression` indicates if compression was used or not.
