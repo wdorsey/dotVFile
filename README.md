@@ -255,11 +255,19 @@ vfileInfo = vfile.Store(
 		new VFileContent(filePath)));
 ```
 
-Store also works in bulk, as do most operations.
+- `Store` also works in bulk, as do most operations.
 
-Here are all Store method signatures:
+`Store` method signatures:
 ```C#
 VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null) { }
 VFileInfo Store(StoreRequest request) { }
 List<VFileInfo> Store(List<StoreRequest> requests) { }
+```
+
+`StoreRequest`
+```C#
+public record StoreRequest(
+	VFilePath Path,
+	VFileContent Content,
+	StoreOptions? Opts = null);
 ```
