@@ -80,12 +80,23 @@ vfilePath = new VFilePath(new FileInfo("a\\b\\c\\file.txt"));
 // VContent
 // accepts byte[], filePath, or Stream
 var filePath = Path.Combine(TestUtil.TestFilesDir, "test-file-1.json");
-vcontent = new VFileContent(File.ReadAllBytes(filePath));
-vcontent = new VFileContent(filePath);
 using (FileStream fs = File.OpenRead(filePath))
 {
 	vcontent = new VFileContent(fs);
 }
+vcontent = new VFileContent(File.ReadAllBytes(filePath));
+vcontent = new VFileContent(filePath);
+
+// Store
+var vfileInfo = vfile.Store(
+	new VFilePath("a/b/c", "file.txt"),
+	new VFileContent(filePath));
+
+// or via a request
+vfileInfo = vfile.Store(
+	new StoreRequest(
+		new VFilePath("a/b/c", "file.txt"),
+		new VFileContent(filePath)));
 
 
 /* TESTS */

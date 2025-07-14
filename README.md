@@ -28,7 +28,8 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
     - [StoreOptions](#storeoptions)
 - [API](#api)
     - [Error Handling](#error-handling)
-    - [Initialization](#initialization)
+    - [VFile](#vfile)
+    - [Store](#store)
 
 ## Core Types
 
@@ -196,8 +197,8 @@ using (FileStream fs = File.OpenRead(filePath))
 - Any error that occurs will result in an exception being thrown. This includes both known error states and unhandled exceptions.
 - VFile API function documentation specifies all exceptions they will throw for known error states.
 
-### Initialization
-A `VFile` instance is created with user-specified `VFileOptions`
+### VFile
+A `VFile` instance is created with user-specified `VFileOptions`. Every operation is carried out through the `VFile` API.
 
 ```JSON
 {
@@ -237,4 +238,28 @@ var vfile = new VFile(opts =>
 	opts.Directory = "C:\\vfile";
 	return opts;
 });
+```
+
+### Store
+Stores a file and it's contents.
+
+```C#
+var vfileInfo = vfile.Store(
+	new VFilePath("a/b/c", "file.txt"),
+	new VFileContent(filePath));
+
+// or via a request
+vfileInfo = vfile.Store(
+	new StoreRequest(
+		new VFilePath("a/b/c", "file.txt"),
+		new VFileContent(filePath)));
+```
+
+Store also works in bulk, as do most operations.
+
+Here are all Store method signatures:
+```C#
+VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null)
+VFileInfo Store(StoreRequest request)
+List<VFileInfo> Store(List<StoreRequest> requests)
 ```
