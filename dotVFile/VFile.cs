@@ -553,6 +553,7 @@ public class VFile
 			var subdir = directory.Path == VDirectory.DirectorySeparator.ToString()
 				? new VDirectory(dirPath)
 				: new VDirectory(dirPath.Replace(directory.Path, string.Empty));
+
 			var toDir = VDirectory.Join(to, subdir);
 
 			requests.AddRange(infos.Select(x => new CopyRequest(x, new(toDir, x.FileName))));
@@ -991,10 +992,10 @@ public class VFile
 
 		var stats = new DirectoryStats(
 			directory,
-			GetVFileStats(directory, false, false),
-			GetVFileStats(directory, true, false),
-			GetVFileStats(directory, false, true),
-			GetVFileStats(directory, true, true),
+			GetVFileTotals(directory, false, false),
+			GetVFileTotals(directory, true, false),
+			GetVFileTotals(directory, false, true),
+			GetVFileTotals(directory, true, true),
 			GetDirectories(directory, false));
 
 		Tools.TimerEnd(t);
@@ -1002,14 +1003,14 @@ public class VFile
 		return stats;
 	}
 
-	private FileStats GetVFileStats(VDirectory directory, bool versions, bool recursive)
+	private VFileTotals GetVFileTotals(VDirectory directory, bool versions, bool recursive)
 	{
 		var vfiles = versions ? GetVersions(directory, recursive) : Get(directory, recursive);
 
-		return new FileStats(vfiles.Count, vfiles.Sum(x => x.Size), vfiles.Sum(x => x.SizeStored));
+		return new VFileTotals(vfiles.Count, vfiles.Sum(x => x.Size));
 	}
 
-	public FileStats GetContentStats()
+	public ContentTotals GetContentStats()
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetContentStats)));
 
@@ -1024,7 +1025,7 @@ public class VFile
 			sizeStored += content.SizeContent;
 		}
 
-		var stats = new FileStats(contents.Count, size, sizeStored);
+		var stats = new ContentTotals(contents.Count, size, sizeStored);
 
 		Tools.TimerEnd(t);
 

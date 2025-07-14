@@ -85,9 +85,9 @@ public record VFileInfo
 
 public record VFileStats(
 	long DatabaseFileSize,
-	FileStats VFiles,
-	FileStats Versions,
-	FileStats Content,
+	VFileTotals VFiles,
+	VFileTotals Versions,
+	ContentTotals Content,
 	int DirectoryCount)
 {
 	public string DatabaseFileSizeString => Util.SizeString(DatabaseFileSize);
@@ -95,16 +95,23 @@ public record VFileStats(
 
 public record DirectoryStats(
 	VDirectory Directory,
-	FileStats VFiles,
-	FileStats Versions,
-	FileStats TotalVFiles,
-	FileStats TotalVersions,
+	VFileTotals VFiles,
+	VFileTotals Versions,
+	VFileTotals TotalVFiles,
+	VFileTotals TotalVersions,
 	List<VDirectory> Directories)
 {
 	public int DirectoryCount => Directories.Count;
 }
 
-public record FileStats(
+public record VFileTotals(
+	int Count,
+	long Size)
+{
+	public string SizeString => Util.SizeString(Size);
+}
+
+public record ContentTotals(
 	int Count,
 	long Size,
 	long SizeStored)
