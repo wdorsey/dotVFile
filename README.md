@@ -381,7 +381,7 @@ List<VFileInfo> Copy(
 ### Move
 Copies then deletes an existing vfile.
 
-- `MoveResult` contains both copied and deleted vfiles.
+- `MoveResult` contains both copied and deleted `VFileInfo`.
 
 ```C#
 MoveResult Move(
@@ -438,7 +438,8 @@ List<string> ExportDirectory(
 	Func<string, string>? modifyDirectoryPath = null) { }
 ```
 
-- `removeRootDirectory` will optionally remove a portion of the directory path.
+- `removeRootDirectory` will optionally remove a portion of the directory path. 
+- If this doesn't do exactly what you want, you can use `modifyDirectoryPath` to make the exact path change you desire.
 
 ```C#
 vfile.ExportDirectory(
