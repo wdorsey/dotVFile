@@ -98,6 +98,40 @@ vfileInfo = vfile.Store(
 		new VFilePath("a/b/c", "file.txt"),
 		new VFileContent(filePath)));
 
+// Get
+vfileInfo = vfile.Get(new VFilePath("a/b/c", "file.txt"))!;
+var vfileInfos = vfile.GetVersions(new VFilePath("a/b/c", "file.txt"));
+
+// GetBytes
+var bytes = vfile.GetBytes(vfileInfo);
+
+// GetOrStore - caching functionality
+var cacheResult = vfile.GetOrStore(
+	Util.GetBytes("https://some-url-to-a-file"), // input cache key
+	new VFilePath("a/b/c", "file.txt"),          // path to store output content
+	() => // get content function
+	{
+		/* go to url and get content */
+		return new VFileContent([]);
+	},
+	null); // optional StoreOptions
+
+// Copy
+var copy = vfile.Copy(new CopyRequest(vfileInfo, new VFilePath("x/y/z", "file.txt")))!;
+
+// Move
+var move = vfile.Move(copy, new VFilePath("hello/world", "file.txt"));
+
+// Delete
+vfile.Delete(move.NewVFiles);
+
+// Export
+vfile.ExportDirectory(
+	new VDirectory("a"),
+	Path.Combine(Environment.CurrentDirectory, "export"),
+	// removes the 'a' directory from all file paths
+	new VDirectory("a"),
+	true);
 
 /* TESTS */
 TestUtil.RunTests();

@@ -30,6 +30,16 @@ For detailed examples, take a look at the [test project](https://github.com/wdor
     - [Error Handling](#error-handling)
     - [VFile](#vfile)
     - [Store](#store)
+	- [Get](#get)
+	- [GetBytes](#getbytes)
+	- [GetDirectories](#getdirectories)
+	- [GetOrStore](#getorstore)
+	- [Copy](#copy)
+	- [Move](#move)
+	- [Delete](#delete)
+	- [ExportDirectory](#exportdirectory)
+	- [Stats](#stats)
+	- [Metrics](#metrics)
 
 ## Core Types
 
@@ -241,7 +251,7 @@ var vfile = new VFile(opts =>
 ```
 
 ### Store
-Stores a file and it's contents.
+Stores a file and it's contents. Returns [VFileInfo](#vfileinfo)
 
 ```C#
 var vfileInfo = vfile.Store(
@@ -256,6 +266,7 @@ vfileInfo = vfile.Store(
 ```
 
 - `Store` also works in bulk, as do most operations.
+- `StoreOptions` are optional. If null the `VFile.DefaultStoreOptions` are used. See [StoreOptions](#storeoptions) for details.
 
 `Store` method signatures:
 ```C#
@@ -263,11 +274,196 @@ VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null)
 VFileInfo Store(StoreRequest request) { }
 List<VFileInfo> Store(List<StoreRequest> requests) { }
 ```
-
 `StoreRequest`
 ```C#
 public record StoreRequest(
 	VFilePath Path,
 	VFileContent Content,
 	StoreOptions? Opts = null);
+```
+
+### Get
+Gets [VFileInfos](#vfileinfo). `VFile` provides several different `Get` functions.
+
+- Has separate functions for getting versioned vfiles.
+
+```C#
+VFileInfo? Get(VFilePath path) { } // null means not found
+List<VFileInfo> Get(List<VFilePath> paths) { }
+List<VFileInfo> Get(VDirectory directory, bool recursive = false) { }
+List<VFileInfo> GetVersions(VFilePath path, VersionQuery versionQuery = VersionQuery.Versions) { }
+List<VFileInfo> GetVersions(List<VFilePath> paths, VersionQuery versionQuery = VersionQuery.Versions) { }
+List<VFileInfo> GetVersions(VDirectory directory, bool recursive = false, VersionQuery versionQuery = VersionQuery.Versions) { }
+```
+
+### GetBytes
+Gets the content bytes for a given vfile.
+
+- A null return value means the vfile was not found.
+- Unlike most other operations, `GetBytes` only works on single files.
+
+```C#
+byte[]? GetBytes(VFilePath path) { }
+byte[]? GetBytes(VFileInfo info) { }
+```
+
+### GetDirectories
+Gets all directories in `directory`. Optionally recursive.
+
+```C#
+List<VDirectory> GetDirectories(VDirectory directory, bool recursive = false) { }
+```
+
+### GetOrStore
+Provides caching functionality.
+
+- Specifically designed for content that takes a long time to generate, but where the same input always results in the same output.
+- e.g. Fetching static content from a url. The url or file name would be the `cacheKey`, get from url in `contentFn`. Can set `StoreOptions.TTL` if the content behind the url can change.
+- e.g. A build pipeline that processes raw files, like minifying html/css/js. The raw file bytes would be the `cacheKey`, and the processing would happen in `contentFn`.
+
+```C#
+var cacheResult = vfile.GetOrStore(
+	Util.GetBytes("https://some-url-to-a-file"), // cacheKey: input cache key
+	new VFilePath("a/b/c", "file.txt"),          // path to store output content
+	() => // contentFn: get content bytes function
+	{
+		/* go to url and get content */
+		return new VFileContent([]);
+	},
+	null); // optional StoreOptions
+```
+```C#
+CacheResult GetOrStore(
+	byte[] cacheKey,
+	VFilePath path,
+	Func<VFileContent> contentFn,
+	StoreOptions? storeOptions = null,
+	bool bypassCache = false) { }
+
+CacheResult GetOrStore(CacheRequest request, bool bypassCache = false) { }
+List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false) { }
+```
+
+### Copy
+Copies an existing vfile to a new location. Works in bulk and can also copy by directory.
+
+```C#
+VFileInfo? Copy(
+	VFilePath from,
+	VFilePath to,
+	VersionQuery versionQuery = VersionQuery.Latest,
+	StoreOptions? opts = null) { }
+
+VFileInfo? Copy(
+	VFileInfo from,
+	VFilePath to,
+	VersionQuery versionQuery = VersionQuery.Latest,
+	StoreOptions? opts = null) { }
+
+VFileInfo? Copy(
+	CopyRequest request,
+	VersionQuery versionQuery = VersionQuery.Latest,
+	StoreOptions? opts = null) { }
+
+List<VFileInfo> Copy(
+	List<CopyRequest> requests,
+	VersionQuery versionQuery = VersionQuery.Latest,
+	StoreOptions? opts = null) { }
+
+List<VFileInfo> Copy(
+	VDirectory directory,
+	VDirectory to,
+	bool recursive = false,
+	VersionQuery versionQuery = VersionQuery.Latest,
+	StoreOptions? opts = null) { }
+```
+
+### Move
+Copies then deletes an existing vfile.
+
+- `MoveResult` contains both copied and deleted vfiles.
+
+```C#
+MoveResult Move(
+	VFilePath from,
+	VFilePath to,
+	VersionQuery versionQuery = VersionQuery.Both,
+	StoreOptions? opts = null) { }
+
+MoveResult Move(
+	VFileInfo from,
+	VFilePath to,
+	VersionQuery versionQuery = VersionQuery.Both,
+	StoreOptions? opts = null) { }
+
+MoveResult Move(
+	CopyRequest request,
+	VersionQuery versionQuery = VersionQuery.Both,
+	StoreOptions? opts = null) { }
+
+MoveResult Move(
+	List<CopyRequest> requests,
+	VersionQuery versionQuery = VersionQuery.Both,
+	StoreOptions? opts = null) { }
+
+MoveResult Move(
+	VDirectory directory,
+	VDirectory to,
+	StoreOptions? opts = null) { }
+```
+
+### Delete
+Deletes an existing vfile.
+
+```C#
+VFileInfo? Delete(VFilePath path, VersionQuery versionQuery = VersionQuery.Both) { }
+VFileInfo? Delete(VFileInfo info) { }
+List<VFileInfo> Delete(List<VFileInfo> infos) { }
+List<VFileInfo> Delete(VDirectory directory) { }
+```
+
+### ExportDirectory
+Writes all vfiles from a `VDirectory` to a system path.
+
+- Does not check for invalid path or file name characters.
+- Provides optional functions for the user to modify the path or file name if required.
+
+```C#
+List<string> ExportDirectory(
+	VDirectory fromDirectory,
+	string toDirectoryPath,
+	VDirectory? removeRootDirectory = null,
+	bool recursive = true,
+	Func<string, string>? modifyFileName = null,
+	Func<string, string>? modifyDirectoryPath = null) { }
+```
+
+- `removeRootDirectory` will optionally remove a portion of the directory path.
+
+```C#
+vfile.ExportDirectory(
+	new VDirectory("a"),
+	Path.Combine(Environment.CurrentDirectory, "export"),
+	// removes the 'a' directory from all file paths
+	new VDirectory("a"),
+	true);
+```
+
+### Stats
+Set of functions to get various stats about the current `VFile` instance.
+
+```C#
+VFileStats GetStats() { }
+DirectoryStats GetDirectoryStats(VDirectory directory) { }
+FileStats GetVFileStats(VDirectory directory, bool versions, bool recursive) { }
+FileStats GetContentStats() { }
+```
+
+### Metrics
+Get recorded metrics for the current process.
+
+- Metrics are only enabled if `VFile.SetMetricsMode(true)` is called.
+
+```C#
+MetricsResult GetMetrics() { }
 ```

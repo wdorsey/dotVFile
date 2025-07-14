@@ -468,6 +468,26 @@ public class VFile
 	/// Returns copied VFileInfo. If null, VFile was not found for request.From path.
 	/// </summary>
 	public VFileInfo? Copy(
+		VFilePath from,
+		VFilePath to,
+		VersionQuery versionQuery = VersionQuery.Latest,
+		StoreOptions? opts = null) =>
+		Copy(new CopyRequest(from, to), versionQuery, opts);
+
+	/// <summary>
+	/// Returns copied VFileInfo. If null, VFile was not found for request.From path.
+	/// </summary>
+	public VFileInfo? Copy(
+		VFileInfo from,
+		VFilePath to,
+		VersionQuery versionQuery = VersionQuery.Latest,
+		StoreOptions? opts = null) =>
+		Copy(new CopyRequest(from, to), versionQuery, opts);
+
+	/// <summary>
+	/// Returns copied VFileInfo. If null, VFile was not found for request.From path.
+	/// </summary>
+	public VFileInfo? Copy(
 		CopyRequest request,
 		VersionQuery versionQuery = VersionQuery.Latest,
 		StoreOptions? opts = null) =>
@@ -544,6 +564,35 @@ public class VFile
 	}
 
 	/// <summary>
+	/// Copies then deletes a vfile.
+	/// </summary>
+	public MoveResult Move(
+		VFilePath from,
+		VFilePath to,
+		VersionQuery versionQuery = VersionQuery.Both,
+		StoreOptions? opts = null) =>
+		Move(new CopyRequest(from, to), versionQuery, opts);
+
+	/// <summary>
+	/// Copies then deletes a vfile.
+	/// </summary>
+	public MoveResult Move(
+		VFileInfo from,
+		VFilePath to,
+		VersionQuery versionQuery = VersionQuery.Both,
+		StoreOptions? opts = null) =>
+		Move(new CopyRequest(from, to), versionQuery, opts);
+
+	/// <summary>
+	/// Copies then deletes a vfile.
+	/// </summary>
+	public MoveResult Move(
+		CopyRequest request,
+		VersionQuery versionQuery = VersionQuery.Both,
+		StoreOptions? opts = null) =>
+		Move(request.AsList(), versionQuery, opts);
+
+	/// <summary>
 	/// Copies then deletes vfiles.
 	/// </summary>
 	public MoveResult Move(
@@ -586,6 +635,11 @@ public class VFile
 		Delete([path], versionQuery).SingleOrDefault();
 
 	/// <summary>
+	/// Returns deleted VFileInfo. If null, VFileInfo was not found.
+	/// </summary>
+	public VFileInfo? Delete(VFileInfo info) => Delete([info]).SingleOrDefault();
+
+	/// <summary>
 	/// Returns deleted VFileInfos.
 	/// </summary>
 	public List<VFileInfo> Delete(
@@ -605,11 +659,6 @@ public class VFile
 
 		return [.. vfiles.Select(x => new VFileInfo(x))];
 	}
-
-	/// <summary>
-	/// Returns deleted VFileInfo. If null, VFileInfo was not found.
-	/// </summary>
-	public VFileInfo? Delete(VFileInfo info) => Delete([info]).SingleOrDefault();
 
 	/// <summary>
 	/// Returns deleted VFileInfos.
