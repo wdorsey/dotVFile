@@ -259,11 +259,7 @@ Store also works in bulk, as do most operations.
 
 Here are all Store method signatures:
 ```C#
-VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null)
-```
-```C#
-VFileInfo Store(StoreRequest request)
-```
-```C#
-List<VFileInfo> Store(List<StoreRequest> requests)
+VFileInfo Store(VFilePath path, VFileContent content, StoreOptions? opts = null) { }
+VFileInfo Store(StoreRequest request) { }
+List<VFileInfo> Store(List<StoreRequest> requests) { }
 ```
