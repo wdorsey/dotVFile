@@ -37,7 +37,7 @@ internal static class Db
 
 	// Content bytes are split into a seperate table.
 	// FileContentRowId is PK.
-	// not of type Entity as it just an extension of FileContent
+	// Does not inherit Entity as it is just an extension of FileContent.
 	public record FileContentBlob
 	{
 		public long FileContentRowId;
