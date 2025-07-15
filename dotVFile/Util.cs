@@ -403,7 +403,7 @@ internal static class Util
 
 	public static string SecondsString(this TimeSpan ts)
 	{
-		return $"{ts.Seconds.ToStringNumber()},{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')} ms";
+		return $"{ts.Seconds.ToStringNumber()}.{ts.Milliseconds.ToStringNumber().PadLeft(3, '0')} sec";
 	}
 
 	public static string MinutesString(this TimeSpan ts)

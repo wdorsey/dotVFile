@@ -343,6 +343,7 @@ public class VFile
 	public List<CacheResult> GetOrStore(List<CacheRequest> requests, bool bypassCache = false)
 	{
 		var t = Tools.TimerStart(FunctionContext(nameof(GetOrStore)));
+		Tools.DebugLog(FunctionContext(nameof(GetOrStore), $"{requests.Count} request{Util.PluralChar(requests.Count)}"));
 		var metrics = new GetOrStoreMetrics { RequestCount = requests.Count };
 
 		CleanCheck();
@@ -459,6 +460,7 @@ public class VFile
 		}
 
 		Tools.TimerEnd(t);
+		Tools.DebugLog(FunctionContext(nameof(GetOrStore), $"completed in {t.Elapsed.TimeString()}"));
 		Tools.Metrics.GetOrStoreMetrics.Add(metrics);
 
 		return results;
@@ -733,6 +735,8 @@ public class VFile
 
 		if (requests.IsEmpty()) return [];
 
+		Tools.DebugLog(FunctionContext(nameof(Store), $"{requests.Count} request{Util.PluralChar(requests.Count)}"));
+
 		var t = Tools.TimerStart(FunctionContext(nameof(Store)));
 		var timer = Timer.Default; // re-usable timer
 		var metrics = new StoreMetrics();
@@ -937,6 +941,7 @@ public class VFile
 			// get deleted via Clean().
 
 			Tools.TimerEnd(t); // overall SaveVFiles timer
+			Tools.DebugLog(FunctionContext(nameof(Store), $"completed in {t.Elapsed.TimeString()}"));
 			Tools.Metrics.StoreMetrics.Add(metrics);
 		}
 		finally
@@ -961,6 +966,8 @@ public class VFile
 
 		var vfiles = Get(fromDirectory, recursive);
 
+		Tools.DebugLog(FunctionContext(nameof(ExportDirectory), $"exporting {vfiles.Count} vfile{Util.PluralChar(vfiles.Count)}"));
+
 		foreach (var vfile in vfiles)
 		{
 			var relativeDir = removeRootDirectory != null
@@ -980,6 +987,7 @@ public class VFile
 		}
 
 		Tools.TimerEnd(t);
+		Tools.DebugLog(FunctionContext(nameof(ExportDirectory), $"completed in {t.Elapsed.TimeString()}"));
 
 		return results;
 	}
