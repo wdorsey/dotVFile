@@ -239,7 +239,7 @@ var opts = new VFileOptions(
 
 var vfile = new VFile(opts);
 
-// Configuring via a func is also available. Passed-in opts is StoreOptions.Default()
+// Configuring via a func is also available. Passed-in opts is VFileOptions.Default()
 var vfile = new VFile(opts =>
 {
 	opts.Name = "dotVFile.Test";
