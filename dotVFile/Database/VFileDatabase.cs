@@ -6,13 +6,26 @@ namespace dotVFile;
 
 internal class VFileDatabase
 {
+	public const string FileNameSuffix = ".vfile.db";
+
 	public VFileDatabase(VFileDatabaseOptions opts)
 	{
 		Directory = opts.Directory;
 		Version = opts.Version;
 		Tools = opts.Tools;
-		DatabaseFileName = $"{opts.Name}.vfile.db";
+		DatabaseFileName = $"{opts.Name}{FileNameSuffix}";
 		DatabaseFilePath = new(Path.Combine(Directory, DatabaseFileName));
+		ConnectionString = $"Data Source={DatabaseFilePath};";
+		CreateDatabase();
+	}
+
+	public VFileDatabase(FileInfo databaseFilePath, string version, VFileTools tools)
+	{
+		Directory = databaseFilePath.DirectoryName ?? string.Empty;
+		Version = version;
+		Tools = tools;
+		DatabaseFileName = databaseFilePath.Name;
+		DatabaseFilePath = databaseFilePath.FullName;
 		ConnectionString = $"Data Source={DatabaseFilePath};";
 		CreateDatabase();
 	}

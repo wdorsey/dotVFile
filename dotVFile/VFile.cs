@@ -16,14 +16,28 @@ public class VFile
 		var opts = VFileOptions.Default();
 		opts = configure(opts);
 
-		if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
-			throw new ArgumentException($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
-
-		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
-		Directory = Util.CreateDir(opts.Directory);
 		Tools = new();
-		Database = new VFileDatabase(new(Name, Directory, Version, Tools));
 		DefaultStoreOptions = opts.DefaultStoreOptions;
+
+		if (opts.DatabaseFilePath.HasValue())
+		{
+			if (!Path.IsPathFullyQualified(opts.DatabaseFilePath))
+				throw new ArgumentException($"Invalid DatabaseFilePath: \"{opts.DatabaseFilePath}\". DatabaseFilePath must be a fully qualified path.");
+
+			var fi = new FileInfo(opts.DatabaseFilePath);
+			Name = fi.Name.Replace(VFileDatabase.FileNameSuffix, string.Empty);
+			Directory = Util.CreateDir(fi.DirectoryName ?? string.Empty);
+			Database = new VFileDatabase(fi, Version, Tools);
+		}
+		else
+		{
+			if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
+				throw new ArgumentException($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
+
+			Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
+			Directory = Util.CreateDir(opts.Directory);
+			Database = new VFileDatabase(new(Name, Directory, Version, Tools));
+		}
 
 		Clean();
 	}

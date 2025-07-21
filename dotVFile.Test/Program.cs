@@ -3,6 +3,11 @@ using dotVFile.Test;
 
 ConsoleUtil.InitializeConsole(height: 1000);
 
+var v = new VFile(VFileOptions.FromDatabaseFilePath(@"C:\dev\vfile\dotVFile.Test\bin\Debug\net9.0\vfile\dotVFile.Test.vfile.db", null));
+
+Console.WriteLine(new { v, v.Database }.ToJson(true));
+return;
+
 // initialize some variables for use later
 var vdir = VDirectory.Default();
 var vfilePath = VFilePath.Default();
