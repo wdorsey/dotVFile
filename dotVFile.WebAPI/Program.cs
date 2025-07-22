@@ -6,24 +6,33 @@ namespace dotVFile.WebAPI
 		{
 			var builder = WebApplication.CreateBuilder(args);
 
-			// Add services to the container.
+			builder.Logging.ClearProviders();
+			builder.Logging.AddConsole();
 
-			builder.Services.AddControllers();
-			// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+			builder.Services.AddControllers(options =>
+			{
+				options.Filters.Add<ExceptionFilter>();
+			});
+
 			builder.Services.AddOpenApi();
 
 			var app = builder.Build();
 
-			// Configure the HTTP request pipeline.
 			if (app.Environment.IsDevelopment())
 			{
 				app.MapOpenApi();
+
+				app.UseSwaggerUI(options =>
+				{
+					options.SwaggerEndpoint("/openapi/v1.json", "v1");
+				});
+
+				app.UseDeveloperExceptionPage();
 			}
 
 			app.UseHttpsRedirection();
 
 			app.UseAuthorization();
-
 
 			app.MapControllers();
 

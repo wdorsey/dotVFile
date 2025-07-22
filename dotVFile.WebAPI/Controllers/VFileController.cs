@@ -4,28 +4,28 @@ using Microsoft.AspNetCore.Mvc;
 namespace dotVFile.WebAPI.Controllers
 {
 	[ApiController]
-	[Route("[controller]", Name = "[controller]_[action]")]
+	[Route("[controller]/[action]", Name = "[controller]_[action]")]
 	public class VFileController : ControllerBase
 	{
 		[HttpPost]
-		public IEnumerable<VDirectory> GetDirectories(string vfilePath, string directory)
+		public Response<IEnumerable<VDirectory>> GetDirectories(GetDirectoriesRequest request)
 		{
-			var vfile = GetVFile(vfilePath);
+			var vfile = GetVFile(request);
 
-			return vfile.GetDirectories(new(directory), false);
+			return new(vfile.GetDirectories(new(request.Directory), false));
 		}
 
 		private static readonly ConcurrentDictionary<string, VFile> _VFileCache = [];
-		private static VFile GetVFile(string vfilePath)
+		private static VFile GetVFile(VFileRequest request)
 		{
-			if (_VFileCache.TryGetValue(vfilePath, out var vfile))
+			if (_VFileCache.TryGetValue(request.VFilePath, out var vfile))
 				return vfile;
 
-			vfile = new VFile(vfilePath);
+			vfile = new VFile(request.VFilePath);
 
 			if (vfile == null) throw new Exception("null vfile");
 
-			_VFileCache.AddOrUpdate(vfilePath, vfile, (_, __) => vfile);
+			_VFileCache.AddOrUpdate(request.VFilePath, vfile, (_, __) => vfile);
 
 			return vfile;
 		}
