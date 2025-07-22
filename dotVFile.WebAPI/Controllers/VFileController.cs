@@ -21,7 +21,7 @@ namespace dotVFile.WebAPI.Controllers
 			if (_VFileCache.TryGetValue(vfilePath, out var vfile))
 				return vfile;
 
-			vfile = new VFile(new FileInfo(vfilePath));
+			vfile = new VFile(vfilePath);
 
 			if (vfile == null) throw new Exception("null vfile");
 
