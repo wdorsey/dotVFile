@@ -8,6 +8,14 @@ namespace dotVFile.WebAPI.Controllers
 	public class VFileController : ControllerBase
 	{
 		[HttpPost]
+		public Response<bool> VerifyVFile(VFileRequest request)
+		{
+			GetVFile(request);
+
+			return new(true);
+		}
+
+		[HttpPost]
 		public Response<IEnumerable<VDirectory>> GetDirectories(GetDirectoriesRequest request)
 		{
 			var vfile = GetVFile(request);
