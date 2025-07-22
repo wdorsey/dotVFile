@@ -3,6 +3,7 @@
 public class VFile
 {
 	public const string Version = "0.0.1";
+	public const string SingleFileNameSuffix = ".vfile.db";
 
 	private static string Context(string ctx) => $"{ctx}"; // placeholder in case I want to add something
 	private static string FunctionContext(string fnName) => Context($"{fnName}()");
@@ -16,45 +17,49 @@ public class VFile
 		var opts = VFileOptions.Default();
 		opts = configure(opts);
 
+		if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
+			throw new Exception($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
+
 		Tools = new();
 		DefaultStoreOptions = opts.DefaultStoreOptions;
+		Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
+		Directory = Util.CreateDir(opts.Directory);
+		SingleFileName = $"{Name}{SingleFileNameSuffix}";
+		var fi = new FileInfo(Path.Combine(Directory, SingleFileName));
+		Database = new VFileDatabase(fi, Version, Tools);
 
-		if (opts.DatabaseFilePath.HasValue())
-		{
-			if (!Path.IsPathFullyQualified(opts.DatabaseFilePath))
-				throw new ArgumentException($"Invalid DatabaseFilePath: \"{opts.DatabaseFilePath}\". DatabaseFilePath must be a fully qualified path.");
+		Clean();
+	}
 
-			var fi = new FileInfo(opts.DatabaseFilePath);
-			Name = fi.Name.Replace(VFileDatabase.FileNameSuffix, string.Empty);
-			Directory = Util.CreateDir(fi.DirectoryName ?? string.Empty);
-			Database = new VFileDatabase(fi, Version, Tools);
-		}
-		else
-		{
-			if (opts.Directory.IsEmpty() || !Path.IsPathFullyQualified(opts.Directory))
-				throw new ArgumentException($"Invalid Directory: \"{opts.Directory}\". Directory must be a valid path where this VFile instance will store its single file, such as: \"C:\\dotVFile\".");
+	public VFile(string dbFilePath, StoreOptions? defaultStoreOptions = null)
+	{
+		var dbFileInfo = new FileInfo(dbFilePath);
+		if (!dbFileInfo.Exists)
+			throw new Exception($"Passed-in file does not exist: \"{dbFileInfo.FullName}\"");
 
-			Name = opts.Name.HasValue() ? opts.Name : "dotVFile";
-			Directory = Util.CreateDir(opts.Directory);
-			Database = new VFileDatabase(new(Name, Directory, Version, Tools));
-		}
+		Tools = new();
+		DefaultStoreOptions = defaultStoreOptions ?? StoreOptions.Default();
+		Name = dbFileInfo.Name.TrimEnd([.. SingleFileNameSuffix]);
+		Directory = dbFileInfo.DirectoryName!;
+		SingleFileName = dbFileInfo.Name;
+		Database = new VFileDatabase(dbFileInfo, Version, Tools);
 
 		Clean();
 	}
 
 	internal VFileDatabase Database { get; private set; }
 	internal VFileTools Tools { get; private set; }
+
 	public string Name { get; private set; }
 	public string Directory { get; private set; }
-	public StoreOptions DefaultStoreOptions { get; private set; }
+	public StoreOptions DefaultStoreOptions { get; set; }
 	public DateTimeOffset LastClean { get; internal set; }
 	public DateTimeOffset NextClean { get; internal set; }
 
 	/// <summary>
-	/// Gets a copy of the <see cref="DefaultStoreOptions"/>
+	/// FileName of the single database file that is the entire virutal file system.
 	/// </summary>
-	public StoreOptions GetDefaultStoreOptions() =>
-		DefaultStoreOptions with { VersionOpts = DefaultStoreOptions.VersionOpts with { } };
+	public string SingleFileName { get; private set; }
 
 	/// <summary>
 	/// FilePath for the single database file that is the entire virtual file system.<br/>
@@ -64,9 +69,10 @@ public class VFile
 	public string SingleFilePath => Database.DatabaseFilePath;
 
 	/// <summary>
-	/// FileName of the single database file that is the entire virutal file system.
+	/// Gets a copy of the <see cref="DefaultStoreOptions"/>
 	/// </summary>
-	public string SingleFileName => Database.DatabaseFileName;
+	public StoreOptions GetDefaultStoreOptions() =>
+		DefaultStoreOptions with { VersionOpts = DefaultStoreOptions.VersionOpts with { } };
 
 	/// <summary>
 	/// !!! DANGER !!!

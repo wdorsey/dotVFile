@@ -2,12 +2,6 @@
 
 namespace dotVFile;
 
-internal record VFileDatabaseOptions(
-	string Name,
-	string Directory,
-	string Version,
-	VFileTools Tools);
-
 internal static class Db
 {
 	public record Entity

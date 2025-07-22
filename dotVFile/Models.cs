@@ -25,11 +25,6 @@ public record VFileOptions(
 	public string Directory { get; set; } = Directory;
 
 	/// <summary>
-	/// Path to the Database file.
-	/// </summary>
-	public string? DatabaseFilePath { get; set; }
-
-	/// <summary>
 	/// Default Store options
 	/// null will use VFileSystem.GetDefaultStoreOptions()
 	/// </summary>
@@ -40,11 +35,6 @@ public record VFileOptions(
 		new(null,
 			Environment.CurrentDirectory,
 			StoreOptions.Default());
-
-	public static VFileOptions FromDatabaseFilePath(
-		string databaseFilePath,
-		StoreOptions? opts) =>
-		new(null, string.Empty, opts) { DatabaseFilePath = databaseFilePath };
 }
 
 public record VFileInfo
