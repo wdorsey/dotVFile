@@ -3,22 +3,26 @@
 public class VDirectory : IEquatable<VDirectory>
 {
 	public const char DirectorySeparator = '/';
-	public static VDirectory Default() => new(string.Empty);
-	public static VDirectory RootDirectory() => new(DirectorySeparator.ToString());
+
+	private readonly static VDirectory _RootDirectory = new(DirectorySeparator.ToString());
+	public static VDirectory Default() => _RootDirectory;
+	public static VDirectory RootDirectory() => _RootDirectory;
 
 	public VDirectory(string? directory)
 	{
 		Path = StandardizeDirectory(directory);
 		DirectoryNames = [.. Path.Split(DirectorySeparator, StringSplitOptions.RemoveEmptyEntries)];
+		Name = DirectoryNames.LastOrDefault() ?? string.Empty;
+		IsRoot = Equals(_RootDirectory);
 		SystemPath = System.IO.Path.Combine([.. DirectoryNames]);
 	}
 
 	public VDirectory(params string[] directories)
 		: this(string.Join(string.Empty, StandardizeDirectories(directories))) { }
 
-	public string Name => DirectoryNames.LastOrDefault() ?? string.Empty;
 	public string Path { get; }
-	public bool IsRoot => Equals(RootDirectory());
+	public string Name { get; }
+	public bool IsRoot { get; }
 
 	/// <summary>
 	/// Converts Path to a path standardized for the current system via Path.Combine.<br/>
