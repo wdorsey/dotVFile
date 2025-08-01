@@ -1,3 +1,16 @@
+import { getDirectories } from "./api";
+import DirectoryRecord from "./DirectoryRecord";
+
 export default function Home() {
-  return <div>Hello, World!</div>;
+  const dirs = getDirectories("/");
+
+  return (
+    <div>
+      <div>
+        {dirs.map((dir) => (
+          <DirectoryRecord directory={dir} key={dir.name} />
+        ))}
+      </div>
+    </div>
+  );
 }
