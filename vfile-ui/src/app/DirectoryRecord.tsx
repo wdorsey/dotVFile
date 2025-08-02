@@ -1,4 +1,6 @@
 import { VDirectory } from "./api";
+import { FaFolderClosed } from "react-icons/fa6";
+import Record from "./Record";
 
 interface DirectoryRecordPorps {
   directory: VDirectory;
@@ -6,8 +8,9 @@ interface DirectoryRecordPorps {
 
 export default function DirectoryRecord({ directory }: DirectoryRecordPorps) {
   return (
-    <div className="w-full">
+    <Record>
+      <FaFolderClosed className="fill-info" />
       <span>{directory.name}</span>
-    </div>
+    </Record>
   );
 }
