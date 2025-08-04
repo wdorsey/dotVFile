@@ -1,7 +1,5 @@
 "use server";
 
-import { Record, RecordType } from "@/types";
-
 export declare interface VDirectory {
   id: string;
   path: string;
@@ -15,6 +13,7 @@ export declare interface VFileInfo {
 }
 
 export declare interface VFileDirectory {
+  path: string;
   dirs: VDirectory[];
   files: VFileInfo[];
 }
@@ -91,8 +90,18 @@ export async function getFileInfos(dir: string): Promise<VFileInfo[]> {
   })) as VFileInfo[];
 }
 
+export async function getFileBytes(
+  fileName: string,
+  filePath: string,
+): Promise<Blob> {
+  console.log(filePath);
+  const blob = new Blob([]);
+  return blob;
+}
+
 export async function getDirectory(dir: string): Promise<VFileDirectory> {
   return {
+    path: dir,
     dirs: await getDirectories(dir),
     files: await getFileInfos(dir),
   } as VFileDirectory;

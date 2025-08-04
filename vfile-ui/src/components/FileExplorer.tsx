@@ -1,15 +1,14 @@
 "use client";
 
-import { getDirectory, VFileDirectory } from "@/api";
+import { getDirectory, getFileBytes, VFileDirectory } from "@/api";
 import { Path, Record, RecordType } from "@/types";
 import React from "react";
 import FileExplorerIcon from "./FileExplorerIcon";
+import { IoArrowBack } from "react-icons/io5";
 
 export default function FileExplorer({
-  initialPath,
   initialDir,
 }: {
-  initialPath: string;
   initialDir: VFileDirectory;
 }) {
   function compileRecords(dir: VFileDirectory): Record[] {
@@ -36,49 +35,65 @@ export default function FileExplorer({
     return dirRecords.concat(fileRecords);
   }
 
-  const [path, setPath] = React.useState({ path: initialPath } as Path);
+  const [path, setPath] = React.useState({ path: initialDir.path } as Path);
   const [records, setRecords] = React.useState(compileRecords(initialDir));
 
-  async function recordClick(record: Record): Promise<void> {
-    console.log(record.path);
-    if (
-      record.type === RecordType.Directory ||
-      record.type === RecordType.MoveBack
-    ) {
-      const newPath =
-        record.type === RecordType.Directory
-          ? ({ path: record.path, prevPath: path } as Path)
-          : ({ path: record.path, prevPath: path.prevPath } as Path);
-
-      console.log(JSON.stringify(newPath));
-      const dir = await getDirectory(record.path);
-      const newRecords = compileRecords(dir);
-
-      if (record.path !== "/") {
-        newRecords.unshift({
-          type: RecordType.MoveBack,
-          path: newPath.prevPath || "/",
-          name: "",
-        } as Record);
-      }
-
-      setPath(newPath);
-      setRecords(newRecords);
+  async function recordClick(record: Record, currPath: Path): Promise<void> {
+    console.log(`recordClick: ${JSON.stringify(record)}`);
+    if (record.type === RecordType.Directory) {
+      await loadDir(record.path, currPath);
     } else {
       // download file
       console.log(record.path);
+      const blob = await getFileBytes(record.name, record.path);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = record.name;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      link.remove();
     }
+  }
+
+  async function back(currPath: Path): Promise<void> {
+    if (currPath.prevPath !== undefined) {
+      loadDir(currPath.prevPath.path, currPath.prevPath.prevPath);
+    }
+  }
+
+  async function loadDir(
+    dirPath: string,
+    prevPath: Path | undefined,
+  ): Promise<void> {
+    console.log(`load dir ${dirPath}`);
+    const dir = await getDirectory(dirPath);
+    const newRecords = compileRecords(dir);
+
+    setPath({ path: dirPath, prevPath: prevPath } as Path);
+    setRecords(newRecords);
   }
 
   return (
     <>
-      <div className="m-auto my-1 w-3xl px-1 text-2xl">{path.path}</div>
-      <div className="m-auto flex w-3xl flex-col">
+      <div className="m-auto mt-2 flex w-3xl flex-row gap-2">
+        <button
+          className="btn disabled rounded-full"
+          disabled={path.prevPath === undefined}
+          onClick={() => back(path)}
+        >
+          <IoArrowBack size={24} />
+        </button>
+        <div className="m-auto w-3xl px-1 text-2xl">{path.path}</div>
+      </div>
+      <div className="m-auto mt-2 flex w-3xl flex-col">
         {records.map((record) => (
           <button
             className="btn flex w-full flex-row items-center gap-2 text-left"
             key={record.path}
-            onClick={() => recordClick(record)}
+            type="button"
+            onClick={() => recordClick(record, path)}
           >
             <FileExplorerIcon type={record.type} />
             <div className="grow">{record.name}</div>

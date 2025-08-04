@@ -1,7 +1,6 @@
 export enum RecordType {
   Directory,
   File,
-  MoveBack,
 }
 
 export interface Record {
