@@ -77,7 +77,7 @@ export default function FileExplorer({
 
   return (
     <>
-      <div className="m-auto mt-2 flex w-3xl flex-row gap-2">
+      <div className="flex w-full flex-row gap-2">
         <button
           className="btn disabled rounded-full"
           disabled={path.prevPath === undefined}
@@ -85,9 +85,9 @@ export default function FileExplorer({
         >
           <IoArrowBack size={24} />
         </button>
-        <div className="m-auto w-3xl px-1 text-2xl">{path.path}</div>
+        <div className="w-full px-1 text-2xl">{path.path}</div>
       </div>
-      <div className="m-auto mt-2 flex w-3xl flex-col">
+      <div className="flex w-full flex-col">
         {records.map((record) => (
           <button
             className="btn flex w-full flex-row items-center gap-2 text-left"
