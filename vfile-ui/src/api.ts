@@ -18,9 +18,14 @@ export declare interface VFileDirectory {
   files: VFileInfo[];
 }
 
+export async function verifyVFilePath(path: string): Promise<boolean> {
+  console.log(`verifyVFilePath: ${path}`);
+  return true;
+}
+
 export async function getDirectories(dir: string): Promise<VDirectory[]> {
   // dummy data
-  console.log(dir);
+  console.log(`getDirectories: ${dir}`);
   const dirs = [
     {
       id: "bd8138f2-508e-48da-b8f5-b556061e75b2",
@@ -51,7 +56,7 @@ export async function getDirectories(dir: string): Promise<VDirectory[]> {
 
 export async function getFileInfos(dir: string): Promise<VFileInfo[]> {
   // dummy data
-  console.log(dir);
+  console.log(`getFileInfos: ${dir}`);
   const files = [
     {
       id: "fe87f839-3678-4cba-9cda-5738f95dffab",
