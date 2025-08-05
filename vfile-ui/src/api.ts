@@ -104,7 +104,14 @@ export async function getFileBytes(
   return blob;
 }
 
-export async function getDirectory(dir: string): Promise<VFileDirectory> {
+export async function getDirectory({
+  vfilePath,
+  dir,
+}: {
+  vfilePath: string;
+  dir: string;
+}): Promise<VFileDirectory> {
+  console.log(`api.getDirectory(${vfilePath}, ${dir})`);
   return {
     path: dir,
     dirs: await getDirectories(dir),

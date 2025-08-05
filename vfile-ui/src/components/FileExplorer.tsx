@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import { IoArrowBack } from "react-icons/io5";
 import { IoIosCheckmarkCircle } from "react-icons/io";
@@ -12,6 +10,7 @@ import {
   verifyVFilePath,
   VFileDirectory,
 } from "@/api";
+import SelectVFile from "./SelectVFile";
 
 function compileRecords(dir: VFileDirectory): Record[] {
   function sortRecordNameCompare(a: Record, b: Record): number {
@@ -38,28 +37,36 @@ function compileRecords(dir: VFileDirectory): Record[] {
 }
 
 export default function FileExplorer() {
-  const [vfilePath, setVFilePath] = React.useState("");
+  const initialPath = process.env.NEXT_PUBLIC_VFILE_PATH;
   const [vfilePathVerified, setVFilePathVerified] = React.useState(false);
-  const [vfilePathValue, setVFilePathValue] = React.useState(vfilePath);
+  const [vfilePath, setVFilePath] = React.useState("");
   const [path, setPath] = React.useState({ path: "/" } as Path);
   const [records, setRecords] = React.useState([] as Record[]);
 
-  const loadVFile = React.useCallback((vfilePath: string) => {
-    setVFilePathValue(vfilePath);
-    verifyVFilePath(vfilePath).then((res) => {
-      setVFilePathVerified(res);
-      if (res) {
-        console.log(`vfilePath: ${vfilePath}`);
-        setVFilePath(vfilePath);
-        loadDir({ path: "/" } as Path);
-      }
-    });
-  }, []);
+  const verifyVFile = React.useCallback(
+    async (path: string) => {
+      console.log(`verifyVFilePath: ${path}`);
+      await verifyVFilePath(path).then((res) => {
+        setVFilePathVerified(res);
+        if (res) {
+          console.log(`vfilePath verified: ${path}`);
+          setVFilePath(path);
+          loadDir({ path: "/" } as Path);
+        }
+      });
+    },
+    [loadDir],
+  );
 
   React.useEffect(() => {
-    const path = process.env.NEXT_PUBLIC_VFILE_PATH;
-    if (path) loadVFile(path);
-  }, [loadVFile]);
+    verifyVFile(initialPath || "");
+  }, [initialPath, verifyVFile]);
+
+  async function loadVFile(newVFilePath: string) {
+    console.log(`loadVFile: ${newVFilePath}`);
+    setVFilePath(newVFilePath);
+    await loadDir({ path: "/" } as Path);
+  }
 
   async function recordClick(record: Record, currPath: Path): Promise<void> {
     console.log(`recordClick: ${JSON.stringify(record)}`);
@@ -83,48 +90,26 @@ export default function FileExplorer() {
   async function back(currPath: Path): Promise<void> {
     if (currPath.prevPath !== undefined) {
       console.log("back => loadDir");
-      loadDir(currPath.prevPath);
+      await loadDir(currPath.prevPath);
     }
   }
 
   async function loadDir(path: Path): Promise<void> {
+    console.log(`loadDir: ${path.path}`);
     const dirPath = path.path;
-    console.log(`load dir ${dirPath}`);
-    const dir = await getDirectory(dirPath);
+    const dir = await getDirectory({ vfilePath, dir: dirPath });
     const newRecords = compileRecords(dir);
-
     setPath(path);
     setRecords(newRecords);
   }
 
-  async function handleVFile(formData: FormData) {
-    const vfilePath = formData.get("vfile") as string;
-    console.log(`handleVFile: ${vfilePath}`);
-    loadVFile(vfilePath);
-  }
-
   return (
     <>
-      <form action={handleVFile} className="flex w-full flex-row gap-2">
-        <label className="input grow">
-          <span className="label">vfile path:</span>
-          {vfilePathVerified ? (
-            <IoIosCheckmarkCircle size={24} className="fill-success" />
-          ) : (
-            <BiError size={24} className="fill-error" />
-          )}
-          <input
-            type="text"
-            name="vfile"
-            placeholder="paste path here..."
-            value={vfilePathValue}
-            onChange={(e) => setVFilePathValue(e.target.value)}
-          />
-        </label>
-        <button type="submit" className="btn">
-          Submit
-        </button>
-      </form>
+      <SelectVFile
+        initialPath={initialPath}
+        vfilePathVerified={vfilePathVerified}
+        onVFilePathSubmitted={(newVFilePath) => loadVFile(newVFilePath)}
+      />
       <div className="flex w-full flex-row gap-2">
         <button
           className="btn disabled rounded-full"
