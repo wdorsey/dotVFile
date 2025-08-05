@@ -57,7 +57,8 @@ export default function FileExplorer() {
   }, []);
 
   React.useEffect(() => {
-    loadVFile("C:\\dev\\twd-vfile2\\ThatWeebDorsey.vfile.db");
+    const path = process.env.NEXT_PUBLIC_VFILE_PATH;
+    if (path) loadVFile(path);
   }, [loadVFile]);
 
   async function recordClick(record: Record, currPath: Path): Promise<void> {
