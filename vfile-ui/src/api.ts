@@ -1,29 +1,14 @@
-"use server";
+import { VDirectory, VFileInfo } from "./types";
 
-export declare interface VDirectory {
-  id: string;
-  path: string;
-  name: string;
-}
-
-export declare interface VFileInfo {
-  id: string;
-  path: string;
-  name: string;
-}
-
-export declare interface VFileDirectory {
-  path: string;
-  dirs: VDirectory[];
-  files: VFileInfo[];
-}
-
-export async function verifyVFilePath(path: string): Promise<boolean> {
-  console.log(`verifyVFilePath: ${path}`);
+export async function verifyVFilePath(vfilePath: string): Promise<boolean> {
+  console.log(`verifyVFilePath: ${vfilePath}`);
   return true;
 }
 
-export async function getDirectories(dir: string): Promise<VDirectory[]> {
+export async function getDirectories(
+  vfilePath: string,
+  dir: string,
+): Promise<VDirectory[]> {
   // dummy data
   console.log(`getDirectories: ${dir}`);
   const dirs = [
@@ -54,7 +39,10 @@ export async function getDirectories(dir: string): Promise<VDirectory[]> {
   })) as VDirectory[];
 }
 
-export async function getFileInfos(dir: string): Promise<VFileInfo[]> {
+export async function getFileInfos(
+  vfilePath: string,
+  dir: string,
+): Promise<VFileInfo[]> {
   // dummy data
   console.log(`getFileInfos: ${dir}`);
   const files = [
@@ -96,25 +84,11 @@ export async function getFileInfos(dir: string): Promise<VFileInfo[]> {
 }
 
 export async function getFileBytes(
+  vfilePath: string,
   fileName: string,
   filePath: string,
 ): Promise<Blob> {
   console.log(filePath);
   const blob = new Blob([]);
   return blob;
-}
-
-export async function getDirectory({
-  vfilePath,
-  dir,
-}: {
-  vfilePath: string;
-  dir: string;
-}): Promise<VFileDirectory> {
-  console.log(`api.getDirectory(${vfilePath}, ${dir})`);
-  return {
-    path: dir,
-    dirs: await getDirectories(dir),
-    files: await getFileInfos(dir),
-  } as VFileDirectory;
 }

@@ -1,15 +1,27 @@
-export enum RecordType {
-  Directory,
-  File,
+export interface Path {
+  path: string;
+  prevPath: Path | undefined;
 }
 
-export interface Record {
-  type: RecordType;
+export declare interface VDirectory {
+  id: string;
   path: string;
   name: string;
 }
 
-export interface Path {
+export declare interface VFileInfo {
+  id: string;
   path: string;
-  prevPath: Path | undefined;
+  name: string;
+}
+
+export declare interface VFileDirectory {
+  path: string;
+  dirs: VDirectory[];
+  files: VFileInfo[];
+}
+
+export enum FileExplorerItemType {
+  Directory,
+  File,
 }
