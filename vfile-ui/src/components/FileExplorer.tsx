@@ -35,22 +35,22 @@ function FileExplorerItem({
   );
 }
 
-export default function FileExplorer() {
-  // vfilePath fetched from env.local
-  const vfilePath = process.env.NEXT_PUBLIC_VFILE_PATH || "";
-
+function FileExplorerWindow({ vfilePath }: { vfilePath: string }) {
   const initialPath: Path = React.useMemo(() => {
     return { path: "/", prevPath: undefined };
   }, []);
 
   const [path, setPath] = React.useState(initialPath);
   const [vfileDirectory, setVFileDirectory] = React.useState<VFileDirectory>();
+  const [isLoading, setIsLoading] = React.useState(false);
 
   const loadDirectory = React.useCallback(
     async (dir: string, currPath: Path | undefined) => {
+      setPath({ path: dir, prevPath: currPath });
+      setIsLoading(true);
       const vfileDirectory = await getVFileDirectory(vfilePath, dir);
       setVFileDirectory(vfileDirectory);
-      setPath({ path: dir, prevPath: currPath });
+      setIsLoading(false);
     },
     [vfilePath],
   );
@@ -62,7 +62,6 @@ export default function FileExplorer() {
 
   return (
     <>
-      <div className="text-xl">VFile Path: {vfilePath}</div>
       <div className="flex w-full flex-row gap-2">
         <button
           className="btn disabled rounded-full"
@@ -78,30 +77,52 @@ export default function FileExplorer() {
         <div className="w-full px-1 text-2xl">{path.path}</div>
       </div>
       <div className="flex w-full flex-col">
-        {vfileDirectory?.dirs.map((dir) => (
-          <FileExplorerItem
-            key={dir.path}
-            path={dir.path}
-            name={dir.name}
-            type={FileExplorerItemType.Directory}
-            onClick={async () => await loadDirectory(dir.path, path)}
-          />
-        ))}
-        {vfileDirectory?.files.map((file) => (
-          <FileExplorerItem
-            key={file.path}
-            path={file.path}
-            name={file.name}
-            type={FileExplorerItemType.File}
-            onClick={async () =>
-              download(
-                file.name,
-                await getFileBytes(vfilePath, file.name, file.path),
-              )
-            }
-          />
-        ))}
+        {isLoading ? (
+          <FileExplorerLoading />
+        ) : (
+          <div>
+            {vfileDirectory?.dirs.map((dir) => (
+              <FileExplorerItem
+                key={dir.path}
+                path={dir.path}
+                name={dir.name}
+                type={FileExplorerItemType.Directory}
+                onClick={async () => await loadDirectory(dir.path, path)}
+              />
+            ))}
+            {vfileDirectory?.files.map((file) => (
+              <FileExplorerItem
+                key={file.path}
+                path={file.path}
+                name={file.name}
+                type={FileExplorerItemType.File}
+                onClick={async () =>
+                  download(
+                    file.name,
+                    await getFileBytes(vfilePath, file.name, file.path),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
+    </>
+  );
+}
+
+function FileExplorerLoading() {
+  return <div className="text-xl">Loading...</div>;
+}
+
+export default function FileExplorer() {
+  // vfilePath fetched from env.local
+  const vfilePath = process.env.NEXT_PUBLIC_VFILE_PATH || "";
+
+  return (
+    <>
+      <div className="text-xl">VFile Path: {vfilePath}</div>
+      <FileExplorerWindow vfilePath={vfilePath} />
     </>
   );
 }
