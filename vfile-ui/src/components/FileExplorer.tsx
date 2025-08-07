@@ -10,7 +10,7 @@ export default async function FileExplorer() {
   const verified = await verifyVFilePath(vfilePath);
 
   return (
-    <>
+    <div className="m-auto mt-2 flex w-6xl flex-col gap-2">
       <div className="text-xl underline">VFile</div>
       <dl className="mb-8 grid grid-cols-[auto_1fr] gap-3 text-xl">
         <dt className="text-right">Path:</dt>
@@ -34,6 +34,6 @@ export default async function FileExplorer() {
         </dd>
       </dl>
       <FileExplorerWindow vfilePath={vfilePath} />
-    </>
+    </div>
   );
 }
