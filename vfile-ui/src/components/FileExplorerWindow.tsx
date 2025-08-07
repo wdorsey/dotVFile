@@ -2,11 +2,11 @@
 
 import { getVFileDirectory } from "@/actions";
 import { FileExplorerItemType, Path, VFileDirectory } from "@/types";
-import FileExplorerIcon from "./FileExplorerIcon";
 import { download } from "@/utils";
 import { getFileBytes } from "@/api";
 import React from "react";
 import { IoArrowBack } from "react-icons/io5";
+import { FaFile, FaFolderClosed } from "react-icons/fa6";
 
 function FileExplorerItem({
   path,
@@ -33,6 +33,15 @@ function FileExplorerItem({
       <div className="grow">{name}</div>
     </button>
   );
+}
+
+function FileExplorerIcon({ type }: { type: FileExplorerItemType }) {
+  switch (type) {
+    case FileExplorerItemType.Directory:
+      return <FaFolderClosed className="fill-primary" />;
+    case FileExplorerItemType.File:
+      return <FaFile className="fill-secondary" />;
+  }
 }
 
 function FileExplorerLoading() {
