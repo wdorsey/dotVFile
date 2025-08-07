@@ -35,7 +35,7 @@ public class VFile
 	{
 		var dbFileInfo = new FileInfo(dbFilePath);
 		if (!dbFileInfo.Exists)
-			throw new Exception($"Passed-in file does not exist: \"{dbFileInfo.FullName}\"");
+			throw new Exception($"File does not exist at path: \"{dbFileInfo.FullName}\"");
 
 		Tools = new();
 		DefaultStoreOptions = defaultStoreOptions ?? StoreOptions.Default();

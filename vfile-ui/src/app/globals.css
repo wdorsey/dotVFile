@@ -2,3 +2,8 @@
 @plugin "daisyui" {
   themes: dark --default;
 }
+
+dt {
+  font-weight: bold;
+  text-align: right;
+}

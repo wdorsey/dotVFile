@@ -1,42 +1,73 @@
-import { VDirectory, VFileInfo } from "./types";
+import "server-only";
 
-export async function verifyVFilePath(vfilePath: string): Promise<boolean> {
-  console.log(`verifyVFilePath: ${vfilePath}`);
-  return true;
+import {
+  ApiRequest,
+  ApiResponse,
+  DirectoryApiRequest,
+  VDirectory,
+  VFileInfo,
+  VFileStats,
+} from "./types";
+
+async function call<RequestType extends ApiRequest, ResultType>(
+  route: string,
+  request: RequestType,
+): Promise<ApiResponse<ResultType>> {
+  const url = `${process.env.WEB_API_URL}${route}`;
+
+  console.log(`call api: ${url} ${JSON.stringify(request)}`);
+
+  return await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  })
+    .then((response) => {
+      return response.json();
+    })
+    .then((data) => {
+      const response = data as ApiResponse<ResultType>;
+      if (response.error) {
+        console.log(`error returned from api: ${JSON.stringify(data.error)}`);
+      }
+      return response;
+    })
+    .catch((error) => {
+      console.log(error);
+      const err: Error = !(error instanceof Error) ? new Error(error) : error;
+
+      return {
+        error: {
+          type: err.name,
+          message: `Error calling api: ${err.message}. Make sure the WebAPI is running.`,
+        },
+      } as ApiResponse<ResultType>;
+    });
+}
+
+export async function verifyVFilePath(
+  vfilePath: string,
+): Promise<ApiResponse<boolean>> {
+  return await call("/VFile/VerifyVFile", { vfilePath });
+}
+
+export async function getStats(
+  vfilePath: string,
+): Promise<ApiResponse<VFileStats>> {
+  return await call("/VFile/GetStats", { vfilePath });
 }
 
 export async function getDirectories(
   vfilePath: string,
   dir: string,
-): Promise<VDirectory[]> {
-  // dummy data
-  console.log(`getDirectories: ${dir}`);
-  const dirs = [
-    {
-      id: "bd8138f2-508e-48da-b8f5-b556061e75b2",
-      path: dir.concat("db-anime/"),
-      name: "db-anime",
-    },
-    {
-      id: "0b3cf345-26cf-4cdc-9839-93d38bb3aefd",
-      path: dir.concat("db-anime-release/"),
-      name: "db-anime-release",
-    },
-    {
-      id: "9ed9fba7-0306-48b1-8ae5-71a0e9270f60",
-      path: dir.concat("image/"),
-      name: "image",
-    },
-    {
-      id: "9ed9fba7-0306-48b1-8ae5-71a0e9270f60",
-      path: dir.concat("abc/"),
-      name: "abc",
-    },
-  ];
-
-  return dirs.map((dir) => ({
-    ...dir,
-  })) as VDirectory[];
+): Promise<ApiResponse<VDirectory[]>> {
+  return await call("/VFile/GetDirectories", {
+    vfilePath,
+    directory: dir,
+  } as DirectoryApiRequest);
 }
 
 export async function getFileInfos(

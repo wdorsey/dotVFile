@@ -61,11 +61,16 @@ export default function FileExplorerWindow({
   const [vfileDirectory, setVFileDirectory] = React.useState<VFileDirectory>();
   const [isLoading, setIsLoading] = React.useState(false);
 
+  async function getDirectory(vfilePath: string, dir: string) {
+    "use server";
+    return await getVFileDirectory(vfilePath, dir);
+  }
+
   const loadDirectory = React.useCallback(
     async (dir: string, currPath: Path | undefined) => {
       setPath({ path: dir, prevPath: currPath });
       setIsLoading(true);
-      const vfileDirectory = await getVFileDirectory(vfilePath, dir);
+      const vfileDirectory = await getDirectory(vfilePath, dir);
       setVFileDirectory(vfileDirectory);
       setIsLoading(false);
     },
@@ -98,7 +103,7 @@ export default function FileExplorerWindow({
           <FileExplorerLoading />
         ) : (
           <div>
-            {vfileDirectory?.dirs.map((dir) => (
+            {vfileDirectory?.dirs?.map((dir) => (
               <FileExplorerItem
                 key={dir.path}
                 path={dir.path}
@@ -107,7 +112,7 @@ export default function FileExplorerWindow({
                 onClick={async () => await loadDirectory(dir.path, path)}
               />
             ))}
-            {vfileDirectory?.files.map((file) => (
+            {vfileDirectory?.files?.map((file) => (
               <FileExplorerItem
                 key={file.path}
                 path={file.path}

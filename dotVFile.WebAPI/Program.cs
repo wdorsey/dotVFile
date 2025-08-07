@@ -29,8 +29,10 @@ namespace dotVFile.WebAPI
 
 				app.UseDeveloperExceptionPage();
 			}
-
-			app.UseHttpsRedirection();
+			else
+			{
+				app.UseHttpsRedirection();
+			}
 
 			app.UseAuthorization();
 

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { getDirectories, getFileInfos } from "./api";
 import { VFileDirectory } from "./types";
 
@@ -10,7 +12,8 @@ export async function getVFileDirectory(
 
   return {
     path: dir,
-    dirs: dirs.sort((a, b) => a.name.localeCompare(b.name)),
+    dirs: dirs.result?.sort((a, b) => a.name.localeCompare(b.name)),
     files: files.sort((a, b) => a.name.localeCompare(b.name)),
+    error: dirs.error,
   };
 }
