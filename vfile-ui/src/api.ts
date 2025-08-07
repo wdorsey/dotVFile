@@ -4,10 +4,12 @@ import {
   ApiRequest,
   ApiResponse,
   DirectoryApiRequest,
+  FileApiRequest,
   VDirectory,
   VFileInfo,
   VFileStats,
 } from "./types";
+import { b64toBlob } from "./utils";
 
 async function call<RequestType extends ApiRequest, ResultType>(
   route: string,
@@ -73,53 +75,28 @@ export async function getDirectories(
 export async function getFileInfos(
   vfilePath: string,
   dir: string,
-): Promise<VFileInfo[]> {
-  // dummy data
-  console.log(`getFileInfos: ${dir}`);
-  const files = [
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file3.txt",
-      path: dir.concat("/file3.txt"),
-    },
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file4.json",
-      path: dir.concat("/file4.json"),
-    },
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file5.json",
-      path: dir.concat("/file5.json"),
-    },
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file.txt",
-      path: dir.concat("/file.txt"),
-    },
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file1.txt",
-      path: dir.concat("/file1.txt"),
-    },
-    {
-      id: "fe87f839-3678-4cba-9cda-5738f95dffab",
-      name: "file2.txt",
-      path: dir.concat("/file2.txt"),
-    },
-  ];
-
-  return files.map((file) => ({
-    ...file,
-  })) as VFileInfo[];
+): Promise<ApiResponse<VFileInfo[]>> {
+  return await call("/VFile/GetFiles", {
+    vfilePath,
+    directory: dir,
+  } as DirectoryApiRequest);
 }
 
 export async function getFileBytes(
   vfilePath: string,
-  fileName: string,
   filePath: string,
-): Promise<Blob> {
-  console.log(filePath);
-  const blob = new Blob([]);
-  return blob;
+): Promise<ApiResponse<Blob>> {
+  const response = await call<FileApiRequest, string>("/VFile/GetFileBytes", {
+    vfilePath,
+    filePath: filePath,
+  } as FileApiRequest);
+
+  if (response.result) {
+    return {
+      result: b64toBlob(response.result),
+      error: response.error,
+    };
+  }
+
+  return { error: response.error };
 }

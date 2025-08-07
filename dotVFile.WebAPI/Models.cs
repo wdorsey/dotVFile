@@ -18,5 +18,8 @@ public record Response<T>
 
 public record Error(string Type, string Message);
 
-public record GetDirectoriesRequest(string VFilePath, string Directory)
+public record GetDirectoryRequest(string VFilePath, string Directory)
+	: VFileRequest(VFilePath);
+
+public record GetFileBytesRequest(string VFilePath, string FilePath)
 	: VFileRequest(VFilePath);

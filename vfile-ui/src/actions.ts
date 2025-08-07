@@ -13,7 +13,7 @@ export async function getVFileDirectory(
   return {
     path: dir,
     dirs: dirs.result?.sort((a, b) => a.name.localeCompare(b.name)),
-    files: files.sort((a, b) => a.name.localeCompare(b.name)),
+    files: files.result?.sort((a, b) => a.fileName.localeCompare(b.fileName)),
     error: dirs.error,
   };
 }

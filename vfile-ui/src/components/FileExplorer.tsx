@@ -1,7 +1,8 @@
-import { getStats, verifyVFilePath } from "@/api";
+import { getFileBytes, getStats, verifyVFilePath } from "@/api";
 import FileExplorerWindow from "./FileExplorerWindow";
 import { IoIosCheckmarkCircle } from "react-icons/io";
 import { BiError } from "react-icons/bi";
+import { getVFileDirectory } from "@/actions";
 
 export default async function FileExplorer() {
   // vfilePath fetched from env.local
@@ -10,10 +11,21 @@ export default async function FileExplorer() {
   const verified = await verifyVFilePath(vfilePath);
   const stats = await getStats(vfilePath).then((res) => res.result);
 
+  async function getDirectory(dir: string) {
+    "use server";
+    return getVFileDirectory(vfilePath, dir);
+  }
+
+  async function getVFileBytes(filePath: string) {
+    "use server";
+    const response = await getFileBytes(vfilePath, filePath);
+    return response.result || new Blob([]);
+  }
+
   return (
     <div className="m-auto mt-2 flex w-6xl flex-col gap-2">
-      <h1 className="text-2xl underline">VFile</h1>
-      <dl className="mb-8 grid grid-cols-[auto_1fr] gap-2 text-xl">
+      <h1 className="text-2xl underline">dotVFile</h1>
+      <dl className="grid grid-cols-[auto_1fr] gap-2 text-xl">
         <dt>Status:</dt>
         <dd>
           {verified.result ? (
@@ -57,9 +69,14 @@ export default async function FileExplorer() {
         )}
       </dl>
       {verified.result ? (
-        <FileExplorerWindow vfilePath={vfilePath} />
+        <div className="my-8">
+          <FileExplorerWindow
+            getVFileDirectory={getDirectory}
+            getVFileBytes={getVFileBytes}
+          />
+        </div>
       ) : (
-        <div></div>
+        <></>
       )}
     </div>
   );

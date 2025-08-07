@@ -28,13 +28,39 @@ namespace dotVFile.WebAPI.Controllers
 		}
 
 		[HttpPost]
-		public Response<IEnumerable<VDirectory>> GetDirectories(GetDirectoriesRequest request)
+		public Response<IEnumerable<VDirectory>> GetDirectories(GetDirectoryRequest request)
 		{
 			var (vfile, error) = GetVFile(request);
 
 			if (vfile == null) return new(VFileError(request, error));
 
 			return new(vfile.GetDirectories(new(request.Directory), false));
+		}
+
+		[HttpPost]
+		public Response<IEnumerable<VFileInfo>> GetFiles(GetDirectoryRequest request)
+		{
+			var (vfile, error) = GetVFile(request);
+
+			if (vfile == null) return new(VFileError(request, error));
+
+			return new(vfile.Get(new(request.Directory), false));
+		}
+
+		[HttpPost]
+		public Response<string> GetFileBytes(GetFileBytesRequest request)
+		{
+			var (vfile, error) = GetVFile(request);
+
+			if (vfile == null) return new(VFileError(request, error));
+
+			var bytes = vfile.GetBytes(new VFilePath(request.FilePath));
+
+			var err = bytes == null ? new Error("NOT_FOUND", $"vfile not found at path: {request.FilePath}") : null;
+
+			var result = bytes != null ? Convert.ToBase64String(bytes) : null;
+
+			return new(result, err);
 		}
 
 		private static Error VFileError(VFileRequest request, Error? error)

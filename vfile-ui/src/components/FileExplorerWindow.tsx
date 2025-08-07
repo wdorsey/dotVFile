@@ -1,9 +1,7 @@
 "use client";
 
-import { getVFileDirectory } from "@/actions";
 import { FileExplorerItemType, Path, VFileDirectory } from "@/types";
 import { download } from "@/utils";
-import { getFileBytes } from "@/api";
 import React from "react";
 import { IoArrowBack } from "react-icons/io5";
 import { FaFile, FaFolderClosed } from "react-icons/fa6";
@@ -49,9 +47,11 @@ function FileExplorerLoading() {
 }
 
 export default function FileExplorerWindow({
-  vfilePath,
+  getVFileDirectory,
+  getVFileBytes,
 }: {
-  vfilePath: string;
+  getVFileDirectory: (dir: string) => Promise<VFileDirectory>;
+  getVFileBytes: (filePath: string) => Promise<Blob>;
 }) {
   const initialPath: Path = React.useMemo(() => {
     return { path: "/", prevPath: undefined };
@@ -61,20 +61,15 @@ export default function FileExplorerWindow({
   const [vfileDirectory, setVFileDirectory] = React.useState<VFileDirectory>();
   const [isLoading, setIsLoading] = React.useState(false);
 
-  async function getDirectory(vfilePath: string, dir: string) {
-    "use server";
-    return await getVFileDirectory(vfilePath, dir);
-  }
-
   const loadDirectory = React.useCallback(
     async (dir: string, currPath: Path | undefined) => {
       setPath({ path: dir, prevPath: currPath });
       setIsLoading(true);
-      const vfileDirectory = await getDirectory(vfilePath, dir);
+      const vfileDirectory = await getVFileDirectory(dir);
       setVFileDirectory(vfileDirectory);
       setIsLoading(false);
     },
-    [vfilePath],
+    [getVFileDirectory],
   );
 
   // load initial path when component loads
@@ -83,7 +78,7 @@ export default function FileExplorerWindow({
   }, [loadDirectory, initialPath]);
 
   return (
-    <>
+    <div className="flex flex-col gap-2">
       <div className="flex w-full flex-row gap-2">
         <button
           className="btn disabled rounded-full"
@@ -114,21 +109,18 @@ export default function FileExplorerWindow({
             ))}
             {vfileDirectory?.files?.map((file) => (
               <FileExplorerItem
-                key={file.path}
-                path={file.path}
-                name={file.name}
+                key={file.filePath}
+                path={file.filePath}
+                name={file.fileName}
                 type={FileExplorerItemType.File}
                 onClick={async () =>
-                  download(
-                    file.name,
-                    await getFileBytes(vfilePath, file.name, file.path),
-                  )
+                  download(file.fileName, await getVFileBytes(file.filePath))
                 }
               />
             ))}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

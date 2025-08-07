@@ -14,8 +14,23 @@ export interface VDirectory {
 }
 
 export interface VFileInfo {
-  path: string;
-  name: string;
+  id: string;
+  fileName: string;
+  filePath: string;
+  directoryName: string;
+  directoryPath: string;
+  versioned?: string;
+  isVersion: boolean;
+  deleteAt?: string;
+  creationTime: string;
+
+  // Content fields
+  contentId: string;
+  hash: string;
+  size: number;
+  sizeStored: number;
+  compression: number;
+  contentCreationTime: string;
 }
 
 export interface VFileDirectory {
@@ -53,8 +68,8 @@ export interface ApiRequest {
 }
 
 export interface ApiResponse<T> {
-  result: T | undefined;
-  error: ApiError | undefined;
+  result?: T;
+  error?: ApiError;
 }
 
 export interface ApiError {
@@ -63,5 +78,9 @@ export interface ApiError {
 }
 
 export type DirectoryApiRequest = {
-  dir: string;
+  directory: string;
+} & ApiRequest;
+
+export type FileApiRequest = {
+  filePath: string;
 } & ApiRequest;
