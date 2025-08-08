@@ -13,6 +13,7 @@ export async function getVFileDirectory(
 
   return {
     path: dir,
+    name: stats.result?.directory.name || "_unknown_dir_name_",
     dirs: dirs.result?.sort((a, b) =>
       a.directory.name.localeCompare(b.directory.name),
     ),

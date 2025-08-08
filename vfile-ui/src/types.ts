@@ -43,6 +43,7 @@ export interface ApiVDirectory {
 
 export interface VFileDirectory {
   path: string;
+  name: string;
   dirs?: ApiVDirectory[];
   files?: VFileInfo[];
   stats?: VDirectoryStats;
@@ -103,3 +104,12 @@ export type DirectoryApiRequest = {
 export type FileApiRequest = {
   filePath: string;
 } & ApiRequest;
+
+export type ExportApiRequest = {
+  directoryPath: string;
+  exportToPath: string;
+} & ApiRequest;
+
+export interface ExportResponse {
+  exportedFilePaths: string[];
+}

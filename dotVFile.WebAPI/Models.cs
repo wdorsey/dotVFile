@@ -25,3 +25,10 @@ public record GetFileBytesRequest(string VFilePath, string FilePath)
 	: VFileRequest(VFilePath);
 
 public record ApiVDirectory(VDirectory Directory, DirectoryStats Stats);
+
+public record ExportRequest(
+	string VFilePath,
+	string DirectoryPath)
+	: VFileRequest(VFilePath);
+
+public record ExportResponse(List<string> ExportedFilePaths);

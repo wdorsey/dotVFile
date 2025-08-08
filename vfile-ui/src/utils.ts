@@ -1,3 +1,4 @@
+// download blob in a browser window
 export function download(fileName: string, blob: Blob): void {
   console.log(`download ${fileName}`);
   const url = window.URL.createObjectURL(blob);
@@ -10,6 +11,7 @@ export function download(fileName: string, blob: Blob): void {
   link.remove();
 }
 
+// convert base64 string => byte array => Blob
 export function b64toBlob(b64Data: string, contentType = "", sliceSize = 512) {
   const byteCharacters = atob(b64Data);
   const byteArrays = [];

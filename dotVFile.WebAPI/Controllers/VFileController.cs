@@ -1,12 +1,15 @@
 ﻿using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace dotVFile.WebAPI.Controllers
 {
 	[ApiController]
 	[Route("[controller]/[action]", Name = "[controller]_[action]")]
-	public class VFileController : ControllerBase
+	public class VFileController(ILogger<VFileController> logger) : ControllerBase
 	{
+		private readonly ILogger _logger = logger;
+
 		[HttpPost]
 		public Response<bool> VerifyVFile(VFileRequest request)
 		{
@@ -85,6 +88,30 @@ namespace dotVFile.WebAPI.Controllers
 			return new(result, err);
 		}
 
+		[HttpPost]
+		public Response<ExportResponse> Export(ExportRequest request)
+		{
+			var (vfile, error) = GetVFile(request);
+
+			if (vfile == null) return new(VFileError(request, error));
+
+			var vdir = new VDirectory(request.DirectoryPath);
+
+			var exportPath = Path.Combine(
+				GetDownloadsFolder(),
+				vdir.Name);
+
+			_logger.Log(LogLevel.Information, "exportPath: {exportPath}", exportPath);
+
+			var exported = vfile.ExportDirectory(
+				vdir,
+				exportPath,
+				vdir,
+				true);
+
+			return new(new ExportResponse(exported));
+		}
+
 		private static Error VFileError(VFileRequest request, Error? error)
 		{
 			return error ?? new Error("VFILE_NOT_FOUND", $"VFile not found at path: {request.VFilePath}");
@@ -109,5 +136,35 @@ namespace dotVFile.WebAPI.Controllers
 
 			return (vfile, null);
 		}
+
+		private static string GetDownloadsFolder()
+		{
+			var fallbackPath = Path.Combine(
+				Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+				"Downloads");
+
+			if (Environment.OSVersion.Version.Major < 6)
+				return fallbackPath;
+
+			IntPtr pathPtr = IntPtr.Zero;
+			try
+			{
+				// c# shgetknownfolderpath directory path
+#pragma warning disable CA1806 // Do not ignore method results
+				SHGetKnownFolderPath(ref folderDownloads, 0, IntPtr.Zero, out pathPtr);
+#pragma warning restore CA1806 // Do not ignore method results
+				var downloadsPath = Marshal.PtrToStringUni(pathPtr);
+				return downloadsPath ?? fallbackPath;
+			}
+			finally
+			{
+				Marshal.FreeCoTaskMem(pathPtr);
+			}
+		}
+
+		// declare DownloadsFolder GUI and import SHGetKnownFolderPath method
+		static Guid folderDownloads = new("374DE290-123F-4565-9164-39C4925E467B");
+		[DllImport("shell32.dll", CharSet = CharSet.Auto)]
+		private static extern int SHGetKnownFolderPath(ref Guid id, int flags, IntPtr token, out IntPtr path);
 	}
 }

@@ -5,6 +5,8 @@ import {
   ApiResponse,
   ApiVDirectory,
   DirectoryApiRequest,
+  ExportApiRequest,
+  ExportResponse,
   FileApiRequest,
   VDirectoryStats,
   VFileInfo,
@@ -102,6 +104,7 @@ export async function getFileBytes(
     filePath: filePath,
   } as FileApiRequest);
 
+  // result is a base64 string of data, convert to Blob
   if (response.result) {
     return {
       result: b64toBlob(response.result),
@@ -110,4 +113,14 @@ export async function getFileBytes(
   }
 
   return { error: response.error };
+}
+
+export async function exportDirectory(
+  vfilePath: string,
+  directoryPath: string,
+): Promise<ApiResponse<ExportResponse>> {
+  return await call("/VFile/Export", {
+    vfilePath,
+    directoryPath,
+  } as ExportApiRequest);
 }

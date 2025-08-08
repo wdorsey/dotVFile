@@ -3,7 +3,8 @@
   themes: dark --default;
 }
 
-dt {
-  font-weight: bold;
-  text-align: right;
+.text-overflow-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
