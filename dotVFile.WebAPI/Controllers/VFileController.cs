@@ -28,17 +28,39 @@ namespace dotVFile.WebAPI.Controllers
 		}
 
 		[HttpPost]
-		public Response<IEnumerable<VDirectory>> GetDirectories(GetDirectoryRequest request)
+		public Response<IEnumerable<ApiVDirectory>> GetDirectories(DirectoryRequest request)
 		{
 			var (vfile, error) = GetVFile(request);
 
 			if (vfile == null) return new(VFileError(request, error));
 
-			return new(vfile.GetDirectories(new(request.Directory), false));
+			var dirs = vfile.GetDirectories(new(request.Directory), false);
+
+			var result = new ConcurrentBag<ApiVDirectory>();
+
+			Parallel.ForEach(dirs, dir =>
+			{
+				var stats = vfile.GetDirectoryStats(dir);
+				result.Add(new(dir, stats));
+			});
+
+			return new(result);
 		}
 
 		[HttpPost]
-		public Response<IEnumerable<VFileInfo>> GetFiles(GetDirectoryRequest request)
+		public Response<DirectoryStats> GetDirectoryStats(DirectoryRequest request)
+		{
+			var (vfile, error) = GetVFile(request);
+
+			if (vfile == null) return new(VFileError(request, error));
+
+			var stats = vfile.GetDirectoryStats(new(request.Directory));
+
+			return new(stats);
+		}
+
+		[HttpPost]
+		public Response<IEnumerable<VFileInfo>> GetFiles(DirectoryRequest request)
 		{
 			var (vfile, error) = GetVFile(request);
 

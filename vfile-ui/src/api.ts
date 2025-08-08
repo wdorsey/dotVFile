@@ -3,9 +3,10 @@ import "server-only";
 import {
   ApiRequest,
   ApiResponse,
+  ApiVDirectory,
   DirectoryApiRequest,
   FileApiRequest,
-  VDirectory,
+  VDirectoryStats,
   VFileInfo,
   VFileStats,
 } from "./types";
@@ -62,10 +63,20 @@ export async function getStats(
   return await call("/VFile/GetStats", { vfilePath });
 }
 
+export async function getDirectoryStats(
+  vfilePath: string,
+  dir: string,
+): Promise<ApiResponse<VDirectoryStats>> {
+  return await call("/VFile/GetDirectoryStats", {
+    vfilePath,
+    directory: dir,
+  } as DirectoryApiRequest);
+}
+
 export async function getDirectories(
   vfilePath: string,
   dir: string,
-): Promise<ApiResponse<VDirectory[]>> {
+): Promise<ApiResponse<ApiVDirectory[]>> {
   return await call("/VFile/GetDirectories", {
     vfilePath,
     directory: dir,

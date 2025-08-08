@@ -11,12 +11,12 @@ export default async function FileExplorer() {
   const verified = await verifyVFilePath(vfilePath);
   const stats = await getStats(vfilePath).then((res) => res.result);
 
-  async function getDirectory(dir: string) {
+  async function getDirectoryCallback(dir: string) {
     "use server";
-    return getVFileDirectory(vfilePath, dir);
+    return await getVFileDirectory(vfilePath, dir);
   }
 
-  async function getVFileBytes(filePath: string) {
+  async function getFileBytesCallback(filePath: string) {
     "use server";
     const response = await getFileBytes(vfilePath, filePath);
     return response.result || new Blob([]);
@@ -71,8 +71,8 @@ export default async function FileExplorer() {
       {verified.result ? (
         <div className="my-8">
           <FileExplorerWindow
-            getVFileDirectory={getDirectory}
-            getVFileBytes={getVFileBytes}
+            getVFileDirectory={getDirectoryCallback}
+            getVFileBytes={getFileBytesCallback}
           />
         </div>
       ) : (

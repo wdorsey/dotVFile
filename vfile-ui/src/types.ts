@@ -17,6 +17,7 @@ export interface VFileInfo {
   id: string;
   fileName: string;
   filePath: string;
+  fileExtension: string;
   directoryName: string;
   directoryPath: string;
   versioned?: string;
@@ -28,16 +29,24 @@ export interface VFileInfo {
   contentId: string;
   hash: string;
   size: number;
+  sizeString: string;
   sizeStored: number;
+  sizeStoredString: string;
   compression: number;
   contentCreationTime: string;
 }
 
+export interface ApiVDirectory {
+  directory: VDirectory;
+  stats: VDirectoryStats;
+}
+
 export interface VFileDirectory {
   path: string;
-  dirs: VDirectory[] | undefined;
-  files: VFileInfo[] | undefined;
-  error: ApiError | undefined;
+  dirs?: ApiVDirectory[];
+  files?: VFileInfo[];
+  stats?: VDirectoryStats;
+  error?: ApiError;
 }
 
 export interface VFileStats {
@@ -47,6 +56,16 @@ export interface VFileStats {
   vFiles: VFileTotals;
   versions: VFileTotals;
   content: ContentTotals;
+}
+
+export interface VDirectoryStats {
+  directory: VDirectory;
+  directoryCount: number;
+  vFiles: VFileTotals;
+  versions: VFileTotals;
+  totalVFiles: VFileTotals;
+  totalVersions: VFileTotals;
+  directories: VDirectory[];
 }
 
 export interface VFileTotals {

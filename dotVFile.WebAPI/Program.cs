@@ -38,8 +38,6 @@ namespace dotVFile.WebAPI
 
 			app.MapControllers();
 
-			//app.MapPost("/VFile/GetFileBytes", )
-
 			app.Run();
 		}
 	}

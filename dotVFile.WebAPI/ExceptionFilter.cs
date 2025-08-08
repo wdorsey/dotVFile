@@ -14,10 +14,7 @@ namespace dotVFile.WebAPI
 		{
 			if (context.Exception != null)
 			{
-				var result = new Response<object?>(null)
-				{
-					Error = new("UNHANDLED_EXCEPTION", context.Exception.Message)
-				};
+				var result = new Response<object?>(null, new("UNHANDLED_EXCEPTION", context.Exception.Message));
 
 				context.Result = new ObjectResult(result)
 				{

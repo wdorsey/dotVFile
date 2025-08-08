@@ -9,11 +9,13 @@ import { FaFile, FaFolderClosed } from "react-icons/fa6";
 function FileExplorerItem({
   path,
   name,
+  info,
   type,
   onClick,
 }: {
   path: string;
   name: string;
+  info: string;
   type: FileExplorerItemType;
   onClick: () => void;
 }) {
@@ -29,6 +31,7 @@ function FileExplorerItem({
     >
       <FileExplorerIcon type={type} />
       <div className="grow">{name}</div>
+      <div>{info}</div>
     </button>
   );
 }
@@ -98,13 +101,29 @@ export default function FileExplorerWindow({
           <FileExplorerLoading />
         ) : (
           <div>
+            <div className="mb-1 flex flex-row gap-2 pl-4">
+              <span>{vfileDirectory?.dirs?.length} directories</span>
+              <span>-</span>
+              <span>
+                {vfileDirectory?.files?.length} files
+                {vfileDirectory?.stats !== undefined &&
+                vfileDirectory.stats.vFiles.count > 0 ? (
+                  <>{` (${vfileDirectory?.stats.vFiles.sizeString})`}</>
+                ) : (
+                  <></>
+                )}
+              </span>
+            </div>
             {vfileDirectory?.dirs?.map((dir) => (
               <FileExplorerItem
-                key={dir.path}
-                path={dir.path}
-                name={dir.name}
+                key={dir.directory.path}
+                path={dir.directory.path}
+                name={dir.directory.name}
+                info={`${dir.stats.totalVFiles.sizeString} - ${dir.stats.directoryCount} directories - ${dir.stats.vFiles.count} vfiles`}
                 type={FileExplorerItemType.Directory}
-                onClick={async () => await loadDirectory(dir.path, path)}
+                onClick={async () =>
+                  await loadDirectory(dir.directory.path, path)
+                }
               />
             ))}
             {vfileDirectory?.files?.map((file) => (
@@ -112,6 +131,7 @@ export default function FileExplorerWindow({
                 key={file.filePath}
                 path={file.filePath}
                 name={file.fileName}
+                info={`${file.sizeStoredString}`}
                 type={FileExplorerItemType.File}
                 onClick={async () =>
                   download(file.fileName, await getVFileBytes(file.filePath))

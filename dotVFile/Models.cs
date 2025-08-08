@@ -59,6 +59,7 @@ public record VFileInfo
 	public VFilePath VFilePath { get; internal set; } = VFilePath.Default();
 	public string FileName => VFilePath.FileName;
 	public string FilePath => VFilePath.FilePath;
+	public string FileExtension => VFilePath.FileExtension;
 	public VDirectory VDirectory => VFilePath.VDirectory;
 	public string DirectoryName => VDirectory.Name;
 	public string DirectoryPath => VDirectory.Path;
@@ -74,11 +75,13 @@ public record VFileInfo
 	/// Size of VFile content.
 	/// </summary>
 	public long Size { get; internal set; }
+	public string SizeString => Util.SizeString(Size);
 	/// <summary>
 	/// Size of VFile content stored in database.
 	/// This can be different than Size because of Compression.
 	/// </summary>
 	public long SizeStored { get; internal set; }
+	public string SizeStoredString => Util.SizeString(SizeStored);
 	public VFileCompression Compression { get; internal set; }
 	public DateTimeOffset ContentCreationTime { get; internal set; }
 }
