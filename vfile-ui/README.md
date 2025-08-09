@@ -6,7 +6,7 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 
 - File Explorer-like UI of a VFile system.
 - Smooth, responsive experience expected of a next.js app.
-- Frontend integrates with the [dotVFile C# WebAPI](https://github.com/wdorsey/dotVFile/tree/master/dotVFile.WebAPI) to fetch vfile information.
+- Frontend integrates with the [dotVFile c# WebAPI](https://github.com/wdorsey/dotVFile/tree/master/dotVFile.WebAPI) to fetch vfile information.
 - Stats provided for directory and vfile counts and sizes.
 - Download individual files or export entire directories.
 
@@ -16,4 +16,22 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 
 ## Usage
 
-- @TODO
+In order for the UI to work, the [dotVFile WebAPI](https://github.com/wdorsey/dotVFile/tree/master/dotVFile.WebAPI) has to be running.
+
+### UI Setup
+
+In the vfile-ui directory (same directory as this file), do the following:
+
+- Create a file named env.local. This will hold the path to the vfile database you want to browse.
+  - The UI does not currently support choosing a file. There are several reasons for this, tl;dr: it would have to be entered manually, so might as well just save it in a config file.
+- Add the following line to the file. Replace the value with the path to the vfile database you want to browse.
+
+```env
+NEXT_PUBLIC_VFILE_PATH=C:\path\to\file\my-vfile.vfile.db
+```
+
+### Run it
+
+- Run the WebAPI project. It should work as-is, no setup required.
+- From the vfile-ui directory, run the command `npm run dev`
+- Navigate to [http://localhost:3000/](http://localhost:3000/)
