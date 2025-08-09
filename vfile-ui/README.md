@@ -10,7 +10,8 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 - Stats provided for directory and vfile counts and sizes.
 - Download individual files or export entire directories.
 
-@TODO: add image(s)
+##
+![vfile-ui-ss](https://github.com/user-attachments/assets/a1a79ebc-e025-410e-ab8b-51b80629a031)
 
 ## Usage
 
