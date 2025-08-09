@@ -21,13 +21,14 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 
 In the vfile-ui directory (same directory as this file), do the following:
 
-- Create a file named `env.local`. This will hold the path to the vfile database you want to browse.
-  - The UI does not currently support choosing a file. There are several reasons for this, tl;dr: it would have to be entered manually, so might as well just save it in a config file since that's WAY easier.
+- Create a file named `env.local`.
 - Add the following line to the `env.local` file. Replace the value with the path to the vfile database you want to browse.
 
 ```env
 NEXT_PUBLIC_VFILE_PATH=C:\path\to\file\my-vfile.vfile.db
 ```
+
+The UI does not currently support choosing a file. There are several reasons for this, tl;dr: it would have to be entered manually, so might as well just save it in a config file since that's WAY easier.
 
 ### Run it
 
