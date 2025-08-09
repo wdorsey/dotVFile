@@ -20,8 +20,6 @@ async function call<RequestType extends ApiRequest, ResultType>(
 ): Promise<ApiResponse<ResultType>> {
   const url = `${process.env.WEB_API_URL}${route}`;
 
-  console.log(`call api: ${url} ${JSON.stringify(request)}`);
-
   return await fetch(url, {
     method: "POST",
     headers: {
@@ -33,13 +31,7 @@ async function call<RequestType extends ApiRequest, ResultType>(
     .then((response) => {
       return response.json();
     })
-    .then((data) => {
-      const response = data as ApiResponse<ResultType>;
-      if (response.error) {
-        console.log(`error returned from api: ${JSON.stringify(data.error)}`);
-      }
-      return response;
-    })
+    .then((data) => data as ApiResponse<ResultType>)
     .catch((error) => {
       console.log(error);
       const err: Error = !(error instanceof Error) ? new Error(error) : error;
@@ -47,7 +39,7 @@ async function call<RequestType extends ApiRequest, ResultType>(
       return {
         error: {
           type: err.name,
-          message: `Error calling api: ${err.message}. Make sure the WebAPI is running.`,
+          message: `Error calling api: ${err.message}, check the server log for full error. Make sure the WebAPI is running.`,
         },
       } as ApiResponse<ResultType>;
     });

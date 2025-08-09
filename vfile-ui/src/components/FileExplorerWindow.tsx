@@ -78,10 +78,8 @@ function FileExplorerExportDirectory({
     setExportStatus(ExportStatus.Exporting);
     const result = await exportDirectory(path);
     const status = result ? ExportStatus.Success : ExportStatus.Failed;
-    console.log(`exportClick status: ${status}`);
     setExportStatus(status);
     setTimeout(() => {
-      console.log("exportClick timeout - reset status to None.");
       setExportStatus(ExportStatus.None);
     }, 5000);
   }
@@ -106,7 +104,6 @@ function FileExplorerExportDirectory({
 }
 
 function FileExplorerExportStatusMessage({ status }: { status: ExportStatus }) {
-  console.log(`FileExplorerExportStatusMessage status: ${status}`);
   switch (status) {
     case ExportStatus.None:
     case ExportStatus.Exporting:

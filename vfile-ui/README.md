@@ -15,11 +15,3 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 ## Usage
 
 - @TODO
-
-## TODO
-
-- exportDirectory - use result of api call
-  - change showDownloadMessage to exportStatus (None | Exporting | Finished)
-  - change component DownloadComplete to ExportMessage
-- add .env to source code
-- remove console.logs

@@ -1,6 +1,5 @@
 // download blob in a browser window
 export function download(fileName: string, blob: Blob): void {
-  console.log(`download ${fileName}`);
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
