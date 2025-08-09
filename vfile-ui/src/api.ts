@@ -39,7 +39,7 @@ async function call<RequestType extends ApiRequest, ResultType>(
       return {
         error: {
           type: err.name,
-          message: `Error calling api: ${err.message}, check the server log for full error. Make sure the WebAPI is running.`,
+          message: `${err.message}, check the server log for full error. Make sure the WebAPI is running.`,
         },
       } as ApiResponse<ResultType>;
     });
