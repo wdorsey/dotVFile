@@ -7,9 +7,11 @@ export async function getVFileDirectory(
   vfilePath: string,
   dir: string,
 ): Promise<VFileDirectory> {
-  const stats = await getDirectoryStats(vfilePath, dir);
-  const dirs = await getDirectories(vfilePath, dir);
-  const files = await getFileInfos(vfilePath, dir);
+  const [stats, dirs, files] = await Promise.all([
+    getDirectoryStats(vfilePath, dir),
+    getDirectories(vfilePath, dir),
+    getFileInfos(vfilePath, dir),
+  ]);
 
   return {
     path: dir,
