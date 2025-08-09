@@ -11,7 +11,7 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 - Download individual files or export entire directories.
 - This is purely read-only functionality. In order to add/update/delete vfiles you'll have to directly use the vfile library.
 
-##
+## Example
 
 ![vfile-ui-ss](https://github.com/user-attachments/assets/a1a79ebc-e025-410e-ab8b-51b80629a031)
 
