@@ -9,6 +9,7 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 - Frontend integrates with the [dotVFile c# WebAPI](https://github.com/wdorsey/dotVFile/tree/master/dotVFile.WebAPI) to fetch vfile information.
 - Stats provided for directory and vfile counts and sizes.
 - Download individual files or export entire directories.
+- This is purely read-only functionality. In order to add/update/delete vfiles you'll have to directly use the vfile library.
 
 ##
 
