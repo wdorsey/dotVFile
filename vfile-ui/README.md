@@ -17,8 +17,6 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 
 ## Usage
 
-In order for the UI to work, the [dotVFile WebAPI](https://github.com/wdorsey/dotVFile/tree/master/dotVFile.WebAPI) has to be running.
-
 ### UI Setup
 
 In the vfile-ui directory (same directory as this file), do the following:
