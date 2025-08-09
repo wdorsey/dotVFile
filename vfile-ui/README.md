@@ -28,7 +28,7 @@ In the vfile-ui directory (same directory as this file), do the following:
 NEXT_PUBLIC_VFILE_PATH=C:\path\to\file\my-vfile.vfile.db
 ```
 
-The UI does not currently support choosing a file. There are several reasons for this, tl;dr: it would have to be entered manually, so might as well just save it in a config file since that's WAY easier.
+The UI does not currently support choosing a vfile path in the browser. There are several reasons for this, but tl;dr: it would ultimately have to be entered manually, so might as well just save it in a config file since that's WAY easier.
 
 ### Run it
 
