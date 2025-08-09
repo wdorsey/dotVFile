@@ -3,19 +3,32 @@
 import { FileExplorerItemType, Path, VFileDirectory } from "@/types";
 import { download } from "@/utils";
 import React from "react";
-import { BackArrow, FileIcon, FolderIcon, SuccessCheckmarkIcon } from "./Icons";
+import {
+  BackArrow,
+  ErrorIcon,
+  FileIcon,
+  FolderIcon,
+  SuccessCheckmarkIcon,
+} from "./Icons";
+
+enum ExportStatus {
+  None,
+  Exporting,
+  Success,
+  Failed,
+}
 
 function FileExplorerItem({
   path,
   name,
   cols,
-  type,
+  itemType,
   onClick,
 }: {
   path: string;
   name: string;
   cols: React.ReactNode[];
-  type: FileExplorerItemType;
+  itemType: FileExplorerItemType;
   onClick: () => void;
 }) {
   return (
@@ -28,15 +41,19 @@ function FileExplorerItem({
         onClick();
       }}
     >
-      <FileExplorerIcon type={type} />
+      <FileExplorerItemIcon itemType={itemType} />
       <div className="text-overflow-ellipsis">{name}</div>
       <div className="ml-auto flex flex-row gap-2">{cols}</div>
     </button>
   );
 }
 
-function FileExplorerIcon({ type }: { type: FileExplorerItemType }) {
-  switch (type) {
+function FileExplorerItemIcon({
+  itemType,
+}: {
+  itemType: FileExplorerItemType;
+}) {
+  switch (itemType) {
     case FileExplorerItemType.Directory:
       return <FolderIcon size={20} />;
     case FileExplorerItemType.File:
@@ -44,17 +61,77 @@ function FileExplorerIcon({ type }: { type: FileExplorerItemType }) {
   }
 }
 
-function FileExplorerLoading({ text }: { text: string }) {
-  return <div className="text-xl">{text}</div>;
+function FileExplorerExportDirectory({
+  path,
+  exportStatus,
+  setExportStatus,
+  totalSize,
+  exportDirectory,
+}: {
+  path: string;
+  exportStatus: ExportStatus;
+  setExportStatus: React.Dispatch<React.SetStateAction<ExportStatus>>;
+  totalSize?: string;
+  exportDirectory: (dirPath: string) => Promise<boolean>;
+}) {
+  async function exportClick() {
+    setExportStatus(ExportStatus.Exporting);
+    const result = await exportDirectory(path);
+    const status = result ? ExportStatus.Success : ExportStatus.Failed;
+    console.log(`exportClick status: ${status}`);
+    setExportStatus(status);
+    setTimeout(() => {
+      console.log("exportClick timeout - reset status to None.");
+      setExportStatus(ExportStatus.None);
+    }, 5000);
+  }
+
+  return (
+    <>
+      <button
+        className="btn btn-primary rounded-full"
+        disabled={exportStatus !== ExportStatus.None}
+        onClick={async (event) => {
+          event.preventDefault();
+          await exportClick();
+        }}
+      >
+        Export Directory{totalSize && ` (${totalSize})`}
+      </button>
+      <div className="flex flex-row gap-1">
+        <FileExplorerExportStatusMessage status={exportStatus} />
+      </div>
+    </>
+  );
 }
 
-function DownloadComplete() {
-  return (
-    <div className="flex flex-row gap-1">
-      <SuccessCheckmarkIcon className="self-center" />
-      <span>Download Complete, check your Downloads folder.</span>
-    </div>
-  );
+function FileExplorerExportStatusMessage({ status }: { status: ExportStatus }) {
+  console.log(`FileExplorerExportStatusMessage status: ${status}`);
+  switch (status) {
+    case ExportStatus.None:
+    case ExportStatus.Exporting:
+      return <></>;
+
+    case ExportStatus.Success:
+      return (
+        <>
+          <SuccessCheckmarkIcon className="self-center" />
+          <span>Export Complete, check your Downloads folder.</span>
+        </>
+      );
+
+    case ExportStatus.Failed:
+      return (
+        <>
+          <ErrorIcon className="self-center" />
+          <span>Export Failed.</span>
+        </>
+      );
+  }
+}
+
+function FileExplorerLoading({ text }: { text: string }) {
+  return <div className="text-xl">{text}</div>;
 }
 
 export default function FileExplorerWindow({
@@ -73,8 +150,7 @@ export default function FileExplorerWindow({
   const [path, setPath] = React.useState(initialPath);
   const [vfileDirectory, setVFileDirectory] = React.useState<VFileDirectory>();
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isExporting, setIsExporting] = React.useState(false);
-  const [showDownloadMessage, setShowDownloadMessage] = React.useState(false);
+  const [exportStatus, setExportStatus] = React.useState(ExportStatus.None);
 
   const loadDirectory = React.useCallback(
     async (dir: string, currPath: Path | undefined) => {
@@ -83,74 +159,70 @@ export default function FileExplorerWindow({
       const vfileDirectory = await getVFileDirectory(dir);
       setVFileDirectory(vfileDirectory);
       setIsLoading(false);
-      setShowDownloadMessage(false);
     },
     [getVFileDirectory],
   );
 
-  // load initial path when component loads
+  // load initial path when component loads for the first time
   React.useEffect(() => {
     loadDirectory(initialPath.path, undefined);
   }, [loadDirectory, initialPath]);
 
+  // compile stats that are used into variables that much easier to use in the jsx
+  const dirCount = vfileDirectory?.dirs?.length || 0;
+  const fileCount = vfileDirectory?.files?.length || 0;
+  const dirSize = vfileDirectory?.stats?.totalVFiles.sizeString || "";
+  const filesSize = vfileDirectory?.stats?.vFiles.sizeString || "";
+  const totalSize = vfileDirectory?.stats?.totalSizeString || "";
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="border-base-200 flex flex-col gap-2 border-2 p-2 shadow">
       <div className="flex w-full flex-row items-center gap-2">
         <button
           className="btn rounded-full"
-          disabled={path.prevPath === undefined}
+          disabled={!!path.prevPath}
           onClick={async () => {
-            if (path.prevPath !== undefined) {
+            if (path.prevPath) {
               await loadDirectory(path.prevPath.path, path.prevPath.prevPath);
             }
           }}
         >
           <BackArrow />
         </button>
+        <div className="divider divider-horizontal mx-0" />
         <div className="text-overflow-ellipsis w-full px-1 text-xl">
           {path.path}
         </div>
       </div>
       <div className="flex w-full flex-col">
-        {isLoading || isExporting ? (
+        {isLoading || exportStatus === ExportStatus.Exporting ? (
           <FileExplorerLoading
             text={
               isLoading
                 ? "Loading..."
-                : "Downloading... This may take a bit depending on the size of the directory."
+                : "Exporting... This may take a bit depending on the size of the directory."
             }
           />
         ) : (
           <div>
-            <div className="mb-2 flex h-10 flex-row items-center gap-2 pl-4">
-              <div>{vfileDirectory?.dirs?.length} directories</div>
-              <div className="divider divider-horizontal mx-0" />
+            <div className="mb-3 flex h-10 flex-row items-center gap-2 pl-4">
               <div>
-                {vfileDirectory?.files?.length} files
-                {vfileDirectory?.stats !== undefined &&
-                vfileDirectory.stats.vFiles.count > 0 ? (
-                  <>{` (${vfileDirectory?.stats.vFiles.sizeString})`}</>
-                ) : (
-                  <></>
-                )}
+                {dirCount} directories
+                {dirCount > 0 && <span>{` (${dirSize})`}</span>}
               </div>
               <div className="divider divider-horizontal mx-0" />
-              <button
-                className="btn btn-primary rounded-full"
-                disabled={showDownloadMessage}
-                onClick={async () => {
-                  setIsExporting(true);
-                  await exportDirectory(path.path);
-                  setIsExporting(false);
-                  setShowDownloadMessage(true);
-                  setTimeout(() => {
-                    setShowDownloadMessage(false);
-                  }, 5000);
-                }}
-              >
-                Download Directory
-              </button>
-              {showDownloadMessage ? <DownloadComplete /> : <></>}
+              <div>
+                {fileCount} files
+                {fileCount > 0 && <span>{` (${filesSize})`}</span>}
+              </div>
+              <div className="divider divider-horizontal mx-0" />
+              <FileExplorerExportDirectory
+                path={path.path}
+                exportStatus={exportStatus}
+                setExportStatus={setExportStatus}
+                totalSize={totalSize}
+                exportDirectory={exportDirectory}
+              />
             </div>
             {vfileDirectory?.dirs?.map((dir) => (
               <FileExplorerItem
@@ -185,7 +257,7 @@ export default function FileExplorerWindow({
                     {dir.stats.vFiles.count.toLocaleString()} files
                   </div>,
                 ]}
-                type={FileExplorerItemType.Directory}
+                itemType={FileExplorerItemType.Directory}
                 onClick={async () =>
                   await loadDirectory(dir.directory.path, path)
                 }
@@ -201,7 +273,7 @@ export default function FileExplorerWindow({
                     {file.sizeStoredString}
                   </div>,
                 ]}
-                type={FileExplorerItemType.File}
+                itemType={FileExplorerItemType.File}
                 onClick={async () =>
                   download(file.fileName, await getVFileBytes(file.filePath))
                 }

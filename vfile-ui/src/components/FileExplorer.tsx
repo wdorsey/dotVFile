@@ -15,7 +15,10 @@ export default async function FileExplorer() {
   const verified = await verifyVFilePath(vfilePath);
   const stats = await getStats(vfilePath).then((res) => res.result);
 
-  // wrap these api calls in "use server" functions in order to pass them to the client component
+  // wrap these api calls in "use server" functions in order to pass them to the client component.
+  // we wrap these and pass them to the FileExplorer component because the api is marked "server-only"
+  // because the api url is in a private environment variable that cannot be exposed on the client.
+  // (simulates real-world enviroment variable handling).
   async function getDirectoryCallback(dir: string) {
     "use server";
     return await getVFileDirectory(vfilePath, dir);
@@ -35,11 +38,13 @@ export default async function FileExplorer() {
 
   return (
     <div className="m-auto mt-2 flex w-5xl flex-col gap-2">
-      <div className="overflow-x-auto">
+      <div className="border-base-200 m-auto overflow-x-auto border-2 p-2 shadow">
         <table className="table-zebra table w-fit text-xl">
           <thead>
             <tr>
-              <th className="text-xl">dotVFile</th>
+              <th className="text-primary-content text-4xl font-bold">
+                dotVFile
+              </th>
               <th></th>
             </tr>
           </thead>

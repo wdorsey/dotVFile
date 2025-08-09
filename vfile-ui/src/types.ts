@@ -62,6 +62,8 @@ export interface VFileStats {
 export interface VDirectoryStats {
   directory: VDirectory;
   directoryCount: number;
+  totalSize: number;
+  totalSizeString: string;
   vFiles: VFileTotals;
   versions: VFileTotals;
   totalVFiles: VFileTotals;

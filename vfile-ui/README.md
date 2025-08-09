@@ -21,6 +21,5 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 - exportDirectory - use result of api call
   - change showDownloadMessage to exportStatus (None | Exporting | Finished)
   - change component DownloadComplete to ExportMessage
-- there is no reason anymore to wrap the api calls in FileExplorer, just pass vfilePath to FileExplorerWindow.
 - add .env to source code
 - remove console.logs
