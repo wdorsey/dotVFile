@@ -22,7 +22,7 @@ In order for the UI to work, the [dotVFile WebAPI](https://github.com/wdorsey/do
 
 In the vfile-ui directory (same directory as this file), do the following:
 
-- Create a file named env.local. This will hold the path to the vfile database you want to browse.
+- Create a file named `env.local`. This will hold the path to the vfile database you want to browse.
   - The UI does not currently support choosing a file. There are several reasons for this, tl;dr: it would have to be entered manually, so might as well just save it in a config file.
 - Add the following line to the file. Replace the value with the path to the vfile database you want to browse.
 
