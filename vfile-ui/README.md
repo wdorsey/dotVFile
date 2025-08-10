@@ -19,8 +19,11 @@ A [Next.js](https://nextjs.org) app that provides read-only browsing of a dotVFi
 
 ### UI Setup
 
-In the vfile-ui directory (same directory as this file), do the following:
+The UI project comes with a [sample vfile db](https://github.com/wdorsey/dotVFile/tree/master/vfile-ui/sample-vfile-db) and it will use that out of the box with no setup required.
 
+If you want to use a different vfile db, do the following:
+
+- In the vfile-ui directory (same directory as this file)
 - Create a file named `env.local`.
 - Add the following line to the `env.local` file. Replace the value with the path to the vfile database you want to browse.
 
