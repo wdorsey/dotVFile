@@ -34,13 +34,11 @@ public class VFile
 	public VFile(string dbFilePath, StoreOptions? defaultStoreOptions = null)
 	{
 		var dbFileInfo = new FileInfo(dbFilePath);
-		if (!dbFileInfo.Exists)
-			throw new Exception($"File does not exist at path: \"{dbFileInfo.FullName}\"");
 
 		Tools = new();
 		DefaultStoreOptions = defaultStoreOptions ?? StoreOptions.Default();
 		Name = dbFileInfo.Name.TrimEnd([.. SingleFileNameSuffix]);
-		Directory = dbFileInfo.DirectoryName!;
+		Directory = Util.CreateDir(dbFileInfo.DirectoryName!);
 		SingleFileName = dbFileInfo.Name;
 		Database = new VFileDatabase(dbFileInfo, Version, Tools);
 
@@ -990,7 +988,7 @@ public class VFile
 
 		foreach (var vfile in vfiles)
 		{
-			var relativeDir = removeRootDirectory != null
+			var relativeDir = removeRootDirectory != null && !removeRootDirectory.IsRoot
 				? VDirectory.RemoveRootPath(vfile.VDirectory, removeRootDirectory)
 				: vfile.VDirectory;
 

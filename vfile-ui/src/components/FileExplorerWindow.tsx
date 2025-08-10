@@ -168,16 +168,16 @@ export default function FileExplorerWindow({
   // compile stats that are used into variables that much easier to use in the jsx
   const dirCount = vfileDirectory?.dirs?.length || 0;
   const fileCount = vfileDirectory?.files?.length || 0;
-  const dirSize = vfileDirectory?.stats?.totalVFiles.sizeString || "";
+  const totalSize = vfileDirectory?.stats?.totalVFiles.sizeString || "";
+  const dirsSize = vfileDirectory?.stats?.directoriesSizeString || "";
   const filesSize = vfileDirectory?.stats?.vFiles.sizeString || "";
-  const totalSize = vfileDirectory?.stats?.totalSizeString || "";
 
   return (
     <div className="border-base-200 flex flex-col gap-2 border-2 p-2 shadow">
       <div className="flex w-full flex-row items-center gap-2">
         <button
           className="btn rounded-full"
-          disabled={!!path.prevPath}
+          disabled={!path.prevPath}
           onClick={async () => {
             if (path.prevPath) {
               await loadDirectory(path.prevPath.path, path.prevPath.prevPath);
@@ -205,7 +205,7 @@ export default function FileExplorerWindow({
             <div className="mb-3 flex h-10 flex-row items-center gap-2 pl-4">
               <div>
                 {dirCount} directories
-                {dirCount > 0 && <span>{` (${dirSize})`}</span>}
+                {dirCount > 0 && <span>{` (${dirsSize})`}</span>}
               </div>
               <div className="divider divider-horizontal mx-0" />
               <div>

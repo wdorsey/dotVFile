@@ -3,7 +3,6 @@
 public static class TestUtil
 {
 	public static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "test-log.txt");
-	public static readonly Random Rand = new();
 	public static string TestFilesDir { get; } = Path.Combine(Environment.CurrentDirectory, "TestFiles");
 	public static string TestFileMetadataDir = Path.Combine("test", "metadata");
 	public static List<TestFile> TestFiles = [];
@@ -623,9 +622,62 @@ public static class TestUtil
 		ctx.Assert(expectVersioned ? info.Versioned != null : info.Versioned == null, $"{context}: incorrect Versioned");
 	}
 
-	public static T ChooseOne<T>(this List<T> list)
+	public static void GenerateRandomVFileDb(
+		int uniqueDirCount,
+		int numFiles,
+		int maxDepth,
+		int maxFileEntities,
+		string dbFilePath)
 	{
-		if (list.IsEmpty()) throw new Exception("empty list");
-		return list[Rand.Next(0, list.Count)];
+		WriteLine("Generating random vfile db");
+		WriteLine(new { uniqueDirCount, numFiles, maxDepth, maxFileEntities, dbFilePath }.ToJson(true)!);
+
+		Util.DeleteFile(dbFilePath);
+		var vfile = new VFile(dbFilePath);
+		var requests = new List<StoreRequest>();
+		var fileExtensions = new List<string> { ".json", ".txt" };
+		var uniqueFiles = new HashSet<string>();
+		var maxRootFileCount = numFiles * .05;
+		var rootFileCount = 0;
+
+		for (var i = 0; i < numFiles; i++)
+		{
+			var depth = RandomUtil.Rand.Next(rootFileCount >= maxRootFileCount ? 1 : 0, maxDepth);
+			var entityCount = RandomUtil.Rand.Next(1, maxFileEntities);
+
+			if (depth == 0) rootFileCount++;
+
+			var path = string.Empty;
+			for (var k = 0; k < depth; k++)
+			{
+				path = Path.Combine(path, RandomUtil.RandomWord(uniqueDirCount));
+			}
+
+			string fileName;
+			do
+			{
+				fileName = RandomUtil.RandomWord() + RandomUtil.RandomWord() +
+					RandomUtil.RandomWord() + fileExtensions.ChooseOne();
+			} while (uniqueFiles.Contains(Path.Combine(path, fileName)));
+
+			uniqueFiles.Add(Path.Combine(path, fileName));
+
+			var entities = new List<RandomDbEntity>();
+			for (var k = 0; k < entityCount; k++)
+			{
+				entities.Add(new(Guid.NewGuid(),
+					$"{RandomUtil.RandomWord()} {RandomUtil.RandomWord()}",
+					i,
+					DateTimeOffset.Now));
+			}
+
+			var request = new StoreRequest(
+				new VFilePath(path, fileName),
+				new VFileContent(Util.GetBytes(entities, true)));
+
+			requests.Add(request);
+		}
+
+		vfile.Store(requests);
 	}
 }

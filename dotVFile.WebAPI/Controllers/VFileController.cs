@@ -96,10 +96,11 @@ namespace dotVFile.WebAPI.Controllers
 			if (vfile == null) return new(VFileError(request, error));
 
 			var vdir = new VDirectory(request.DirectoryPath);
+			var remove = vdir.IsRoot ? null : vdir;
 
 			var exportPath = Path.Combine(
 				GetDownloadsFolder(),
-				vdir.Name);
+				vdir.IsRoot ? "vfile" : vdir.Name);
 
 			_logger.Log(LogLevel.Information, "exportPath: {exportPath}", exportPath);
 

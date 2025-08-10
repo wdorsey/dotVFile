@@ -135,3 +135,11 @@ vfile.ExportDirectory(
 
 /* TESTS */
 TestUtil.RunTests();
+
+/* Generate Random VFile DB */
+TestUtil.GenerateRandomVFileDb(
+	30,
+	1000,
+	3,
+	100,
+	Path.Combine(Environment.CurrentDirectory, "random-vfile-db", "sample.vfile.db"));

@@ -7,10 +7,11 @@ import {
 import FileExplorerWindow from "./FileExplorerWindow";
 import { getVFileDirectory } from "@/actions";
 import { ErrorIcon, SuccessCheckmarkIcon } from "./Icons";
+import { sampleVFileDbPath } from "@/server-utils";
 
 export default async function FileExplorer() {
   // vfilePath fetched from env.local
-  const vfilePath = process.env.NEXT_PUBLIC_VFILE_PATH || "";
+  const vfilePath = process.env.NEXT_PUBLIC_VFILE_PATH || sampleVFileDbPath();
 
   const verified = await verifyVFilePath(vfilePath);
   const stats = await getStats(vfilePath).then((res) => res.result);
@@ -73,7 +74,7 @@ export default async function FileExplorer() {
             {stats ? (
               <>
                 <tr>
-                  <th>Size</th>
+                  <th>Database Size</th>
                   <td>{stats?.databaseFileSizeString}</td>
                 </tr>
                 <tr>

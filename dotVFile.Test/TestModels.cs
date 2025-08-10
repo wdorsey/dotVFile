@@ -50,3 +50,9 @@ public record CacheTestCase(
 	public bool ExpectedCacheHit { get; set; } = ExpectedCacheHit;
 	public byte[] ExpectedContent { get; set; } = ExpectedContent;
 }
+
+public record RandomDbEntity(
+	Guid Id,
+	string Name,
+	int Count,
+	DateTimeOffset Timestamp);

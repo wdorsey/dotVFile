@@ -12,7 +12,6 @@ internal class VFileDatabase
 		Version = version;
 		Tools = tools;
 		DatabaseFilePath = databaseFilePath.FullName;
-		Console.WriteLine(DatabaseFilePath);
 		ConnectionString = $"Data Source={DatabaseFilePath};";
 		CreateDatabase();
 	}

@@ -105,8 +105,8 @@ public record DirectoryStats(
 	List<VDirectory> Directories)
 {
 	public int DirectoryCount => Directories.Count;
-	public long TotalSize => VFiles.Size + TotalVFiles.Size;
-	public string TotalSizeString => Util.SizeString(TotalSize);
+	public long DirectoriesSize => TotalVFiles.Size - VFiles.Size;
+	public string DirectoriesSizeString => Util.SizeString(DirectoriesSize);
 }
 
 public record VFileTotals(
