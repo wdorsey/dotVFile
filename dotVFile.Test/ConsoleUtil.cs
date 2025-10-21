@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace dotVFile.Test;
 
@@ -24,14 +25,11 @@ public static class ConsoleUtil
 	{
 		var screenSize = WindowUtil.GetScreenSize();
 
-#pragma warning disable CA1416 // Validate platform compatibility
 		WindowUtil.MoveWindow(
-			Console.Title,
 			screenSize.Width / 2 - width / 2, // x
 			0, // y
 			width,
 			height);
-#pragma warning restore CA1416 // Validate platform compatibility
 	}
 
 	public static void WriteLine(string? value, ConsoleColor? textColor = null)
@@ -58,9 +56,6 @@ public static class ConsoleUtil
 
 public static partial class WindowUtil
 {
-	[LibraryImport("user32.dll", EntryPoint = "FindWindowW", StringMarshalling = StringMarshalling.Utf16)]
-	private static partial IntPtr FindWindowByCaption(IntPtr zeroOnly, string lpWindowName);
-
 	[LibraryImport("user32.dll", EntryPoint = "MoveWindow")]
 	[return: MarshalAs(UnmanagedType.Bool)]
 	private static partial bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, [MarshalAs(UnmanagedType.Bool)] bool bRepaint);
@@ -76,22 +71,12 @@ public static partial class WindowUtil
 
 	public static Size GetScreenSize() => new(GetSystemMetrics(0), GetSystemMetrics(1));
 
-	public static void MoveWindow(string windowName, int x, int y, int width, int height)
+	public static void MoveWindow(int x, int y, int width, int height)
 	{
-		var window = GetWindowHandle(windowName);
+		var window = Process.GetCurrentProcess().MainWindowHandle;
 
 		MoveWindow(window, x, y, width, height, true);
 
 		SetForegroundWindow(window);
-	}
-
-	private static IntPtr GetWindowHandle(string windowName)
-	{
-		IntPtr window = FindWindowByCaption(IntPtr.Zero, windowName);
-
-		if (window == IntPtr.Zero)
-			throw new Exception($"Couldn't find a window by name {windowName}");
-
-		return window;
 	}
 }
