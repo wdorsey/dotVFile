@@ -26,6 +26,7 @@ public static class ConsoleUtil
 		var screenSize = WindowUtil.GetScreenSize();
 
 		WindowUtil.MoveWindow(
+			WindowUtil.FindConsoleWindow(),
 			screenSize.Width / 2 - width / 2, // x
 			0, // y
 			width,
@@ -56,6 +57,9 @@ public static class ConsoleUtil
 
 public static partial class WindowUtil
 {
+	[LibraryImport("user32.dll", EntryPoint = "FindWindowW", StringMarshalling = StringMarshalling.Utf16)]
+	private static partial IntPtr FindWindow(IntPtr zero, string lpWindowName);
+
 	[LibraryImport("user32.dll", EntryPoint = "MoveWindow")]
 	[return: MarshalAs(UnmanagedType.Bool)]
 	private static partial bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, [MarshalAs(UnmanagedType.Bool)] bool bRepaint);
@@ -71,12 +75,34 @@ public static partial class WindowUtil
 
 	public static Size GetScreenSize() => new(GetSystemMetrics(0), GetSystemMetrics(1));
 
-	public static void MoveWindow(int x, int y, int width, int height)
+	public static void MoveWindow(IntPtr handle, int x, int y, int width, int height)
 	{
-		var window = Process.GetCurrentProcess().MainWindowHandle;
+		MoveWindow(handle, x, y, width, height, true);
 
-		MoveWindow(window, x, y, width, height, true);
+		SetForegroundWindow(handle);
+	}
 
-		SetForegroundWindow(window);
+	public static IntPtr FindConsoleWindow()
+	{
+		return FindConsoleWindowInternal(false, 0);
+	}
+
+	private static IntPtr FindConsoleWindowInternal(
+		bool waitForStartup,
+		int retryCount)
+	{
+#pragma warning disable CA1416 // Validate platform compatibility
+		if (waitForStartup)
+			Thread.Sleep(100);
+
+		IntPtr ptr = FindWindow(IntPtr.Zero, Console.Title);
+
+		if (ptr == 0)
+			ptr = Process.GetCurrentProcess().MainWindowHandle;
+
+		return ptr != 0 || retryCount > 10
+			? ptr
+			: FindConsoleWindowInternal(true, retryCount + 1);
+#pragma warning restore CA1416 // Validate platform compatibility
 	}
 }

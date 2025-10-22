@@ -99,6 +99,7 @@ public static class TestUtil
 
 		if (failed > 0)
 		{
+			Console.ForegroundColor = ConsoleColor.Red;
 			var failedMsg = $"=== {failed} TEST{Util.PluralChar(failed, plural: "S")} FAILED ===";
 			WriteLine(failedMsg);
 			foreach (var result in results)
@@ -109,10 +110,13 @@ public static class TestUtil
 				}
 			}
 			WriteLine(failedMsg);
+			Console.ResetColor();
 		}
 		else
 		{
+			Console.ForegroundColor = ConsoleColor.Green;
 			WriteLine("=== all tests passed ===");
+			Console.ResetColor();
 		}
 	}
 
